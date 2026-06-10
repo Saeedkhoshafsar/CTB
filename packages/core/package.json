@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ctb/shared": "*"
+    "@ctb/shared": "*",
+    "@ctb/sandbox": "*"
   }
 }

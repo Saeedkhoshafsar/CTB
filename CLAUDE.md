@@ -103,7 +103,7 @@ A commit that changes code but not STATE.md is a protocol violation.
 |---|---|
 | I1 | **TypeScript only.** No PHP, no second backend language. Code node runs sandboxed JS. |
 | I2 | **No domain nodes in core.** Nothing shop/VPN/CRM-specific. Generic primitives only. |
-| I3 | **Dependency direction:** `shared ← core ← nodes ← apps/server`. `core` NEVER imports Telegram/Fastify/DB drivers — it receives injected services (sender, store, http, kv). Editor depends only on `shared` + the server's HTTP API. |
+| I3 | **Dependency direction:** `shared ← sandbox ← core ← nodes ← apps/server` (Decision Log #12). `core` NEVER imports Telegram/Fastify/DB drivers — it receives injected services (sender, store, http, kv); `sandbox` uses only `node:worker_threads`. Editor depends only on `shared` + the server's HTTP API. |
 | I4 | **Durability first.** Any state needed to resume a conversation lives in the `executions` table, never only in memory. Every WAIT must survive a process restart. |
 | I5 | **Zod schema first.** Every node's params, every API body, every stored JSON document has a Zod schema in `packages/shared`. The editor form is generated from it. |
 | I6 | **Sandbox = no ambient authority.** Code node / expressions get capabilities only via injected proxies (`$http`, `$kv`, …) with host-side limits. Never expose `require`, `process`, `fs`. |

@@ -109,3 +109,5 @@
 | 4 | Conversation state via durable `executions` table, not in-memory sessions | survive restarts; long waits (days) are first-class |
 | 5 | Editor-first roadmap (editor at Phase 2, not last) | the product *is* the visual builder; engine without UI is invisible |
 | 6 | No domain nodes (shop/VPN) | CTB is a general tool; domains live in flows/templates/plugins |
+| 7 | Agent-resumable development protocol (CLAUDE.md + PLAN.md + STATE.md) | any AI agent must be able to resume after a sandbox reset using only the repo |
+| 8 | Pin TypeScript ^5.9 (not 6.x) and lock stack versions in PLAN.md | avoid tooling churn mid-build; majors revisited in P6 |

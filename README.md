@@ -65,7 +65,21 @@ packages/
 - **Telegram:** grammY (webhook or long-polling)
 - **Editor canvas:** React Flow (@xyflow/react)
 
-Full details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Delivery plan: [`docs/ROADMAP.md`](docs/ROADMAP.md) · Node specs: [`docs/NODES.md`](docs/NODES.md)
+Full details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Node specs: [`docs/NODES.md`](docs/NODES.md)
+
+## For developers & AI agents
+
+This repo is built to be **resumable by any agent with zero memory**:
+
+| File | Purpose |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | **The constitution** — mandatory protocol, invariants, git workflow. Read first. |
+| [`docs/STATE.md`](docs/STATE.md) | Current truth: which task is `→ current`, repo health checks, session log. |
+| [`docs/PLAN.md`](docs/PLAN.md) | The executable plan: atomic tasks P0-T1 → P6, each with files, acceptance criteria, verify commands. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How to build: structure, contracts, engine design, data model. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phase overview + decision log. |
+
+Session protocol: **STATE.md → PLAN.md (current task) → ARCHITECTURE.md (relevant §) → verify → code.**
 
 ## Project principles
 

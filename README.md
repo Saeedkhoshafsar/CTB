@@ -26,6 +26,7 @@ CTB's engine is built around that exact gap:
 | **Expression** | `{{ ... }}` templates usable in any node field: `Hi {{ $json.user.first_name }}!` |
 | **Execution** | One run of a flow for one chat. Can be running, **waiting** (paused for user input), done, or failed. |
 | **Credential** | Encrypted, reusable connection (API keys, headers) referenced by nodes — never pasted twice. |
+| **Collection** | A user-defined "table" (schema built visually — fields, variants-style groups, relations). CTB auto-generates a CRUD admin panel from the schema, so a non-technical operator manages data (products, orders, anything) without ever seeing the canvas. Flows use the same data via the generic `Collection` node. |
 
 ## Built-in node catalog (target)
 
@@ -41,6 +42,7 @@ FLOW CONTROL      IF · Switch · Loop · Merge · Wait/Delay · Execute Sub-Flo
 
 DATA & CODE       Set Fields · Code (JavaScript, sandboxed) · HTTP Request
                   Storage (per-user / per-bot key-value)
+                  Collection (CRUD on user-defined tables) · Record Changed trigger
 
 AI                LLM Chat (OpenAI / Anthropic / OpenRouter / custom base URL)
                   AI Agent (tools) · MCP Client
@@ -83,7 +85,7 @@ Session protocol: **STATE.md → PLAN.md (current task) → ARCHITECTURE.md (rel
 
 ## Project principles
 
-1. **Generic by design.** No business-specific nodes (no "shop", no "VPN panel"). Domain logic belongs in flows, Code nodes, and HTTP nodes — or future community plugins.
+1. **Generic by design.** No business-specific nodes (no "shop", no "VPN panel"). Domain logic belongs in flows, Code nodes, HTTP nodes and user-defined Collections — or future community plugins. Admin UI is *generated from data schemas* (Directus-style), never built from nodes.
 2. **Conversation-first engine.** Pause/resume is a first-class engine capability, not a bolt-on.
 3. **No-code floor, full-code ceiling.** Everything common is a configurable node; everything else is one Code node away.
 4. **Open protocol.** Flows can be triggered from outside (webhook/API) and can call anything outside (HTTP/MCP) — CTB plays well with n8n, AI agents, and cron systems.

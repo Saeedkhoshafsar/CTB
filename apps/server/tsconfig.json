@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@ctb/shared": ["../../packages/shared/src/index.ts"],
+      "@ctb/core": ["../../packages/core/src/index.ts"],
+      "@ctb/nodes": ["../../packages/nodes/src/index.ts"],
+      "@ctb/sandbox": ["../../packages/sandbox/src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

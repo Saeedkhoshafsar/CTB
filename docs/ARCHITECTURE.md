@@ -13,7 +13,7 @@
 
 **Non-goals**
 
-- No business-domain nodes in core (no shop/VPN/CRM nodes). Domain logic = flows + Code + HTTP + future plugins.
+- No business-domain nodes in core (no shop/VPN/CRM nodes). Domain logic = flows + Code + HTTP + future plugins. *Structured user-defined data* is provided by the generic **Collections** layer (§13) — "product" is the user's data, never a CTB concept.
 - Not a general workflow engine competing with n8n for non-chat automation. If a job is pure data plumbing, use n8n and connect it to CTB via webhooks.
 - No visual theming/white-label concerns in v1.
 
@@ -84,6 +84,12 @@ executions    id, flow_id, bot_id, chat_id, user_id, status(running|waiting|done
 exec_logs     id, execution_id, node_id, level, input(json), output(json), error, duration_ms, ts
 kv_store      bot_id, scope(user|bot|flow), scope_id, key, value(json), updated_at
 users         id, bot_id, tg_user_id, profile(json), tags(json), first_seen, last_seen
+
+-- Collections layer (§13) — user-defined structured data
+collections   id, bot_id, slug, name, icon, schema(json: CollectionSchema), display(json: list/form hints),
+              version, created_at, updated_at
+records       id, collection_id, data(json), created_at, updated_at, created_by(admin|flow:<id>)
+files         id, bot_id, kind(local|tg_file_id), path_or_file_id, mime, size, created_at
 ```
 
 Key decisions:
@@ -196,3 +202,103 @@ Details live in `docs/PROTOCOL.md` (written in Phase 4).
 - `core`: pure unit tests (engine stepping, pause/resume serialization round-trips, expression eval).
 - `nodes`: contract tests per node (given params+items → expected output) — node specs in NODES.md double as test fixtures.
 - e2e: spin server with SQLite memory + grammY test transformer (no real Telegram), drive a flow through trigger→wait→resume→end.
+
+## 13. Collections — schema-driven structured data + auto-generated admin UI
+
+> **The problem this solves:** a non-technical operator (the "manager") must be able to manage
+> structured business data — products with color/size variants and price deltas, shipping methods,
+> orders — through a clean CRUD panel **without ever seeing the flow canvas**, while CTB core stays
+> 100% domain-agnostic (invariant I2). The answer is the *Directus/PocketBase pattern*: data first,
+> UI generated from schema. We deliberately do NOT model admin UI as workflow nodes — a panel is a
+> layout *tree*, a flow is a logic *graph*; mixing them produces the worst of both.
+
+### 13.1 Concept
+
+A **Collection** is a user-defined "table": a name + a field schema, created in the panel with a
+visual schema builder (no code, no migration written by the user). CTB renders, from that schema
+alone:
+
+1. an **auto-generated CRUD panel** (list view with search/filter/sort + record form), and
+2. a **REST surface** (`/api/collections/:slug/records`, admin-session or API-token auth), and
+3. a generic **`data.collection` node** so flows query/write the same data (spec in NODES.md).
+
+Same trick as node config panels: one schema → one form generator → many consumers (invariant I5
+extended: *Collection schemas are Zod-validated documents; the admin form, the API validation, and
+the node's runtime validation all derive from the same definition*).
+
+### 13.2 Field types (v1)
+
+```
+text, longText, richTextLite, number, boolean, select(options), multiSelect,
+date, dateTime, image (file ref), file, json (raw, escape hatch),
+relation       → one|many → another collection in the same bot
+group          → repeating sub-group of fields (rows inside the record)
+```
+
+`group` is the workhorse for variant-style data: a `products` collection holds a `variants` group
+(color: select, size: select, price_delta: number, stock: number) — the manager edits variants as
+rows inside the product form. `relation` covers shared entities (e.g. `shipping_methods`). Both
+patterns stay generic; CTB never knows what a "variant" is.
+
+Each field carries: `key, type, label (i18n-able), required, default, validation (regex/min/max),
+helpText, showInList (bool)`. Display hints (list columns, sort default) live in `collections.display`.
+
+### 13.3 Storage model — JSON documents, not dynamic DDL
+
+Records are stored as **JSON documents** in one `records` table (`data` column), validated against
+the collection's Zod schema on every write. We do NOT issue `CREATE TABLE`/`ALTER TABLE` per user
+collection (the PocketBase approach) because:
+
+| | JSON-document (chosen) | Dynamic DDL |
+|---|---|---|
+| Schema edits | instant, no migration engine | needs online ALTER machinery, lock risk |
+| `group` fields | native (nested array) | requires child tables + joins |
+| Engine complexity | one Drizzle table | a migration planner inside CTB |
+| Query speed | fine for bot-scale data (≤ ~100k records) with SQLite `json_extract` indexes | faster at warehouse scale we don't target |
+
+Mitigations: per-collection **computed indexes** on hot fields (SQLite expression indexes on
+`json_extract(data,'$.field')`, declared in the schema builder as "indexed" toggle), and a hard
+documented expectation: Collections is bot-scale operational data, not analytics storage. Schema
+changes are **additive-safe** (new fields default-filled at read time); destructive changes
+(remove/retype field) prompt with a record-count warning and lazy-migrate on write.
+
+### 13.4 Query model
+
+One filter shape used by the API, the panel, and the `data.collection` node:
+
+```ts
+{ where:  [{ field, op: eq|ne|gt|gte|lt|lte|contains|in|exists, value }],  // AND rows; OR via groups
+  sort:   [{ field, dir }], limit, offset }
+```
+
+Compiled to SQLite `json_extract` SQL by one query builder in `apps/server`. Expressions are
+allowed in node-side filter values (`{{ $vars.chosen_color }}`).
+
+### 13.5 Admin panel & roles
+
+- The editor app gets a **Data section**: collection list → auto-generated list view + record form.
+  Forms reuse the Phase-2 schema-driven form engine (P2-T3) — that engine must therefore be built
+  collection-aware (widget registry keyed by field type, not hardcoded to node params).
+- **Operator role** (the manager): a second auth role that sees ONLY the Data section (and later,
+  dashboards) — never bots/flows/executions. This is the minimal multi-user step pulled forward
+  from P6; full RBAC stays in P6.
+- RTL/fa first-class, as everywhere.
+
+### 13.6 Flows ↔ Collections ↔ events
+
+- Flows read/write records via `data.collection` (find/get/insert/update/delete/count).
+- **Record-change trigger** (`collection.recordChanged`): a flow can start when a record is
+  created/updated/deleted *from the panel or API* (e.g. order status flipped to "shipped" → flow
+  messages the customer). Flow-originated writes can opt out of re-triggering (`suppress_events`)
+  to prevent loops; trigger-side guard: max trigger depth 1 per write chain.
+- Carts and other per-conversation state remain in `kv_store`; Collections is for durable,
+  manager-visible entities. Rule of thumb documented for users: *if the manager should see it in a
+  table, it's a collection; if only the conversation needs it, it's KV.*
+
+### 13.7 What stays out (v1)
+
+- No free-form page/dashboard builder yet (P6+ candidate: declarative "Views" composed of
+  table/stat/button blocks bound to collections). CRUD covers the 80%.
+- No per-record file blobs beyond images/files referenced via the `files` table (local disk dir or
+  Telegram `file_id` reuse).
+- No cross-bot collections; a collection belongs to one bot.

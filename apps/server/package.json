@@ -1,0 +1,33 @@
+{
+  "name": "@ctb/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "dev": "tsx watch src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@ctb/core": "*",
+    "@ctb/nodes": "*",
+    "@ctb/sandbox": "*",
+    "@ctb/shared": "*",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3",
+    "fastify": "^5.8.5",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/static": "^9.1.3",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.0.0",
+    "pino-pretty": "^13.1.3"
+  }
+}

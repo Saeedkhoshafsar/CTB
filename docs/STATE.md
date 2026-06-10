@@ -7,7 +7,7 @@
 
 ```
 Phase     : 0 — Foundation
-Task      : → current: P0-T2 (Shared types & schemas — THE CONTRACT)   [not started]
+Task      : → current: P0-T3 (Database layer)   [not started]
 Branch    : genspark_ai_developer
 Blockers  : none
 ```
@@ -33,7 +33,7 @@ chain `shared←core←nodes←server`. No real engine/API code yet.
 |---|---|
 | Vision/architecture/node specs/plan docs | ✅ complete (docs/) incl. Collections layer (§13, Phase 3.5) |
 | Monorepo skeleton (P0-T1) | ✅ 6 workspaces, verify green, editor vite build works |
-| Shared contract types (P0-T2) | ❌ next |
+| Shared contract types (P0-T2) | ✅ FlowGraph/FlowItem/Execution/WaitSpec/NodeDef + Zod, 20 contract tests, sample-flow fixture |
 | Database | ❌ |
 | Engine | ❌ |
 | Telegram gateway | ❌ |
@@ -50,6 +50,7 @@ chain `shared←core←nodes←server`. No real engine/API code yet.
 
 | Date | Task(s) | Result / notes |
 |---|---|---|
+| 2026-06-10 | P0-T2 | THE CONTRACT in @ctb/shared: item.ts (FlowItem/BinaryRef discriminated union), flow.ts (FlowGraph with superRefine integrity — dup ids, dangling edges; port naming convention incl. "btn:<key>"), execution.ts (ExecutionState/WaitSpec reply|callback|delay/Execution), node-def.ts (NodeResult union + out/wait/goto/end/fail helpers, NodeCtx capability interface, NodeDef with dynamicOutputs for Menu/Switch), errors.ts (typed CtbError family). Fixture: P1 demo flow (ask name→age→IF→greet, fa text). 20 tests incl. serialization round-trip. verify green. Next: P0-T3. |
 | 2026-06-10 | P0-T1 | Monorepo skeleton: npm workspaces (shared/core/nodes/sandbox/server/editor), tsconfig.base (strict, ES2022, Bundler resolution), per-ws tsconfig with explicit `paths` showing dependency direction, placeholder src+tests proving chain shared←core←nodes←server, editor = Vite+React19 placeholder (RTL html). `npm run verify` green. Version note: @vitejs/plugin-react pinned ^5 (v6 needs vite 8; we pin vite ^7 LTS) — PLAN table updated. Next: P0-T2. |
 | 2026-06-10 | docs: Collections layer | Answered "how does a non-technical manager get an admin panel without code?" → NOT UI-nodes; adopted schema-driven Collections (Directus/PocketBase pattern). ARCHITECTURE §13, NODES.md (`data.collection`, `collection.recordChanged`), new Phase 3.5 in ROADMAP+PLAN (tasks P3.5-T1…T6), Decision Log #9–#11, P2-T3 re-scoped to a reusable form engine. Code phase position unchanged — next is still P0-T1. |
 | 2026-06-10 | bootstrap | Repo created. Constitution (CLAUDE.md), PLAN.md (atomic tasks P0–P6), STATE.md, ARCHITECTURE/NODES/ROADMAP/PROTOCOL docs pushed. Stack versions pinned in PLAN.md against live npm registry. Next: P0-T1. |

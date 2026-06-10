@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.turbo/
+*.log
+.env
+.env.*
+!.env.example
+*.sqlite
+*.db
+data/
+coverage/
+.DS_Store

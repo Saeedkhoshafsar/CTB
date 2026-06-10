@@ -1,0 +1,17 @@
+services:
+  ctb:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      CTB_SECRET: ${CTB_SECRET:?set CTB_SECRET in .env}
+      CTB_ADMIN_USER: ${CTB_ADMIN_USER:-admin}
+      CTB_ADMIN_PASS: ${CTB_ADMIN_PASS:?set CTB_ADMIN_PASS in .env}
+      CTB_DB_PATH: /app/data/ctb.sqlite
+      NODE_ENV: production
+    volumes:
+      - ctb_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ctb_data:

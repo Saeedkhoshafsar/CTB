@@ -14,13 +14,30 @@ export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
  * WaitSpec — what a paused execution is waiting for.
  * Stored in executions.wait; matched by the update router (ARCHITECTURE §7).
  */
+/**
+ * Validation rules carried INSIDE the reply WaitSpec (Decision Log #13):
+ * the wait node writes them; the update router enforces them on resume
+ * (the executor never re-runs a wait node — resume routes from its ports).
+ */
+export const ReplyValidationSchema = z.object({
+  /** Regex the text must match (expect=text). */
+  regex: z.string().optional(),
+  /** Numeric range (expect=number) / length range (expect=text). */
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+export type ReplyValidation = z.infer<typeof ReplyValidationSchema>;
+
 export const WaitSpecSchema = z.discriminatedUnion('kind', [
   /** Wait for a user reply (tg.waitForReply). */
   z.object({
     kind: z.literal('reply'),
     nodeId: NodeIdSchema,
     expect: z.enum(['text', 'number', 'photo', 'document', 'contact', 'location', 'any']),
-    /** Validation handled node-side on resume; router only matches expect-type. */
+    /** Router-enforced validation (Decision Log #13). */
+    validation: ReplyValidationSchema.optional(),
+    /** Sent by the router on each failed validation while retries remain. */
+    invalidMessage: z.string().optional(),
     retriesLeft: z.number().int().nonnegative().default(0),
     timeoutAt: z.iso.datetime().nullable().default(null),
   }),

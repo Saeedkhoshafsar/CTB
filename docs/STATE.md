@@ -32,7 +32,7 @@ curl localhost:3000/api/auth/me -b /tmp/c.txt     # → {"user":{"username":"adm
 ```
 
 Expected right now: Phase 0 complete — contract types, DB layer, bootable authed server.
-No engine yet (Phase 1 starts at P1-T1 expression engine).
+Expression engine done (P1-T1); next is the worker sandbox (P1-T2), then store/executor.
 
 ## What exists / what doesn't
 
@@ -43,7 +43,8 @@ No engine yet (Phase 1 starts at P1-T1 expression engine).
 | Shared contract types (P0-T2) | ✅ FlowGraph/FlowItem/Execution/WaitSpec/NodeDef + Zod, 20 contract tests, sample-flow fixture |
 | Database (P0-T3) | ✅ Drizzle schema (§4+§13, 11 tables), migration 0000_init, AES-256-GCM crypto, env validation, 16 tests |
 | Server boot (P0-T4) | ✅ Fastify 5 app factory, /healthz, signed-cookie admin auth (login/logout/me), /api/* guard, SPA static serving, .env.example, Dockerfile+compose, GitHub Actions CI |
-| Engine | ❌ (P1-T1 next) |
+| Expression engine (P1-T1) | ✅ tokenizer + frozen-scope stub evaluator + $-scope builder (swap to sandbox in P1-T2) |
+| Engine executor/store | ❌ |
 | Telegram gateway | ❌ |
 | Editor | placeholder page only |
 | Open PR | #1 genspark_ai_developer → main (keep updating it) |

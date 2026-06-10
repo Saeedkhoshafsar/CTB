@@ -8,3 +8,4 @@ import { CTB_VERSION } from '@ctb/shared';
 export const CORE_DEPENDS_ON_SHARED: string = CTB_VERSION;
 
 export * from './expression/index';
+export * from './store/index';

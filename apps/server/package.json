@@ -1,0 +1,20 @@
+{
+  "name": "@ctb/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "dev": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@ctb/shared": "*",
+    "@ctb/core": "*",
+    "@ctb/nodes": "*",
+    "@ctb/sandbox": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}

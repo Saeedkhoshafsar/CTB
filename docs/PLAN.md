@@ -22,6 +22,7 @@
 | @xyflow/react | ^12 | canvas |
 | zustand | ^5 | editor state |
 | vite | ^7 (LTS line) | editor build |
+| @vitejs/plugin-react | ^5 (v6 requires vite 8) | editor build |
 | croner | ^10 | schedule trigger |
 | pino | ^10 | logging |
 | @codemirror/* | ^6 | code editor |

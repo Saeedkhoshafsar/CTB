@@ -7,7 +7,7 @@
 
 ```
 Phase     : 1 — Engine core + Telegram gateway
-Task      : → current: P1-T1 (Expression engine)   [not started]
+Task      : → current: P1-T2 (Sandbox primitive)   [not started]
 Branch    : genspark_ai_developer
 Blockers  : none
 ```
@@ -58,6 +58,7 @@ No engine yet (Phase 1 starts at P1-T1 expression engine).
 
 | Date | Task(s) | Result / notes |
 |---|---|---|
+| 2026-06-10 | P1-T1 | Expression engine in `packages/core/src/expression/`: tokenizer (`{{ }}` segments, unclosed→literal, fa/RTL tested), scope builder (`$json,$items,$vars,$user,$chat,$execution,$flow,$env,$now` per ARCHITECTURE §6; shallow-frozen copies so expressions can't mutate scope; `$now.format('YYYY-MM-DD')` helper, clock injectable), evaluator = P1-T1 STUB via `new Function` + strict mode + shadowed globals (process/require/globalThis/fetch→undefined) — **to be swapped to worker sandbox in P1-T2** (PLAN note, Decision Log entry due then). Single-expression templates return RAW values (numbers/objects survive); mixed templates stringify. Missing path (`?.`)→'' + warning collected; throw→typed ExpressionError; 50ms budget post-hoc (preemptive kill arrives with P1-T2 worker). 22 core tests green; full typecheck green. Next: P1-T2. |
 | 2026-06-10 | P0-T4 | Server boot: `app.ts` factory (testable via inject, no port), `/healthz`, stateless HMAC signed-cookie sessions (`lib/session.ts`, 7d TTL, timing-safe compare, tamper/expiry tests), login/logout/me + preHandler guard on `/api/*` (503 if CTB_ADMIN_PASS unset), `@fastify/static` SPA fallback for editor dist, `main.ts` = env→openDb→migrate→listen + graceful shutdown. `.env.example`, multi-stage Dockerfile (tsx runtime), docker-compose (named volume, env guards), CI workflow (install→verify→migrate smoke→editor build) — ⚠️ lives at `docs/ci/github-actions-ci.yml` because the sandbox GitHub App token lacks `workflows` permission; copy to `.github/workflows/ci.yml` manually to enable. 14 new tests (8 app inject + 6 session); verify green (53 tests). Boot demo verified with real curl: healthz/login/me/401. **🎬 PHASE 0 COMPLETE.** Next: P1-T1. |
 | 2026-06-10 | P0-T3 | DB layer: Drizzle schema exactly per ARCHITECTURE §4 incl. Collections tables (§13) — 11 tables, FKs+cascade, kv unique index, executions waiting/timeout indexes (wait_timeout_at denormalized for scanner). openDb (WAL, FK on, :memory: supported), migrate.ts (CLI+programmatic), drizzle-kit 0000_init. lib/crypto.ts AES-256-GCM (scrypt key, random IV, tamper tests), lib/env.ts zod-validated (refuses CTB_SECRET <16). 16 server tests incl. execution-state JSON round-trip (I4). verify green; db:migrate CLI verified. Next: P0-T4. |
 | 2026-06-10 | P0-T2 | THE CONTRACT in @ctb/shared: item.ts (FlowItem/BinaryRef discriminated union), flow.ts (FlowGraph with superRefine integrity — dup ids, dangling edges; port naming convention incl. "btn:<key>"), execution.ts (ExecutionState/WaitSpec reply|callback|delay/Execution), node-def.ts (NodeResult union + out/wait/goto/end/fail helpers, NodeCtx capability interface, NodeDef with dynamicOutputs for Menu/Switch), errors.ts (typed CtbError family). Fixture: P1 demo flow (ask name→age→IF→greet, fa text). 20 tests incl. serialization round-trip. verify green. Next: P0-T3. |

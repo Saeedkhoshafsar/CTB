@@ -27,6 +27,19 @@ Starts a flow from a Telegram update.
 ### Schedule Trigger `+P4`
 - `cron` expression + timezone. Optional `for_each_user` mode: emit one item per known bot user (rate-limited fan-out).
 
+### Record Changed Trigger `+P3.5` (`collection.recordChanged`)
+Starts a flow when a record in a Collection is created/updated/deleted (from the admin panel, the records API, or another flow — unless that write set `suppress_events`).
+
+- **Outputs:** 1 (`main`)
+- **Parameters:**
+  - `collection`: collection selector
+  - `events`: subset of `created | updated | deleted`
+  - `field_filter` (optional, for `updated`): only fire when one of these fields actually changed
+  - `condition` (optional): expression on the new record, e.g. `{{ $json.record.status === 'shipped' }}`
+- **Emits:** `{ json: { event, record, previous? (updated only), source: 'panel'|'api'|'flow' } }`
+- No implicit chat: flows using Telegram nodes must resolve a chat themselves (e.g. `chat` expression on Send Message reading `{{ $json.record.customer_chat_id }}`), same rule as Webhook Trigger's `target_chat`.
+- Loop guard: writes performed by a flow that was itself started by this trigger do not re-trigger (depth 1).
+
 ### Manual Trigger `M`
 - "Test flow" button in editor; emits a configurable sample payload.
 
@@ -123,6 +136,22 @@ Sends a message with inline buttons; each button is an **output port**.
 
 ### Storage (KV) `M`
 - op: get | set | delete | increment; scope: user | bot | flow; key, value (expressions). Backs persistent per-user data ("points", "state") without external DB.
+- Rule of thumb (documented in UI): conversation-scoped scratch data → KV; durable entities the operator should see in a table → Collection.
+
+### Collection `+P3.5` (`data.collection`)
+Generic CRUD against user-defined Collections (ARCHITECTURE §13). As domain-agnostic as KV — CTB has no idea whether records are products, tickets, or recipes.
+
+- **In:** 1 → **Out:** 1 (`found` items / written record) + `empty` port (find/get with no result)
+- **Parameters:**
+  - `collection`: collection selector (dropdown from this bot's collections)
+  - `operation`: `find | get | insert | update | delete | count`
+  - `find`: `where` rows (field · op · value-expression) per ARCHITECTURE §13.4, `sort`, `limit`, `offset` → emits one item per record `{ json: { record, record_id } }`
+  - `get`: `record_id` (expression)
+  - `insert` / `update`: field mapping rows `field = value(expression)`; `update` needs `record_id` or `where` (first match); option `merge | replace` for `group` fields
+  - `delete`: `record_id` or `where` + `confirm_many` guard (refuses multi-delete unless enabled)
+  - `suppress_events` (bool, default false): writes don't fire `collection.recordChanged`
+- Writes are validated against the collection schema; validation failure → node error with field-level messages in the exec log.
+- **Emits:** find → N items; get/insert/update → `{ json: { record, record_id } }`; count → `{ json: { count } }`; delete → `{ json: { deleted: n } }`.
 
 ### User Profile `+P3`
 - Read/update CTB user record: tags add/remove, profile fields. (Generic CRM-ish primitive, still domain-agnostic.)

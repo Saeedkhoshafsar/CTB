@@ -128,7 +128,8 @@ React Flow canvas: node palette (from `GET /api/node-types` — server exposes r
 
 ### P2-T3 · Param side-panel (schema-driven forms)
 Auto-render forms from Zod schemas: string/multiline/select/number/boolean/duration; expression-aware inputs (`{{ }}` highlight + scope hint dropdown); button-grid builder widget (for keyboards/Menu); condition-rows widget (for IF/Switch).
-**Accept:** every P1 node fully configurable from UI without touching JSON.
+**Architecture note (binding):** build this as a standalone, schema-driven **form engine** (widget registry keyed by field/param type), NOT hardcoded to node params — Phase 3.5 reuses the same engine to render Collection record forms (ARCHITECTURE §13.5).
+**Accept:** every P1 node fully configurable from UI without touching JSON; form engine importable independently of the node panel.
 
 ### P2-T4 · Flow lifecycle UI
 Save = new `flow_versions` row; activate/deactivate; version list + rollback; validation errors surfaced on canvas (badge on offending node).
@@ -162,6 +163,41 @@ Executions page: list w/ status filter; detail view = node-by-node log (input/ou
 | P3-T7 | Flow import/export JSON + starter template gallery (feedback form, quiz, FAQ menu, reminder — all generic) | export→import→identical semantics |
 
 **🎬 DEMO:** reusable "collect contact info" sub-flow used by two parent flows; one exported and re-imported.
+
+# PHASE 3.5 — Collections (structured data + auto-generated admin panel)
+
+> Contract: ARCHITECTURE §13. Node specs: NODES.md (`data.collection`, `collection.recordChanged`).
+> Decision log #9–#11. Core stays domain-agnostic — these are generic primitives (invariant I2 intact).
+
+### P3.5-T1 · Collections data layer
+**Files:** `packages/shared/src/collection.ts` (`CollectionSchema` Zod: field types text/longText/number/boolean/select/multiSelect/date/dateTime/image/file/json/relation/group + validation/display props; `RecordFilter` shape per §13.4), Drizzle tables `collections`/`records`/`files` + migration, `apps/server/src/collections/store.ts` (CRUD + filter→`json_extract` SQL compiler + computed-index DDL for fields flagged `indexed`), record validation against collection schema (additive-safe defaults, lazy migrate on write).
+**Accept:** round-trip tests: define schema with `group`+`relation` → insert/validate/find with where+sort+limit; invalid write rejected with field-level errors; indexed field actually creates an SQLite expression index; schema field-add then read old record → defaults applied.
+**Verify:** `npm run verify`
+
+### P3.5-T2 · Records REST API + operator role
+**Files:** `apps/server/src/api/collections.ts` (collections CRUD — admin only) + `api/records.ts` (records CRUD + query, filter shape shared with store), auth: `role: admin|operator` on sessions (env-configured operator user in v1), route guards (operator → records/files only), file upload endpoint backed by `files` table (local disk dir `CTB_DATA_DIR/files`).
+**Accept:** API tests: operator can CRUD records but gets 403 on `/api/bots`, `/api/flows`; admin can do both; uploaded image retrievable; filter query parity with store tests.
+**Verify:** `npm run verify`
+
+### P3.5-T3 · Schema builder UI
+**Files:** editor Data section: collections list, "new collection" → visual field-row builder (type picker, label fa/en, required/default/validation, indexed toggle, `group` sub-field editor, `relation` target picker), display hints (list columns, default sort).
+**Accept:** create the demo `products` + `shipping_methods` + `orders` collections entirely in UI; resulting schema JSON validates against `CollectionSchema`; destructive edit (remove field) shows record-count warning.
+**Verify:** `npm run verify` + manual checklist in PR
+
+### P3.5-T4 · Auto-generated CRUD panel
+**Files:** list view (server-side pagination, search, filter builder, sortable columns from display hints) + record form rendered by the P2-T3 form engine extended with widgets: image upload, `group` repeating rows, `relation` picker (search dropdown). RTL/fa verified.
+**Accept:** operator persona test: add a product with 3 variants and a photo, edit stock of one variant, filter list by select field — zero canvas exposure; all writes validated.
+**Verify:** `npm run verify` + manual checklist in PR
+
+### P3.5-T5 · `data.collection` node + `collection.recordChanged` trigger
+**Files:** `packages/nodes/src/data.collection.ts`, `collection.recordChanged.ts` per NODES.md; record-write event bus in server (panel/API/flow writes → trigger router; `suppress_events`; depth-1 loop guard); editor widgets: collection selector, where-rows, field-mapping rows.
+**Accept:** contract tests per NODES.md (find→N items, empty port, insert validation failure, update merge/replace on group, count, delete guard); trigger fires on panel write, does NOT re-fire from its own flow's write; condition + field_filter honored.
+**Verify:** `npm run verify`
+
+### P3.5-T6 · Starter templates: catalog + order intake (generic)
+**Files:** template gallery additions: sample `catalog` + `orders` collection schemas + two flows — "browse records → variant menus → KV cart → insert order" and "recordChanged(status) → notify chat" — written only against generic primitives.
+**Accept — 🎬 PHASE 3.5 DEMO (the manager test):** documented end-to-end run: operator builds data in panel; customer browses/orders in Telegram; operator flips order status; customer gets notified. Kill server mid-order-conversation → resumes (I4).
+**Verify:** `npm run verify` + scripted e2e with fake transport
 
 # PHASE 4 — Open protocol (n8n & the outside world)
 
@@ -201,4 +237,5 @@ Postgres driver option · execution retention/pruning · sandbox v2 evaluation (
 | Graph JSON drift between editor and engine | single Zod schema in `shared` is the only definition; both sides parse with it |
 | Telegram rate limits on broadcasts/fan-out | centralized sender token-bucket from day one (P1-T5) |
 | TS/tooling major-version churn | versions pinned above; majors only in P6 |
-| Scope creep toward domain features | invariant I2; refuse in PR review |
+| Scope creep toward domain features | invariant I2; refuse in PR review. Collections/`data.collection` are generic primitives — any "product"/"order" semantics live only in user schemas and templates |
+| Collections JSON storage hits query limits | computed `json_extract` indexes; documented bot-scale expectation (§13.3); Postgres JSONB path in P6 |

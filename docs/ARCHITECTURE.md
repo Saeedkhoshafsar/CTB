@@ -69,7 +69,7 @@ ctb/
 └─ docker/ docker-compose.yml Dockerfile
 ```
 
-**Dependency rule:** `shared ← core ← nodes ← server`. The editor depends only on `shared` + server API. `core` never imports Telegram or Fastify — it executes flows against injected *services* (sender, storage, http), which makes it unit-testable and future-proof (e.g., a Discord gateway later).
+**Dependency rule:** `shared ← sandbox ← core ← nodes ← server` (Decision Log #12). The editor depends only on `shared` + server API. `core` never imports Telegram or Fastify — it executes flows against injected *services* (sender, storage, http), which makes it unit-testable and future-proof (e.g., a Discord gateway later).
 
 ## 4. Data model
 

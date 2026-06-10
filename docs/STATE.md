@@ -7,7 +7,7 @@
 
 ```
 Phase     : 1 — Engine core + Telegram gateway
-Task      : → current: P1-T2 (Sandbox primitive)   [not started]
+Task      : → current: P1-T3 (Execution store)   [not started]
 Branch    : genspark_ai_developer
 Blockers  : none
 ```
@@ -32,7 +32,8 @@ curl localhost:3000/api/auth/me -b /tmp/c.txt     # → {"user":{"username":"adm
 ```
 
 Expected right now: Phase 0 complete — contract types, DB layer, bootable authed server.
-Expression engine done (P1-T1); next is the worker sandbox (P1-T2), then store/executor.
+Expression engine (P1-T1) + worker sandbox (P1-T2) done; evaluator is sandbox-backed and
+**async**. Next: execution store (P1-T3), then executor.
 
 ## What exists / what doesn't
 
@@ -43,7 +44,8 @@ Expression engine done (P1-T1); next is the worker sandbox (P1-T2), then store/e
 | Shared contract types (P0-T2) | ✅ FlowGraph/FlowItem/Execution/WaitSpec/NodeDef + Zod, 20 contract tests, sample-flow fixture |
 | Database (P0-T3) | ✅ Drizzle schema (§4+§13, 11 tables), migration 0000_init, AES-256-GCM crypto, env validation, 16 tests |
 | Server boot (P0-T4) | ✅ Fastify 5 app factory, /healthz, signed-cookie admin auth (login/logout/me), /api/* guard, SPA static serving, .env.example, Dockerfile+compose, GitHub Actions CI |
-| Expression engine (P1-T1) | ✅ tokenizer + frozen-scope stub evaluator + $-scope builder (swap to sandbox in P1-T2) |
+| Expression engine (P1-T1) | ✅ tokenizer + $-scope builder + **sandbox-backed async evaluator** (stub swapped in P1-T2) |
+| Sandbox primitive (P1-T2) | ✅ `@ctb/sandbox` worker_threads pool: fresh frozen vm realm, capability proxies over MessagePort, console capture, vm CPU timeout + host hard-kill & worker recycle, 16 tests |
 | Engine executor/store | ❌ |
 | Telegram gateway | ❌ |
 | Editor | placeholder page only |
@@ -59,6 +61,7 @@ Expression engine done (P1-T1); next is the worker sandbox (P1-T2), then store/e
 
 | Date | Task(s) | Result / notes |
 |---|---|---|
+| 2026-06-10 | P1-T2 | Sandbox primitive in `packages/sandbox/`: `worker-source.ts` (CJS string booted via `new Worker(src,{eval:true})` — no TS loader needed in worker; fresh `vm.createContext` per run with `codeGeneration:{strings:false,wasm:false}`, deep-freeze re-applied post-clone, `$now` rebuilt from `{__ctbKind:'now',ts}` wire marker, console capture, SHADOW list → undefined, globalThis self-reference hidden) + `pool.ts` (`SandboxPool`: queue + maxWorkers=4, 64MB old-gen cap, two-layer timeout — vm CPU timeout kills sync `while(true)` WITHOUT losing the worker; host hard-kill (+50ms) terminates async hangs and recycles the worker; capability host objects → method-name manifest → realm proxies → MessagePort round-trip with error propagation; `runInSandbox`/default-pool helpers; `destroy()` for tests). Evaluator swap done: `@ctb/core` evaluator now async, runs each `{{}}` segment in the pool (`mode:'expression'`, 50ms budget enforced preemptively), `EvaluateOptions{pool,budgetMs}`. Chain extended `shared←sandbox←core` — Decision Log #12, CLAUDE I3 + ARCH §3 updated. 16 sandbox tests (incl. 20-parallel, kill-survive, cap round-trip, frozen scope, eval/Function blocked) + 14 evaluator tests updated to async; verify green (~89 tests). Next: P1-T3. |
 | 2026-06-10 | P1-T1 | Expression engine in `packages/core/src/expression/`: tokenizer (`{{ }}` segments, unclosed→literal, fa/RTL tested), scope builder (`$json,$items,$vars,$user,$chat,$execution,$flow,$env,$now` per ARCHITECTURE §6; shallow-frozen copies so expressions can't mutate scope; `$now.format('YYYY-MM-DD')` helper, clock injectable), evaluator = P1-T1 STUB via `new Function` + strict mode + shadowed globals (process/require/globalThis/fetch→undefined) — **to be swapped to worker sandbox in P1-T2** (PLAN note, Decision Log entry due then). Single-expression templates return RAW values (numbers/objects survive); mixed templates stringify. Missing path (`?.`)→'' + warning collected; throw→typed ExpressionError; 50ms budget post-hoc (preemptive kill arrives with P1-T2 worker). 22 core tests green; full typecheck green. Next: P1-T2. |
 | 2026-06-10 | P0-T4 | Server boot: `app.ts` factory (testable via inject, no port), `/healthz`, stateless HMAC signed-cookie sessions (`lib/session.ts`, 7d TTL, timing-safe compare, tamper/expiry tests), login/logout/me + preHandler guard on `/api/*` (503 if CTB_ADMIN_PASS unset), `@fastify/static` SPA fallback for editor dist, `main.ts` = env→openDb→migrate→listen + graceful shutdown. `.env.example`, multi-stage Dockerfile (tsx runtime), docker-compose (named volume, env guards), CI workflow (install→verify→migrate smoke→editor build) — ⚠️ lives at `docs/ci/github-actions-ci.yml` because the sandbox GitHub App token lacks `workflows` permission; copy to `.github/workflows/ci.yml` manually to enable. 14 new tests (8 app inject + 6 session); verify green (53 tests). Boot demo verified with real curl: healthz/login/me/401. **🎬 PHASE 0 COMPLETE.** Next: P1-T1. |
 | 2026-06-10 | P0-T3 | DB layer: Drizzle schema exactly per ARCHITECTURE §4 incl. Collections tables (§13) — 11 tables, FKs+cascade, kv unique index, executions waiting/timeout indexes (wait_timeout_at denormalized for scanner). openDb (WAL, FK on, :memory: supported), migrate.ts (CLI+programmatic), drizzle-kit 0000_init. lib/crypto.ts AES-256-GCM (scrypt key, random IV, tamper tests), lib/env.ts zod-validated (refuses CTB_SECRET <16). 16 server tests incl. execution-state JSON round-trip (I4). verify green; db:migrate CLI verified. Next: P0-T4. |

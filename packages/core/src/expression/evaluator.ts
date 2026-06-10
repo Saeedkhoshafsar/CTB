@@ -1,18 +1,16 @@
 /**
- * Expression evaluator (P1-T1 stub implementation).
+ * Expression evaluator — sandbox-backed (P1-T2 swap, Decision Log #12).
  *
- * Per PLAN.md: this version executes the inner JS expression with
- * `new Function` over a frozen scope. It will be SWAPPED for the
- * worker_threads sandbox in P1-T2 (Decision Log entry required then).
+ * Each `{{ … }}` segment is executed inside the @ctb/sandbox worker pool
+ * ('expression' mode): fresh frozen vm realm, no require/process/fs
+ * (invariant I6), vm CPU timeout + host hard-kill enforcing the budget
+ * preemptively (the P1-T1 stub could only measure after the fact).
  *
- * Notes on the stub's safety posture:
- * - scope objects are frozen; `globalThis`/`process`/`require` are shadowed
- *   with undefined parameters so naive escapes fail;
- * - the 50ms budget is enforced by measuring elapsed wall time after the
- *   synchronous call — a hard preemptive kill is only possible in the
- *   P1-T2 worker sandbox.
+ * The API is async — node params are resolved inside the executor's step
+ * loop (P1-T4), which is async anyway.
  */
 import { ExpressionError } from '@ctb/shared';
+import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import type { ExpressionScope } from './scope';
 import { isSingleExpression, tokenize } from './tokenizer';
 
@@ -25,75 +23,39 @@ export interface EvalOutcome {
   warnings: string[];
 }
 
-// NOTE: `eval`/`arguments` cannot be parameter names in strict mode — strict
-// mode itself already blocks indirect access patterns; the P1-T2 worker
-// sandbox provides the real isolation (invariant I6).
-const SHADOWED_GLOBALS = [
-  'globalThis',
-  'process',
-  'require',
-  'module',
-  'exports',
-  'Function',
-  'fetch',
-  'setTimeout',
-  'setInterval',
-  'setImmediate',
-] as const;
-
-function compile(code: string): (scope: ExpressionScope) => unknown {
-  const scopeKeys = [
-    '$json',
-    '$items',
-    '$vars',
-    '$user',
-    '$chat',
-    '$execution',
-    '$flow',
-    '$env',
-    '$now',
-  ];
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const fn = new Function(
-    ...scopeKeys,
-    ...SHADOWED_GLOBALS,
-    `"use strict"; return (${code});`,
-  ) as (...args: unknown[]) => unknown;
-  return (scope: ExpressionScope) =>
-    fn(
-      scope.$json,
-      scope.$items,
-      scope.$vars,
-      scope.$user,
-      scope.$chat,
-      scope.$execution,
-      scope.$flow,
-      scope.$env,
-      scope.$now,
-      // shadowed globals → undefined
-      ...SHADOWED_GLOBALS.map(() => undefined),
-    );
+export interface EvaluateOptions {
+  /** Override the pool (tests / future per-instance config). */
+  pool?: SandboxPool;
+  /** Per-expression budget in ms (default {@link EXPRESSION_BUDGET_MS}). */
+  budgetMs?: number;
 }
 
-function evalOne(code: string, raw: string, scope: ExpressionScope, warnings: string[]): unknown {
+async function evalOne(
+  code: string,
+  raw: string,
+  scope: ExpressionScope,
+  warnings: string[],
+  opts: EvaluateOptions,
+): Promise<unknown> {
   if (code === '') {
     warnings.push(`empty expression ${raw}`);
     return '';
   }
-  const started = Date.now();
+  const pool = opts.pool ?? getDefaultSandboxPool();
+  const budgetMs = opts.budgetMs ?? EXPRESSION_BUDGET_MS;
   let result: unknown;
   try {
-    result = compile(code)(scope);
+    const res = await pool.run(code, scope as Record<string, unknown>, {
+      mode: 'expression',
+      timeoutMs: budgetMs,
+    });
+    result = res.value;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (/timeout/i.test(msg)) {
+      throw new ExpressionError(`expression exceeded ${budgetMs}ms budget: ${msg}`, code);
+    }
     throw new ExpressionError(`expression failed: ${msg}`, code);
-  }
-  const elapsed = Date.now() - started;
-  if (elapsed > EXPRESSION_BUDGET_MS) {
-    throw new ExpressionError(
-      `expression exceeded ${EXPRESSION_BUDGET_MS}ms budget (took ${elapsed}ms)`,
-      code,
-    );
   }
   if (result === undefined || result === null) {
     warnings.push(`expression ${raw} evaluated to ${result === undefined ? 'undefined' : 'null'}`);
@@ -116,7 +78,11 @@ function stringify(value: unknown): string {
  * Evaluate a template. Returns the raw value when the whole template is a
  * single `{{ expr }}` (so numbers/objects survive), otherwise a joined string.
  */
-export function evaluateTemplate(template: string, scope: ExpressionScope): EvalOutcome {
+export async function evaluateTemplate(
+  template: string,
+  scope: ExpressionScope,
+  opts: EvaluateOptions = {},
+): Promise<EvalOutcome> {
   const warnings: string[] = [];
   const tokens = tokenize(template);
 
@@ -124,19 +90,23 @@ export function evaluateTemplate(template: string, scope: ExpressionScope): Eval
 
   if (isSingleExpression(tokens)) {
     const t = tokens[0] as { kind: 'expr'; code: string; raw: string };
-    return { value: evalOne(t.code, t.raw, scope, warnings), warnings };
+    return { value: await evalOne(t.code, t.raw, scope, warnings, opts), warnings };
   }
 
   let out = '';
   for (const token of tokens) {
     if (token.kind === 'text') out += token.text;
-    else out += stringify(evalOne(token.code, token.raw, scope, warnings));
+    else out += stringify(await evalOne(token.code, token.raw, scope, warnings, opts));
   }
   return { value: out, warnings };
 }
 
 /** Convenience: always-string rendering (what most node params need). */
-export function renderTemplate(template: string, scope: ExpressionScope): EvalOutcome {
-  const res = evaluateTemplate(template, scope);
+export async function renderTemplate(
+  template: string,
+  scope: ExpressionScope,
+  opts: EvaluateOptions = {},
+): Promise<EvalOutcome> {
+  const res = await evaluateTemplate(template, scope, opts);
   return { value: stringify(res.value), warnings: res.warnings };
 }

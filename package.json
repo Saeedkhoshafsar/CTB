@@ -2,9 +2,11 @@
   "name": "ctb",
   "private": true,
   "version": "0.0.1",
-  "description": "CTB — Composable Telegram Bots: visual, node-based automation platform for conversational Telegram bots",
+  "description": "CTB \u2014 Composable Telegram Bots: visual, node-based automation platform for conversational Telegram bots",
   "license": "MIT",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "packages/shared",
     "packages/core",
@@ -19,7 +21,8 @@
     "verify": "npm run typecheck && npm run test",
     "build": "npm run build --workspaces --if-present",
     "dev:server": "npm run dev -w apps/server",
-    "dev:editor": "npm run dev -w apps/editor"
+    "dev:editor": "npm run dev -w apps/editor",
+    "db:migrate": "npm run db:migrate -w apps/server"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

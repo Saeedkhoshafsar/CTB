@@ -6,15 +6,22 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "dev": "node --import tsx src/main.ts"
+    "dev": "tsx src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@ctb/shared": "*",
     "@ctb/core": "*",
     "@ctb/nodes": "*",
-    "@ctb/sandbox": "*"
+    "@ctb/sandbox": "*",
+    "@ctb/shared": "*",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.0.0"
   }
 }

@@ -7,7 +7,7 @@
 
 ```
 Phase     : 1 — Engine core + Telegram gateway
-Task      : → current: P1-T5 (Telegram gateway)   [not started]
+Task      : → current: P1-T6 (Update router)   [not started]
 Branch    : genspark_ai_developer
 Blockers  : none
 ```
@@ -33,9 +33,10 @@ curl localhost:3000/api/auth/me -b /tmp/c.txt     # → {"user":{"username":"adm
 
 Expected right now: Phase 0 complete — contract types, DB layer, bootable authed server.
 Expression engine (P1-T1) + worker sandbox (P1-T2) + execution store (P1-T3) +
-**executor loop (P1-T4)** done. The engine can now run a full graph: param
-expressions → Zod validation → execute → port routing → WAIT persists & resume()
-continues from the exact node. Next: Telegram gateway (P1-T5).
+executor loop (P1-T4) + **Telegram gateway (P1-T5)** done. Updates are normalized
+to `TgEvent`, outbound sends are centralized (token-bucket, 429 retry, splitting),
+webhook route `/tg/:botId/:secret` + polling mode exist. Next: Update router (P1-T6) —
+wire TgEvent → findWaiting/trigger-match → Executor.
 
 ## What exists / what doesn't
 
@@ -50,7 +51,8 @@ continues from the exact node. Next: Telegram gateway (P1-T5).
 | Sandbox primitive (P1-T2) | ✅ `@ctb/sandbox` worker_threads pool: fresh frozen vm realm, capability proxies over MessagePort, console capture, vm CPU timeout + host hard-kill & worker recycle, 16 tests |
 | Execution store (P1-T3) | ✅ `ExecutionStore` interface + `MemoryExecutionStore` in core, `SqliteExecutionStore` in server (denormalized `wait_timeout_at` for the timeout scanner), shared contract suite runs against BOTH (13 tests) |
 | Executor loop (P1-T4) | ✅ `NodeRegistry` (Zod param validation, dynamicOutputs) + `Executor` (step loop per ARCH §7: items/WAIT/GOTO/END/ERROR, fan-out FIFO, disabled-node passthrough, maxSteps + per-run wall-time budgets, periodic checkpoints, NodeCtx with vars/eval/log) + recursive param `{{ }}` resolution; 26 tests incl. I4 pause→JSON round-trip→fresh-executor resume |
-| Telegram gateway | ❌ |
+| Telegram gateway (P1-T5) | ✅ `apps/server/src/telegram/` — `normalize.ts` (Update→TgEvent: command/text/photo/document/contact/location/callback/chat_join), `sender.ts` (TgSender: token-bucket + FIFO, 429 retry_after, parse-mode fallback, >4096 split), `gateway.ts` (bot registry, webhook route + HMAC path secret, polling, error containment), 34 tests |
+| Update router (P1-T6) | ❌ |
 | Editor | placeholder page only |
 | Open PR | #1 genspark_ai_developer → main (keep updating it) |
 
@@ -64,6 +66,7 @@ continues from the exact node. Next: Telegram gateway (P1-T5).
 
 | Date | Task(s) | Result / notes |
 |---|---|---|
+| 2026-06-10 | P1-T5 | Telegram gateway in `apps/server/src/telegram/`: `normalize.ts` (raw Update → `TgEvent` discriminated union — command (incl. `/cmd@Bot` + deep-link payload, case-insensitive), text, photo (largest size), document, contact, location, callback, chat_join; unsupported kinds (stickers/edits/channel posts) → null = dropped by design; TgEvent is transient so plain TS types, I5 untouched). `sender.ts` (`TgSender` over injected `CallApi` transport = grammY `api.raw` in prod, fake in tests: token-bucket 25/s burst 5 with FIFO promise-chain queue, 429 → sleep retry_after×1000 × maxRetries, parse-entity 400 → one retry WITHOUT parse_mode (different failure class, doesn't burn 429 budget), `splitText` >4096 newline→space→hard-cut and keyboard rides only the LAST chunk; injectable now/sleep). `gateway.ts` (`TelegramGateway`: registerBot idempotent, botInfo skips getMe for tests; `dispatch` = normalize→handler with error containment (failing flow never crashes the gateway); polling via `bot.start()` fire-and-forget; webhook secret = HMAC(botId, CTB_SECRET) deterministic — no extra DB column; `registerWebhookRoute` answers 200 immediately, dispatch out-of-band so slow flows don't trigger TG redelivery; timing-safe secret check via session.safeEqual). grammy ^1.43 added to server deps (pinned in PLAN). 34 tests (16 normalize table-driven, 11 sender, 7 gateway/webhook). verify green (154 tests). Next: P1-T6 update router. |
 | 2026-06-10 | P1-T4 | Executor loop (the heart of the engine, ARCH §7): `packages/core/src/registry/` (`NodeRegistry`: register/get/list, `parseParams` → typed `NodeParamsError`, `outputsFor` handles dynamicOutputs) + `packages/core/src/engine/` — `params.ts` (recursive `{{ }}` resolution through raw params; single-expr → raw value so number/bool schemas pass; plain strings skip the sandbox) and `executor.ts` (`Executor.start/resume`; step loop: resolve node → eval params → Zod → execute → route per port via edge index; WAIT persists state+wait (executor stamps `wait.nodeId` — nodes don't know their graph id) and returns; `resume(executionId, port, items)` injects router items as the wait node's output on any port (reply/timeout); GOTO jumps; END/ERROR finalize; disabled nodes pass items through `main`; synchronous fan-out via in-run FIFO, WAIT-with-queued-branches fails loudly (v1 limit); maxSteps=1000 default; **wall-time budget is per RUN not per execution — initial version measured from `startedAt` which broke resumes days later; caught by test**; checkpoint every N steps; `StepLogger` hook for exec_logs; `NodeCtx` built per node: vars get/set on live state, `eval()` via renderTemplate, injected kv/http/tg). 26 new tests across `executor.test.ts` + `executor-wait.test.ts` incl. the I4-mandated round-trip: pause → JSON.stringify/parse deep-equal → brand-new Executor instance resumes purely from the store. verify green (120 tests). Next: P1-T5 Telegram gateway. |
 | 2026-06-10 | P1-T3 | Execution store (durability behind pause/resume, I4): `packages/core/src/store/` — `types.ts` (`ExecutionStore` interface: create/load/save/checkpoint/findWaiting/listTimedOut + `waitDeadline()` helper: delay→resumeAt, reply/callback→timeoutAt), `memory.ts` (`MemoryExecutionStore`, structuredClone on every boundary so shared-mutable-state bugs surface in tests, injectable clock). `apps/server/src/engine/sqlite-store.ts` (`SqliteExecutionStore` over Drizzle; `wait_timeout_at` denormalized from WaitSpec so the timeout scanner hits the `(status,wait_timeout_at)` index instead of parsing JSON; save/checkpoint of unknown id → throw via `changes===0`). **Shared contract suite** `packages/core/test/store-contract.ts` (rich fa/RTL+binary state round-trip deep-equal, unknown-id semantics, checkpoint preserves status/wait, findWaiting bot/chat/kind filters waiting-only, listTimedOut reply+delay deadlines, resume clears wait) runs against BOTH implementations → semantics can never drift. Fixed binary fixture kind `telegram`→`tg_file_id` per BinaryRefSchema. 13 new tests; verify green (~102 tests). Next: P1-T4 executor loop. |
 | 2026-06-10 | P1-T2 | Sandbox primitive in `packages/sandbox/`: `worker-source.ts` (CJS string booted via `new Worker(src,{eval:true})` — no TS loader needed in worker; fresh `vm.createContext` per run with `codeGeneration:{strings:false,wasm:false}`, deep-freeze re-applied post-clone, `$now` rebuilt from `{__ctbKind:'now',ts}` wire marker, console capture, SHADOW list → undefined, globalThis self-reference hidden) + `pool.ts` (`SandboxPool`: queue + maxWorkers=4, 64MB old-gen cap, two-layer timeout — vm CPU timeout kills sync `while(true)` WITHOUT losing the worker; host hard-kill (+50ms) terminates async hangs and recycles the worker; capability host objects → method-name manifest → realm proxies → MessagePort round-trip with error propagation; `runInSandbox`/default-pool helpers; `destroy()` for tests). Evaluator swap done: `@ctb/core` evaluator now async, runs each `{{}}` segment in the pool (`mode:'expression'`, 50ms budget enforced preemptively), `EvaluateOptions{pool,budgetMs}`. Chain extended `shared←sandbox←core` — Decision Log #12, CLAUDE I3 + ARCH §3 updated. 16 sandbox tests (incl. 20-parallel, kill-survive, cap round-trip, frozen scope, eval/Function blocked) + 14 evaluator tests updated to async; verify green (~89 tests). Next: P1-T3. |

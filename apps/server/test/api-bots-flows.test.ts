@@ -206,7 +206,7 @@ describe('flows API (P1-T8)', () => {
     })).json().flow;
     const blocked = await w.app.inject({ method: 'POST', url: `/api/flows/${empty.id}/activate`, cookies: w.cookie });
     expect(blocked.statusCode).toBe(422);
-    expect(blocked.json().problems[0]).toContain('tg.trigger');
+    expect(blocked.json().problems[0]).toContain('trigger');
 
     const good = (await w.app.inject({
       method: 'POST', url: '/api/flows', cookies: w.cookie,

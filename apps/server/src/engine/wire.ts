@@ -153,6 +153,10 @@ export function wireEngine(opts: WireOptions): Engine {
       return {
         sendMessage: (o) =>
           handle.sender.sendMessage(o as Parameters<typeof handle.sender.sendMessage>[0]),
+        // tg.menu edit_in_place (P2-T6) — rides the same rate-limited sender.
+        editMessageText: async (o) => {
+          await handle.sender.call('editMessageText', o);
+        },
       };
     },
     log: stepLogger,
@@ -170,6 +174,15 @@ export function wireEngine(opts: WireOptions): Engine {
       const handle = gateway.get(botId);
       if (!handle) throw new Error(`sendText: bot ${botId} not registered`);
       await handle.sender.sendMessage({ chat_id: chatId, text });
+    },
+    // tg.menu answer_callback_text (P2-T6) — stops Telegram's button spinner.
+    answerCallback: async (botId, callbackQueryId, text) => {
+      const handle = gateway.get(botId);
+      if (!handle) throw new Error(`answerCallback: bot ${botId} not registered`);
+      await handle.sender.call('answerCallbackQuery', {
+        callback_query_id: callbackQueryId,
+        ...(text !== undefined ? { text } : {}),
+      });
     },
     log,
     clock,

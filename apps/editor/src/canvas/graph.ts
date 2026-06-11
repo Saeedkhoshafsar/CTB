@@ -6,8 +6,22 @@
  * Everything here is side-effect free so the round-trip ("byte-equivalent
  * semantics" acceptance) and connection rules are unit-testable without DOM.
  */
+import { dynamicOutputPorts } from '@ctb/shared';
 import type { FlowEdge, FlowGraph, FlowNode, NodeTypeInfo } from '@ctb/shared';
 import type { Edge as RfEdge, Node as RfNode } from '@xyflow/react';
+
+/**
+ * Effective output ports of a node INSTANCE (P2-T6): dynamic-port types
+ * (tg.menu, flow.switch) compute ports from params via the SAME shared
+ * helper the node implementations use; everything else uses the registry's
+ * static list. Unknown types render a 'main' handle so existing edges stay
+ * visible/selectable.
+ */
+export function effectiveOutputs(node: FlowNode, info: NodeTypeInfo | undefined): string[] {
+  const dynamic = dynamicOutputPorts(node.type, node.params);
+  if (dynamic !== null) return dynamic;
+  return info?.ports.outputs ?? ['main'];
+}
 
 /** Data payload carried by every canvas node. */
 export interface CtbNodeData extends Record<string, unknown> {
@@ -109,7 +123,9 @@ export function canConnect(
   // we cannot verify their ports, and the engine would reject them anyway.
   const sourceInfo = byType.get(source.type);
   const targetInfo = byType.get(target.type);
-  if (!sourceInfo || !sourceInfo.ports.outputs.includes(attempt.from.port)) {
+  // dynamic-port nodes (menu/switch) validate against their params-derived
+  // ports — a button the user just removed can no longer be wired.
+  if (!sourceInfo || !effectiveOutputs(source, sourceInfo).includes(attempt.from.port)) {
     return { ok: false, reason: 'unknownSourcePort' };
   }
   if (!targetInfo || !targetInfo.ports.inputs.includes(attempt.to.port)) {

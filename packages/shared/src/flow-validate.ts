@@ -19,6 +19,9 @@ import type { FlowGraph } from './flow';
 
 const EXPR_MARK = '{{';
 
+/** Node types that anchor a flow's entry point (activation requires one). */
+const TRIGGER_TYPES: ReadonlySet<string> = new Set(['tg.trigger', 'flow.manualTrigger']);
+
 /** Walk a Zod issue path into the raw params object (tolerant of misses). */
 function valueAtPath(root: unknown, path: ReadonlyArray<PropertyKey>): unknown {
   let cur: unknown = root;
@@ -40,9 +43,11 @@ export function validateFlowForActivation(
 ): FlowProblem[] {
   const problems: FlowProblem[] = [];
 
-  const triggers = graph.nodes.filter((n) => n.type === 'tg.trigger' && !n.disabled);
+  // Any trigger-namespace anchor counts (tg.trigger, flow.manualTrigger,
+  // future webhook/schedule/collection triggers).
+  const triggers = graph.nodes.filter((n) => TRIGGER_TYPES.has(n.type) && !n.disabled);
   if (triggers.length === 0) {
-    problems.push({ nodeId: null, message: 'flow has no enabled tg.trigger node' });
+    problems.push({ nodeId: null, message: 'flow has no enabled trigger node' });
   }
 
   for (const node of graph.nodes) {

@@ -263,3 +263,149 @@ describe('UpdateRouter (P1-T6)', () => {
     expect([30, 31]).toContain(done!.state.vars['age']);
   });
 });
+
+// ── P2-T6: menu callback resume (button meta + answerCallbackQuery) ──────────
+
+/** test.menu — pauses with a callback WaitSpec carrying per-key button meta. */
+const menuNode: NodeDef<Record<string, unknown>> = {
+  type: 'test.menu',
+  category: 'telegram',
+  meta: { labelKey: 'test.menu' },
+  ports: { inputs: ['main'], outputs: ['btn:buy', 'btn:help'] },
+  paramsSchema: (await import('zod')).z.looseObject({}),
+  async execute() {
+    return wait({
+      kind: 'callback',
+      nodeId: 'UNSET',
+      messageId: 55,
+      keys: ['buy', 'help'],
+      buttons: { buy: { label: 'خرید', value: 'plan-a' }, help: { label: 'راهنما' } },
+      answerText: 'ثبت شد ✓',
+      timeoutAt: null,
+    });
+  },
+};
+
+/** test.saveClick — stores $json.clicked into $vars.clicked. */
+const saveClickNode: NodeDef<Record<string, unknown>> = {
+  type: 'test.saveClick',
+  category: 'data',
+  meta: { labelKey: 'test.saveClick' },
+  ports: { inputs: ['main'], outputs: ['main'] },
+  paramsSchema: (await import('zod')).z.looseObject({}),
+  async execute(ctx, _params, items) {
+    ctx.vars.set('clicked', items[0]?.json['clicked']);
+    return out({ main: items });
+  },
+};
+
+const MENU_GRAPH: FlowGraph = {
+  nodes: [
+    { id: 'trig', type: 'tg.trigger', params: { event: 'command', command: 'menu' }, position: { x: 0, y: 0 }, disabled: false },
+    { id: 'menu', type: 'test.menu', params: {}, position: { x: 0, y: 0 }, disabled: false },
+    { id: 'save', type: 'test.saveClick', params: {}, position: { x: 0, y: 0 }, disabled: false },
+    { id: 'fin', type: 'test.end', params: {}, position: { x: 0, y: 0 }, disabled: false },
+  ],
+  edges: [
+    { id: 'e0', from: { node: 'trig', port: 'main' }, to: { node: 'menu', port: 'main' } },
+    { id: 'e1', from: { node: 'menu', port: 'btn:buy' }, to: { node: 'save', port: 'main' } },
+    { id: 'e2', from: { node: 'save', port: 'main' }, to: { node: 'fin', port: 'main' } },
+  ],
+};
+
+function makeMenuHarness() {
+  const store = new MemoryExecutionStore();
+  const registry = new NodeRegistry()
+    .register(triggerNode)
+    .register(menuNode)
+    .register(saveClickNode)
+    .register(endNode);
+  const services: ExecutorServices = {
+    kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
+    http: { request: async () => ({ status: 200, headers: {}, body: null }) },
+    tg: () => null,
+  };
+  const executor = new Executor(registry, store, services);
+  const flow = { id: 'f2', name: 'منو', graph: MENU_GRAPH };
+  const flows: FlowSource = {
+    activeFlows: async (botId) => (botId === 'b1' ? [flow] : []),
+    getFlow: async (id) => (id === 'f2' ? flow : null),
+  };
+  const answered: Array<{ id: string; text?: string | undefined }> = [];
+  let n = 0;
+  const router = new UpdateRouter({
+    store,
+    executor,
+    flows,
+    sendText: async () => undefined,
+    answerCallback: async (_botId, callbackQueryId, text) => {
+      answered.push({ id: callbackQueryId, text });
+    },
+    newId: () => `exec-${++n}`,
+  });
+  return { store, router, answered };
+}
+
+function clickEv(data: string, chatId = 7, updateId = 9): TgEvent {
+  const update = {
+    update_id: updateId,
+    callback_query: {
+      id: 'cbq-1',
+      from: { id: 100 + chatId, is_bot: false, first_name: 'کاربر' },
+      message: {
+        message_id: 55,
+        date: 0,
+        chat: { id: chatId, type: 'private', first_name: 'کاربر' },
+        text: 'منو',
+      },
+      chat_instance: 'ci',
+      data,
+    },
+  } as unknown as Update;
+  const event = normalizeUpdate('b1', update);
+  if (!event) throw new Error('fixture produced unsupported update');
+  return event;
+}
+
+describe('UpdateRouter — menu callbacks (P2-T6)', () => {
+  it('button click answers the callbackQuery and resumes with enriched clicked meta', async () => {
+    const { router, store, answered } = makeMenuHarness();
+    await router.handle(ev('/menu'));
+    const [exec] = await store.findWaiting({ botId: 'b1', chatId: 7 });
+    expect(exec!.wait).toMatchObject({ kind: 'callback', keys: ['buy', 'help'] });
+
+    await router.handle(clickEv('btn:buy'));
+    expect(answered).toEqual([{ id: 'cbq-1', text: 'ثبت شد ✓' }]);
+    const done = await store.load(exec!.id);
+    expect(done!.status).toBe('done');
+    // label/value came from the WaitSpec's button meta, not the event
+    expect(done!.state.vars['clicked']).toMatchObject({
+      key: 'buy',
+      data: 'btn:buy',
+      label: 'خرید',
+      value: 'plan-a',
+      message_id: 55,
+    });
+  });
+
+  it("a different menu's button is ignored; answerCallback failure never blocks the resume", async () => {
+    const { router, store, answered } = makeMenuHarness();
+    await router.handle(ev('/menu'));
+    const [exec] = await store.findWaiting({ botId: 'b1', chatId: 7 });
+
+    await router.handle(clickEv('btn:other'));
+    expect(answered).toHaveLength(0); // not ours — no answer, still waiting
+    expect((await store.load(exec!.id))!.status).toBe('waiting');
+
+    // answerCallback throwing must not stop the click from resuming
+    const broken = makeMenuHarness();
+    const origAnswer = broken.router as unknown as { deps: { answerCallback: () => Promise<void> } };
+    origAnswer.deps.answerCallback = async () => {
+      throw new Error('telegram down');
+    };
+    await broken.router.handle(ev('/menu'));
+    const [exec2] = await broken.store.findWaiting({ botId: 'b1', chatId: 7 });
+    await broken.router.handle(clickEv('btn:buy'));
+    expect((await broken.store.load(exec2!.id))!.status).toBe('done');
+  });
+});

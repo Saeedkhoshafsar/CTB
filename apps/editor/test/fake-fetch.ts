@@ -4,10 +4,16 @@
  * closely enough to exercise the typed client and stores without a server.
  */
 import {
+  DataKvParamsSchema,
   DataSetFieldsParamsSchema,
   FlowGraphSchema,
   FlowIfParamsSchema,
+  FlowManualTriggerParamsSchema,
   FlowStopErrorParamsSchema,
+  FlowSwitchParamsSchema,
+  FlowWaitParamsSchema,
+  HttpRequestParamsSchema,
+  TgMenuParamsSchema,
   TgSendMessageParamsSchema,
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
@@ -49,6 +55,13 @@ const PARAM_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
   ['flow.if', FlowIfParamsSchema],
   ['data.setFields', DataSetFieldsParamsSchema],
   ['flow.stopError', FlowStopErrorParamsSchema],
+  // wave 2 (P2-T6)
+  ['tg.menu', TgMenuParamsSchema],
+  ['flow.switch', FlowSwitchParamsSchema],
+  ['flow.wait', FlowWaitParamsSchema],
+  ['http.request', HttpRequestParamsSchema],
+  ['data.kv', DataKvParamsSchema],
+  ['flow.manualTrigger', FlowManualTriggerParamsSchema],
 ]);
 
 export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
@@ -58,6 +71,15 @@ export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
   { type: 'flow.if', category: 'flow', meta: { labelKey: 'nodes.flow.if.label', icon: 'git-branch' }, ports: { inputs: ['main'], outputs: ['true', 'false'] }, paramsJsonSchema: toParamsJsonSchema(FlowIfParamsSchema) },
   { type: 'data.setFields', category: 'data', meta: { labelKey: 'nodes.data.setFields.label', icon: 'pencil' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(DataSetFieldsParamsSchema) },
   { type: 'flow.stopError', category: 'flow', meta: { labelKey: 'nodes.flow.stopError.label', icon: 'octagon-x' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: toParamsJsonSchema(FlowStopErrorParamsSchema) },
+  // wave 2 (P2-T6) — menu/switch outputs are DYNAMIC (computed from params
+  // client-side via shared dynamicOutputPorts); the static base is empty,
+  // matching the real NodeDef.ports.outputs.
+  { type: 'tg.menu', category: 'telegram', meta: { labelKey: 'nodes.tg.menu.label', icon: 'list' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: toParamsJsonSchema(TgMenuParamsSchema) },
+  { type: 'flow.switch', category: 'flow', meta: { labelKey: 'nodes.flow.switch.label', icon: 'split' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: toParamsJsonSchema(FlowSwitchParamsSchema) },
+  { type: 'flow.wait', category: 'flow', meta: { labelKey: 'nodes.flow.wait.label', icon: 'clock' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(FlowWaitParamsSchema) },
+  { type: 'http.request', category: 'data', meta: { labelKey: 'nodes.http.request.label', icon: 'globe' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(HttpRequestParamsSchema) },
+  { type: 'data.kv', category: 'data', meta: { labelKey: 'nodes.data.kv.label', icon: 'database' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(DataKvParamsSchema) },
+  { type: 'flow.manualTrigger', category: 'trigger', meta: { labelKey: 'nodes.flow.manualTrigger.label', icon: 'play' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(FlowManualTriggerParamsSchema) },
 ];
 
 interface FlowVersionRow {

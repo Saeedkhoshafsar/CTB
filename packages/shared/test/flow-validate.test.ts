@@ -41,7 +41,7 @@ describe('validateFlowForActivation (P2-T4)', () => {
     const problems = validateFlowForActivation(g, SCHEMAS);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ nodeId: null });
-    expect(problems[0]!.message).toContain('tg.trigger');
+    expect(problems[0]!.message).toContain('trigger');
   });
 
   it('invalid params → problem pinned to the offending node with the path', () => {

@@ -216,6 +216,16 @@ export class ApiClient {
   async getExecution(id: string): Promise<ExecutionDetail> {
     return (await this.request<{ execution: ExecutionDetail }>('GET', `/api/executions/${id}`)).execution;
   }
+
+  /** Cancel a waiting/running execution (P2-T5). 409 ApiError when already finished. */
+  async cancelExecution(id: string): Promise<ExecutionSummary> {
+    return (
+      await this.request<{ ok: true; execution: ExecutionSummary }>(
+        'POST',
+        `/api/executions/${id}/cancel`,
+      )
+    ).execution;
+  }
 }
 
 /** App-wide singleton — pages import this; tests build their own with a fake fetch. */

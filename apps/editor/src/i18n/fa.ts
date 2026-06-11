@@ -267,7 +267,23 @@ export const fa = {
   'option.op.remove': 'حذف',
 
   'executions.title': 'اجراها',
-  'executions.placeholder': 'نمایشگر اجراها در P2-T5 ساخته می‌شود.',
+
+  // ── executions inspector (P2-T5) ──
+  'execs.filter.all': 'همه',
+  'execs.empty': 'هیچ اجرایی با این فیلتر پیدا نشد.',
+  'execs.selectHint': 'یک اجرا را از فهرست انتخاب کنید تا جزئیات گام‌به‌گام آن را ببینید.',
+  'execs.chat': 'گفتگو {id}',
+  'execs.scopedToFlow': 'فقط فلوی «{name}»',
+  'execs.cancel': 'لغو اجرا',
+  'execs.cancel.confirm': 'این اجرا لغو شود؟ گفتگوی در انتظارِ کاربر بسته می‌شود و قابل بازگشت نیست.',
+  'execs.noLogs': 'هنوز گزارشی برای این اجرا ثبت نشده.',
+  'execs.wait.title': 'این اجرا منتظر است:',
+  'execs.wait.reply': 'پاسخ کاربر از نوع «{expect}»',
+  'execs.wait.callback': 'کلیک روی یکی از دکمه‌ها: {keys}',
+  'execs.wait.delay': 'پایان تأخیر زمان‌بندی‌شده',
+  'execs.wait.node': 'نود',
+  'execs.wait.retries': '{n} تلاش باقی‌مانده',
+  'execs.wait.until': 'مهلت تا {time}',
 
   // ── node detail view + data panes (P2-T3.5) ──
   'data.input': 'ورودی',

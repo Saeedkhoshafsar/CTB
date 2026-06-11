@@ -127,13 +127,35 @@ export function createFakeServer(): FakeServer {
       if (path === '/api/executions' && method === 'GET') {
         const flowId = url.searchParams.get('flowId');
         const botId = url.searchParams.get('botId');
+        const status = url.searchParams.get('status');
+        if (status && !['running', 'waiting', 'done', 'error', 'canceled'].includes(status)) {
+          return json(400, { error: 'invalid_status' });
+        }
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 50), 1), 200);
         const executions = [...srv.executions.values()]
-          .filter((e) => (!flowId || e.flowId === flowId) && (!botId || e.botId === botId))
+          .filter(
+            (e) =>
+              (!flowId || e.flowId === flowId) &&
+              (!botId || e.botId === botId) &&
+              (!status || e.status === status),
+          )
           .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
           .slice(0, limit)
           .map(({ wait: _w, logs: _l, ...summary }) => summary);
         return json(200, { executions });
+      }
+      const cancelMatch = path.match(/^\/api\/executions\/([^/]+)\/cancel$/);
+      if (cancelMatch && method === 'POST') {
+        const exec = srv.executions.get(cancelMatch[1]!);
+        if (!exec) return json(404, { error: 'not_found' });
+        if (exec.status !== 'waiting' && exec.status !== 'running') {
+          return json(409, { error: 'not_cancelable', status: exec.status });
+        }
+        exec.status = 'canceled';
+        exec.wait = null;
+        exec.updatedAt = new Date().toISOString();
+        const { wait: _w, logs: _l, ...summary } = exec;
+        return json(200, { ok: true, execution: summary });
       }
       const execMatch = path.match(/^\/api\/executions\/([^/]+)$/);
       if (execMatch && method === 'GET') {

@@ -29,6 +29,10 @@ const replyWait = (timeoutAt: string | null): WaitSpec => ({
   kind: 'reply',
   nodeId: 'ask_age',
   expect: 'number',
+  // full P1-T7 surface must survive the store round-trip (I4):
+  validation: { min: 1, max: 120 },
+  invalidMessage: 'عدد بین ۱ تا ۱۲۰ بفرست',
+  saveTo: 'age',
   retriesLeft: 2,
   timeoutAt,
 });

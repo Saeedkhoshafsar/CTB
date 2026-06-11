@@ -8,4 +8,5 @@ export * from './item';
 export * from './flow';
 export * from './execution';
 export * from './node-def';
+export * from './node-params';
 export * from './errors';

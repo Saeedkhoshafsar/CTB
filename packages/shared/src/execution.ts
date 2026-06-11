@@ -38,6 +38,12 @@ export const WaitSpecSchema = z.discriminatedUnion('kind', [
     validation: ReplyValidationSchema.optional(),
     /** Sent by the router on each failed validation while retries remain. */
     invalidMessage: z.string().optional(),
+    /**
+     * Variable name the validated reply value is saved to on resume
+     * ($vars.<saveTo>, Decision Log #14) — applied by the router via
+     * Executor.resume({ varsPatch }) because the wait node never re-executes.
+     */
+    saveTo: z.string().optional(),
     retriesLeft: z.number().int().nonnegative().default(0),
     timeoutAt: z.iso.datetime().nullable().default(null),
   }),

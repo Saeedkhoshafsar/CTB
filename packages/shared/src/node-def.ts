@@ -67,6 +67,8 @@ export interface NodeCtx {
   } | null;
   /** Structured logging into exec_logs. */
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;
+  /** Current time — injected (executor clock) so nodes computing deadlines stay testable. */
+  now(): Date;
 }
 
 export const NodeCategorySchema = z.enum(['trigger', 'telegram', 'flow', 'data', 'ai']);

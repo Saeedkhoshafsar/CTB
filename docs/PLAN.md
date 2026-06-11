@@ -132,6 +132,10 @@ Auto-render forms from Zod schemas: string/multiline/select/number/boolean/durat
 **Architecture note (binding):** build this as a standalone, schema-driven **form engine** (widget registry keyed by field/param type), NOT hardcoded to node params — Phase 3.5 reuses the same engine to render Collection record forms (ARCHITECTURE §13.5).
 **Accept:** every P1 node fully configurable from UI without touching JSON; form engine importable independently of the node panel.
 
+### P2-T3.5 · Node detail view (n8n-style NDV) + data mapping
+Double-click a node → modal with INPUT pane | parameters | OUTPUT pane (schema/table/JSON views, per-port tabs). Data comes from the latest execution: executor records capped per-step I/O snapshots (`StepLogEntry.input/output`, 20-item cap) → server persists into `exec_logs` → `GET /api/executions[/:id]` → editor run-data store maps logs onto canvas nodes. Drag a field row from a data pane onto any expression input → inserts `{{ $json.path }}` at the caret (custom MIME `application/x-ctb-field-expr`, defined in the form engine's pure half so form/* stays canvas-free). Per-node "n items" run badge on canvas.
+**Accept:** run demo flow → double-click any node → see real input/output items; drag `name` from output schema onto a sendMessage text param → expression inserted; core/server/editor tests green.
+
 ### P2-T4 · Flow lifecycle UI
 Save = new `flow_versions` row; activate/deactivate; version list + rollback; validation errors surfaced on canvas (badge on offending node).
 **Accept:** rollback restores older graph; activating an invalid flow is blocked with a pointed error.

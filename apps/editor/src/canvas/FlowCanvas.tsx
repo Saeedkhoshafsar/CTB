@@ -21,6 +21,7 @@ import { useCallback, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
 import { flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
+import { useNodeDetail } from './NodeDetail';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
 
@@ -89,6 +90,11 @@ function CanvasInner() {
     if (removed.length) useCanvas.getState().removeEdges(removed);
   }, []);
 
+  /** double-click opens the node detail view (n8n NDV, P2-T3.5). */
+  const onNodeDoubleClick = useCallback((_e: unknown, rfNode: CtbRfNode) => {
+    useNodeDetail.getState().open(rfNode.id);
+  }, []);
+
   const onConnect = useCallback((conn: Connection) => {
     if (!conn.source || !conn.target) return;
     useCanvas.getState().connect({
@@ -142,6 +148,7 @@ function CanvasInner() {
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
+      onNodeDoubleClick={onNodeDoubleClick}
       onConnect={onConnect}
       isValidConnection={isValidConnection}
       onDragOver={onDragOver}

@@ -46,10 +46,37 @@ export interface StepLogEntry {
   level: 'debug' | 'info' | 'warn' | 'error';
   message: string;
   data?: unknown;
+  /**
+   * Items that entered the node on this step (capped, P2-T3.5) — feeds the
+   * editor's node detail view (input panel). Present only on "executed" rows.
+   */
+  input?: FlowItem[];
+  /** Items the node emitted per output port (capped) — NDV output panel. */
+  output?: Record<string, FlowItem[]>;
   durationMs?: number;
   ts: string;
 }
 export type StepLogger = (entry: StepLogEntry) => void;
+
+/**
+ * Cap for items recorded into step logs (per port). Logs are a debugging
+ * window, not an archive — full data still flows through the engine.
+ */
+export const LOG_ITEMS_CAP = 20;
+
+function capItems(items: FlowItem[]): FlowItem[] {
+  return items.length > LOG_ITEMS_CAP ? items.slice(0, LOG_ITEMS_CAP) : items;
+}
+
+function capOutputs(
+  outputs: Partial<Record<PortName, FlowItem[]>>,
+): Record<string, FlowItem[]> {
+  const capped: Record<string, FlowItem[]> = {};
+  for (const [port, items] of Object.entries(outputs)) {
+    if (items && items.length > 0) capped[port] = capItems(items);
+  }
+  return capped;
+}
 
 /** Host-injected capabilities handed to nodes via NodeCtx (invariant I3/I6). */
 export interface ExecutorServices {
@@ -226,9 +253,19 @@ export class Executor {
         }
       }
 
-      this.log(exec.id, node.id, 'debug', `executed ${node.type}`, {
-        kind: result.kind,
+      // Structured I/O snapshot for the editor's node detail view (P2-T3.5):
+      // what entered the node and what it emitted per port, capped.
+      this.services.log?.({
+        executionId: exec.id,
+        nodeId: node.id,
+        level: 'debug',
+        message: `executed ${node.type}`,
+        data: { kind: result.kind },
+        input: capItems(inputItems),
+        ...(result.kind === 'items' ? { output: capOutputs(result.outputs) } : {}),
+        ...(result.kind === 'goto' ? { output: { main: capItems(result.items) } } : {}),
         durationMs: this.clock().getTime() - stepStart,
+        ts: this.clock().toISOString(),
       });
 
       // ── route the result ──

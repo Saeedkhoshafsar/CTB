@@ -259,6 +259,28 @@ export const fa = {
   'executions.title': 'اجراها',
   'executions.placeholder': 'نمایشگر اجراها در P2-T5 ساخته می‌شود.',
 
+  // ── node detail view + data panes (P2-T3.5) ──
+  'data.input': 'ورودی',
+  'data.output': 'خروجی',
+  'data.view.schema': 'ساختار',
+  'data.view.table': 'جدول',
+  'data.view.json': 'JSON',
+  'data.items': '{n} آیتم',
+  'data.itemN': 'آیتم {n}',
+  'data.noRun': 'این فلو هنوز اجرا نشده. یک‌بار با بات تست کنید تا دادهٔ واقعی اینجا دیده شود.',
+  'data.emptyNode': 'در آخرین اجرا، داده‌ای از این نود عبور نکرد (شاید مسیر دیگری رفته باشد).',
+  'data.triggerNoInput': 'نود شروع‌کننده ورودی ندارد — فلو از اینجا آغاز می‌شود.',
+  'data.refresh': 'به‌روزرسانی',
+  'data.loading': 'در حال دریافت…',
+  'data.copied': 'کپی شد ✓',
+  'data.dragHint': 'بکشید و روی یک فیلد پارامتر رها کنید، یا برای کپی کلیک کنید',
+  'data.lastRun': 'تعداد آیتم‌های خروجی در آخرین اجرا',
+  'exec.status.running': 'در حال اجرا',
+  'exec.status.waiting': 'منتظر پاسخ',
+  'exec.status.done': 'پایان‌یافته',
+  'exec.status.error': 'خطا',
+  'exec.status.canceled': 'لغو شده',
+
   'error.network': 'خطا در ارتباط با سرور',
   'error.notFound': 'یافت نشد',
   'error.validation': 'ورودی نامعتبر است',
@@ -266,5 +288,6 @@ export const fa = {
 
   'common.cancel': 'انصراف',
   'common.back': 'بازگشت',
+  'common.close': 'بستن',
   'common.language': 'English',
 } as const;

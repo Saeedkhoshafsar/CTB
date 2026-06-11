@@ -7,7 +7,9 @@
  * e.g. bots carry a masked `tokenHint`, NEVER the token (invariant I7).
  */
 import { z } from 'zod';
+import type { ExecutionStatus, WaitSpec } from './execution';
 import { FlowGraphSchema } from './flow';
+import type { FlowItem } from './item';
 
 // ---------------------------------------------------------------------------
 // auth
@@ -120,6 +122,45 @@ export interface NodeTypeInfo {
   meta: { labelKey: string; descriptionKey?: string; icon?: string };
   ports: { inputs: string[]; outputs: string[] };
   paramsJsonSchema: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// executions (GET /api/executions — inspector + editor node detail view)
+// ---------------------------------------------------------------------------
+
+/** List row — no state/log payloads (those ride the detail endpoint). */
+export interface ExecutionSummary {
+  id: string;
+  flowId: string;
+  botId: string;
+  chatId: number | null;
+  status: ExecutionStatus;
+  error: string | null;
+  startedAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One exec_logs row. `input`/`output` are the capped FlowItem snapshots the
+ * executor records per "executed" step (P2-T3.5) — the editor's node detail
+ * view renders them as the n8n-style INPUT/OUTPUT panes.
+ */
+export interface ExecLogEntry {
+  id: number;
+  nodeId: string | null;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  message: string;
+  input: FlowItem[] | null;
+  output: Record<string, FlowItem[]> | null;
+  error: string | null;
+  durationMs: number | null;
+  ts: string;
+}
+
+/** GET /api/executions/:id — summary + wait detail + full step log. */
+export interface ExecutionDetail extends ExecutionSummary {
+  wait: WaitSpec | null;
+  logs: ExecLogEntry[];
 }
 
 // ---------------------------------------------------------------------------

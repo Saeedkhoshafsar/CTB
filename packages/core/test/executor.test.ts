@@ -148,3 +148,46 @@ describe('executor — GOTO', () => {
     expect((await store.load('e1'))!.status).toBe('error');
   });
 });
+
+describe('executor — step-log I/O snapshots (P2-T3.5, editor NDV data)', () => {
+  it('"executed" rows carry the node input items and per-port output items', async () => {
+    const { executor, logs } = makeHarness();
+    const g = graph(
+      [
+        { id: 'a', type: 'test.emit', params: { tag: 'A' } },
+        { id: 'br', type: 'test.branch', params: { field: 'vip' } },
+      ],
+      [['a', 'br']],
+    );
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'a', items: { main: [item({ vip: true })] } },
+    });
+    const rows = logs.filter((l) => l.message.startsWith('executed'));
+    expect(rows).toHaveLength(2);
+
+    const aRow = rows[0]!;
+    expect(aRow.nodeId).toBe('a');
+    expect(aRow.input).toEqual([{ json: { vip: true } }]);
+    expect(aRow.output).toEqual({ main: [{ json: { vip: true, trail: ['A'] } }] });
+    expect(typeof aRow.durationMs).toBe('number');
+
+    // branch emits ONLY the matched port (empty "false" side omitted)
+    const brRow = rows[1]!;
+    expect(brRow.nodeId).toBe('br');
+    expect(Object.keys(brRow.output!)).toEqual(['true']);
+  });
+
+  it('logged items are capped at LOG_ITEMS_CAP per port', async () => {
+    const { executor, logs } = makeHarness();
+    const g = graph([{ id: 'a', type: 'test.emit', params: { tag: 'A' } }], []);
+    const many = Array.from({ length: 50 }, (_, i) => item({ i }));
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'a', items: { main: many } },
+    });
+    const row = logs.find((l) => l.message.startsWith('executed'))!;
+    expect(row.input!.length).toBe(20);
+    expect(row.output!.main!.length).toBe(20);
+  });
+});

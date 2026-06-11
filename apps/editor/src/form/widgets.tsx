@@ -6,9 +6,9 @@
  * node type they belong to — they are keyed by structural WidgetKind
  * (see schema.ts), so Phase 3.5 Collection forms reuse them as-is.
  */
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
-import { SCOPE_HINTS, hasExpression, insertHint } from './expression';
+import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
 import {
   convertBranchValue,
   emptyValue,
@@ -138,9 +138,41 @@ export function ExpressionInput({
     });
   };
 
-  const cls = `expr-input${hasExpression(value) ? ' has-expr' : ''}${multiline ? ' multiline' : ''}`;
+  // ── drag-to-map (P2-T3.5): drop a field from the data panel → insert its
+  // {{ $json.path }} expression at the caret (empty field = replace wholesale).
+  const [dropActive, setDropActive] = useState(false);
+  const onDragOver = (e: DragEvent) => {
+    if (e.dataTransfer.types.includes(FIELD_DRAG_MIME)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setDropActive(true);
+    }
+  };
+  const onDrop = (e: DragEvent) => {
+    const expr = e.dataTransfer.getData(FIELD_DRAG_MIME);
+    setDropActive(false);
+    if (!expr) return;
+    e.preventDefault();
+    const input = inputRef.current;
+    const caret = input?.selectionStart ?? value.length;
+    const next = value === '' ? expr : value.slice(0, caret) + expr + value.slice(caret);
+    const nextCaret = (value === '' ? expr.length : caret + expr.length);
+    onChange(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  const cls = `expr-input${hasExpression(value) ? ' has-expr' : ''}${multiline ? ' multiline' : ''}${dropActive ? ' drop-active' : ''}`;
   return (
-    <div className={cls} ref={rootRef}>
+    <div
+      className={cls}
+      ref={rootRef}
+      onDragOver={onDragOver}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={onDrop}
+    >
       <div className="expr-box">
         {multiline ? (
           <textarea

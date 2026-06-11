@@ -513,3 +513,232 @@ button.danger { color: var(--danger); }
 .cond-row .cond-v1 { min-width: 0; }
 .cond-row .cond-op,
 .cond-row .cond-v2 { grid-column: 1 / -1; min-width: 0; }
+
+/* ── node detail view (NDV) + data panes (P2-T3.5) ──────────────────────────
+   n8n-style modal: INPUT pane | parameters | OUTPUT pane. Data panes are
+   LTR-pinned (JSON paths / values read left-to-right) while chrome stays RTL. */
+
+.ndv-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(8 10 14 / 65%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.ndv {
+  display: flex;
+  flex-direction: column;
+  width: min(1240px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 64px));
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+}
+.ndv-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ndv-head .ndv-title { font-weight: 700; font-size: 14px; }
+.ndv-head .ndv-type { color: var(--text-dim); font-size: 12px; direction: ltr; unicode-bidi: plaintext; }
+.ndv-head .spacer { flex: 1; }
+.ndv-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius);
+}
+.ndv-close:hover { color: var(--text); background: var(--bg-hover); }
+.ndv-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(300px, 360px) 1fr;
+  flex: 1;
+  min-height: 0;
+}
+.ndv-params {
+  border-inline: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 0.85rem;
+}
+
+/* data pane (input/output) */
+.data-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.data-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.data-head .data-title { font-weight: 700; font-size: 12.5px; }
+.data-count { color: var(--text-dim); font-size: 11.5px; }
+.data-head .spacer { flex: 1; }
+.data-views { display: flex; gap: 0.15rem; }
+.data-views button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.data-views button:hover { color: var(--text); background: var(--bg-hover); }
+.data-views button.active {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.data-ports {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem 0;
+  flex-shrink: 0;
+}
+.data-ports button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  direction: ltr;
+}
+.data-ports button.active { color: var(--accent); border-color: var(--accent); }
+.data-body { flex: 1; overflow: auto; padding: 0.6rem 0.75rem; min-height: 0; }
+.data-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 1.25rem 0.5rem;
+  text-align: center;
+}
+.data-hint { color: var(--text-dim); font-size: 11px; padding: 0.3rem 0.75rem; border-top: 1px solid var(--border); }
+
+/* schema tree (draggable rows) */
+.data-tree {
+  direction: ltr;
+  text-align: left;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+}
+.data-tree .tree-item-head {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin: 0.45rem 0 0.2rem;
+  font-family: var(--font);
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--radius);
+  cursor: grab;
+  min-width: 0;
+}
+.tree-row:hover { background: var(--bg-hover); }
+.tree-row:active { cursor: grabbing; }
+.tree-arrow {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 9px;
+  transition: transform 0.12s ease;
+  transform: rotate(0deg);
+  display: inline-block;
+}
+.tree-arrow.open { transform: rotate(90deg); }
+.tree-arrow-spacer { width: 12px; flex-shrink: 0; }
+.tree-kind {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+  line-height: 1.4;
+}
+.tree-kind.kind-string { color: #7ec699; border-color: #2e4a3a; }
+.tree-kind.kind-number { color: #6ba1ff; border-color: #28415f; }
+.tree-kind.kind-boolean { color: #f5b14c; border-color: #5a4528; }
+.tree-key { color: var(--accent); flex-shrink: 0; }
+.tree-count { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+.tree-preview {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* table view */
+.data-table-wrap { direction: ltr; overflow-x: auto; }
+.data-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  width: 100%;
+}
+.data-table th, .data-table td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table th { color: var(--text-dim); font-weight: 600; background: var(--bg); }
+
+/* json view */
+.data-json {
+  direction: ltr;
+  text-align: left;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+  margin: 0;
+  color: var(--text);
+}
+
+/* drop-target highlight when dragging a field over an expression input */
+.expr-input.drop-active .expr-box input,
+.expr-input.drop-active .expr-box textarea {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(79 140 255 / 35%);
+}
+
+/* per-node run badge on canvas (items count from last execution) */
+.ctb-node-run {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-inline-start: 0.3rem;
+  line-height: 1.5;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+/* execution status badges (NDV head; reused by P2-T5 inspector) */
+.badge.exec-done { color: var(--ok); border-color: var(--ok); }
+.badge.exec-waiting { color: var(--warn); border-color: var(--warn); }
+.badge.exec-running { color: var(--accent); border-color: var(--accent); }
+.badge.exec-error { color: var(--danger); border-color: var(--danger); }
+.badge.exec-canceled { color: var(--text-dim); border-color: var(--text-dim); }

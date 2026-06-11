@@ -3,23 +3,43 @@
  * Mirrors the real route semantics (status codes, envelopes, token masking)
  * closely enough to exercise the typed client and stores without a server.
  */
-import { FlowGraphSchema, type BotPublic, type FlowPublic, type NodeTypeInfo } from '@ctb/shared';
+import {
+  DataSetFieldsParamsSchema,
+  FlowGraphSchema,
+  FlowIfParamsSchema,
+  FlowStopErrorParamsSchema,
+  TgSendMessageParamsSchema,
+  TgTriggerParamsSchema,
+  TgWaitForReplyParamsSchema,
+  type BotPublic,
+  type FlowPublic,
+  type NodeTypeInfo,
+} from '@ctb/shared';
+import { z, type ZodType } from 'zod';
 import type { FetchLike } from '../src/api/client';
+
+/** Same conversion the real endpoint applies (apps/server/src/api/node-types.ts). */
+function toParamsJsonSchema(schema: ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Record<string, unknown>;
+}
 
 /**
  * Static mirror of GET /api/node-types for the P1 builtin six.
  * The editor may not import @ctb/nodes (dependency direction, I3), so the
  * fake hardcodes the SAME ports the real registry exposes — the server-side
  * node-types.test.ts asserts those ports against the real registry, keeping
- * this copy honest.
+ * this copy honest. Param schemas, however, are NOT copies: they come from
+ * the same `@ctb/shared` Zod schemas the nodes register (I5), converted with
+ * the same z.toJSONSchema options the real endpoint uses — so P2-T3 form
+ * tests run against the genuine schemas.
  */
 export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
-  { type: 'tg.trigger', category: 'trigger', meta: { labelKey: 'nodes.tg.trigger.label', icon: 'zap' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
-  { type: 'tg.sendMessage', category: 'telegram', meta: { labelKey: 'nodes.tg.sendMessage.label', icon: 'send' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
-  { type: 'tg.waitForReply', category: 'telegram', meta: { labelKey: 'nodes.tg.waitForReply.label', icon: 'message-circle-question' }, ports: { inputs: ['main'], outputs: ['reply', 'timeout', 'invalid'] }, paramsJsonSchema: { type: 'object' } },
-  { type: 'flow.if', category: 'flow', meta: { labelKey: 'nodes.flow.if.label', icon: 'git-branch' }, ports: { inputs: ['main'], outputs: ['true', 'false'] }, paramsJsonSchema: { type: 'object' } },
-  { type: 'data.setFields', category: 'data', meta: { labelKey: 'nodes.data.setFields.label', icon: 'pencil' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
-  { type: 'flow.stopError', category: 'flow', meta: { labelKey: 'nodes.flow.stopError.label', icon: 'octagon-x' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'tg.trigger', category: 'trigger', meta: { labelKey: 'nodes.tg.trigger.label', icon: 'zap' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(TgTriggerParamsSchema) },
+  { type: 'tg.sendMessage', category: 'telegram', meta: { labelKey: 'nodes.tg.sendMessage.label', icon: 'send' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(TgSendMessageParamsSchema) },
+  { type: 'tg.waitForReply', category: 'telegram', meta: { labelKey: 'nodes.tg.waitForReply.label', icon: 'message-circle-question' }, ports: { inputs: ['main'], outputs: ['reply', 'timeout', 'invalid'] }, paramsJsonSchema: toParamsJsonSchema(TgWaitForReplyParamsSchema) },
+  { type: 'flow.if', category: 'flow', meta: { labelKey: 'nodes.flow.if.label', icon: 'git-branch' }, ports: { inputs: ['main'], outputs: ['true', 'false'] }, paramsJsonSchema: toParamsJsonSchema(FlowIfParamsSchema) },
+  { type: 'data.setFields', category: 'data', meta: { labelKey: 'nodes.data.setFields.label', icon: 'pencil' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(DataSetFieldsParamsSchema) },
+  { type: 'flow.stopError', category: 'flow', meta: { labelKey: 'nodes.flow.stopError.label', icon: 'octagon-x' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: toParamsJsonSchema(FlowStopErrorParamsSchema) },
 ];
 
 export interface FakeServer {

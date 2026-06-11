@@ -10,6 +10,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { FlowCanvas } from '../canvas/FlowCanvas';
 import { Palette } from '../canvas/Palette';
+import { ParamPanel } from '../canvas/ParamPanel';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
 
@@ -138,6 +139,7 @@ export function FlowEditorPage() {
           <div className="editor-canvas">
             <FlowCanvas />
           </div>
+          <ParamPanel />
         </div>
       </div>
     </ReactFlowProvider>

@@ -16,7 +16,7 @@ import { Bot } from 'grammy';
 import type { Update, UserFromGetMe } from 'grammy/types';
 import { safeEqual } from '../lib/session';
 import { type TgEvent, normalizeUpdate } from './normalize';
-import { type SenderOptions, TgSender } from './sender';
+import { type CallApi, type SenderOptions, TgSender } from './sender';
 
 export type TgEventHandler = (event: TgEvent) => Promise<void>;
 
@@ -25,6 +25,8 @@ export interface RegisterBotOptions {
   botInfo?: UserFromGetMe;
   /** Sender tuning / fake clock for tests. */
   sender?: SenderOptions;
+  /** Test transport — replaces bot.api.raw so e2e tests never hit the network. */
+  callApi?: CallApi;
 }
 
 export interface BotHandle {
@@ -63,10 +65,10 @@ export class TelegramGateway {
     if (existing) return existing;
 
     const bot = new Bot(token, opts.botInfo ? { botInfo: opts.botInfo } : undefined);
-    const sender = new TgSender(
-      (method, payload) => bot.api.raw[method as keyof typeof bot.api.raw](payload as never),
-      opts.sender,
-    );
+    const transport: CallApi =
+      opts.callApi ??
+      ((method, payload) => bot.api.raw[method as keyof typeof bot.api.raw](payload as never));
+    const sender = new TgSender(transport, opts.sender);
 
     // Single catch-all listener: normalize → handler. Errors are contained —
     // a failing flow must never crash the gateway (CLAUDE §7).
@@ -123,7 +125,12 @@ export class TelegramGateway {
   async stop(botId: string): Promise<void> {
     const handle = this.bots.get(botId);
     if (!handle) return;
-    if (handle.mode === 'polling') await handle.bot.stop();
+    if (handle.mode === 'polling') {
+      // grammY throws if the polling loop never actually started (e.g. it
+      // crashed at boot, or tests with a fake transport). stop() must stay
+      // idempotent and never propagate that.
+      await handle.bot.stop().catch(() => undefined);
+    }
     handle.mode = 'idle';
   }
 

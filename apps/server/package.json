@@ -9,7 +9,8 @@
     "dev": "tsx watch src/main.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "seed:demo": "tsx scripts/demo-flow.ts"
   },
   "dependencies": {
     "@ctb/core": "*",

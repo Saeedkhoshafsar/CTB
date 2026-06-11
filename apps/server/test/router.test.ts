@@ -113,7 +113,7 @@ function makeHarness() {
     .register(saveNode)
     .register(endNode);
   const services: ExecutorServices = {
-    kv: { get: async () => undefined, set: async () => undefined, delete: async () => undefined },
+    kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
     http: { request: async () => ({ status: 200, headers: {}, body: null }) },
     tg: () => null,
   };

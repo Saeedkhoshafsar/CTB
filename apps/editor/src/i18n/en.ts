@@ -1,0 +1,70 @@
+import type { fa } from './fa';
+
+/** English catalog — keys are checked against the fa source of truth. */
+export const en: Record<keyof typeof fa, string> = {
+  'app.title': 'CTB — Telegram Bot Builder',
+  'app.loading': 'Loading…',
+
+  'nav.bots': 'Bots',
+  'nav.executions': 'Executions',
+  'nav.logout': 'Log out',
+
+  'login.title': 'Sign in to CTB',
+  'login.username': 'Username',
+  'login.password': 'Password',
+  'login.submit': 'Sign in',
+  'login.submitting': 'Signing in…',
+  'login.error.invalid': 'Invalid username or password',
+  'login.error.unavailable': 'Login is not configured (CTB_ADMIN_PASS unset)',
+
+  'bots.title': 'Bots',
+  'bots.empty': 'No bots yet. Add your first bot.',
+  'bots.add': 'Add bot',
+  'bots.name': 'Bot name',
+  'bots.token': 'Telegram token',
+  'bots.token.hint': 'Token from BotFather — sent once, stored encrypted',
+  'bots.mode': 'Update mode',
+  'bots.mode.polling': 'Polling',
+  'bots.mode.webhook': 'Webhook',
+  'bots.status.active': 'Active',
+  'bots.status.inactive': 'Inactive',
+  'bots.status.error': 'Error',
+  'bots.action.start': 'Start',
+  'bots.action.stop': 'Stop',
+  'bots.action.delete': 'Delete',
+  'bots.action.flows': 'Flows',
+  'bots.delete.confirm': 'Delete bot “{name}” and all its flows?',
+  'bots.create': 'Create bot',
+  'bots.creating': 'Creating…',
+
+  'flows.title': 'Flows of {bot}',
+  'flows.empty': 'This bot has no flows yet.',
+  'flows.add': 'New flow',
+  'flows.name': 'Flow name',
+  'flows.create': 'Create flow',
+  'flows.creating': 'Creating…',
+  'flows.status.draft': 'Draft',
+  'flows.status.active': 'Active',
+  'flows.status.inactive': 'Inactive',
+  'flows.version': 'v{n}',
+  'flows.action.edit': 'Edit',
+  'flows.action.activate': 'Activate',
+  'flows.action.deactivate': 'Deactivate',
+  'flows.action.delete': 'Delete',
+  'flows.delete.confirm': 'Delete flow “{name}”?',
+
+  'editor.title': 'Editing flow: {name}',
+  'editor.canvas.placeholder': 'The visual canvas lands in the next step (P2-T2).',
+
+  'executions.title': 'Executions',
+  'executions.placeholder': 'The executions inspector lands in P2-T5.',
+
+  'error.network': 'Failed to reach the server',
+  'error.notFound': 'Not found',
+  'error.validation': 'Invalid input',
+  'error.unknown': 'Unknown error: {detail}',
+
+  'common.cancel': 'Cancel',
+  'common.back': 'Back',
+  'common.language': 'فارسی',
+};

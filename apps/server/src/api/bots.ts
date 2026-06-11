@@ -8,32 +8,16 @@
  * All routes live under /api/ and are covered by the app-level auth guard.
  */
 import { randomUUID } from 'node:crypto';
+import { CreateBotBodySchema, UpdateBotBodySchema } from '@ctb/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import type { Db } from '../db/index';
 import { bots } from '../db/schema';
 import { decrypt, encrypt } from '../lib/crypto';
 import type { TelegramGateway } from '../telegram/gateway';
 
-/** Loose Telegram token shape: "<digits>:<35-ish chars>". Keeps fakes testable. */
-const TokenSchema = z
-  .string()
-  .regex(/^\d+:[\w-]{20,}$/, 'must look like a Telegram bot token ("123456:ABC-…")');
-
-const CreateBotSchema = z.object({
-  name: z.string().min(1).max(120),
-  token: TokenSchema,
-  mode: z.enum(['webhook', 'polling']).default('polling'),
-  settings: z.record(z.string(), z.unknown()).default({}),
-});
-
-const UpdateBotSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  token: TokenSchema.optional(),
-  mode: z.enum(['webhook', 'polling']).optional(),
-  settings: z.record(z.string(), z.unknown()).optional(),
-});
+// Body schemas live in @ctb/shared (P2-T1) so the editor's typed client
+// validates against the exact same contract (invariant I5).
 
 type BotRow = typeof bots.$inferSelect;
 
@@ -87,7 +71,7 @@ export function registerBotsApi(app: FastifyInstance, deps: BotsApiDeps): void {
   });
 
   app.post('/api/bots', async (req, reply) => {
-    const parsed = CreateBotSchema.safeParse(req.body);
+    const parsed = CreateBotBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     }
@@ -108,7 +92,7 @@ export function registerBotsApi(app: FastifyInstance, deps: BotsApiDeps): void {
 
   app.patch('/api/bots/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const parsed = UpdateBotSchema.safeParse(req.body);
+    const parsed = UpdateBotBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     }

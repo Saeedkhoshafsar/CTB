@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
     "dev": "vite",
     "build": "vite build"
   },
   "dependencies": {
     "@ctb/shared": "*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.17.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

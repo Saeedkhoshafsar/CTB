@@ -1,5 +1,6 @@
 /**
- * Flow editor route (P2-T2) — palette + React Flow canvas + toolbar.
+ * Flow editor route (P2-T2, lifecycle P2-T4) — palette + React Flow canvas +
+ * toolbar with activate/deactivate, version history + rollback.
  * The document lives in the canvas store; this page wires routing, keyboard
  * shortcuts (Ctrl+Z/Y/S) and the save-state indicator around it.
  */
@@ -14,6 +15,7 @@ import { Palette } from '../canvas/Palette';
 import { ParamPanel } from '../canvas/ParamPanel';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
+import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
 
 function SaveBadge() {
@@ -27,6 +29,74 @@ function SaveBadge() {
   );
 }
 
+/** Version history dropdown — list of snapshots with a restore action. */
+function VersionsPanel() {
+  const t = useI18n((s) => s.t);
+  const { versions, current, versionsLoading, busy, rollback } = useLifecycle();
+  const flowId = useLifecycle((s) => s.flowId);
+
+  const onRestore = async (version: number) => {
+    if (!confirm(t('editor.versions.confirm', { n: version }))) return;
+    // flush pending edits FIRST so the current graph becomes a snapshot too
+    await useCanvas.getState().saveNow();
+    const flow = await rollback(version);
+    // reload the document from the server — rollback replaced the graph
+    if (flow && flowId) await useCanvas.getState().load(flowId);
+  };
+
+  return (
+    <div className="versions-panel" data-testid="versions-panel">
+      <div className="versions-head">
+        {t('editor.versions.title')} · {t('flows.version', { n: current })}
+      </div>
+      {versionsLoading ? (
+        <div className="versions-empty">{t('app.loading')}</div>
+      ) : versions.length === 0 ? (
+        <div className="versions-empty">{t('editor.versions.empty')}</div>
+      ) : (
+        <ul className="versions-list">
+          {versions.map((v) => (
+            <li key={v.version} className="versions-row">
+              <span className="versions-v">{t('flows.version', { n: v.version })}</span>
+              <span className="versions-meta">
+                {t('editor.versions.counts', { nodes: v.nodeCount, edges: v.edgeCount })}
+                {' · '}
+                {new Date(v.createdAt).toLocaleString()}
+              </span>
+              <button className="ghost" disabled={busy} onClick={() => void onRestore(v.version)}>
+                {t('editor.versions.restore')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Activation problems strip under the toolbar (flow-level + per-node). */
+function ProblemsStrip() {
+  const t = useI18n((s) => s.t);
+  const problems = useLifecycle((s) => s.problems);
+  const error = useLifecycle((s) => s.error);
+  const clearProblems = useLifecycle((s) => s.clearProblems);
+  if (problems.length === 0 && !error) return null;
+  return (
+    <div className="alert problems-strip" data-testid="problems-strip">
+      <strong>{t('editor.problems.title')}</strong>
+      <ul>
+        {error ? <li>{error}</li> : null}
+        {problems.map((p, i) => (
+          <li key={i}>{p.nodeId ? `${p.nodeId}: ${p.message}` : p.message}</li>
+        ))}
+      </ul>
+      <button className="ghost" onClick={clearProblems}>
+        {t('common.close')}
+      </button>
+    </div>
+  );
+}
+
 function Toolbar({ flow }: { flow: FlowPublic }) {
   const t = useI18n((s) => s.t);
   const past = useCanvas((s) => s.past);
@@ -34,25 +104,56 @@ function Toolbar({ flow }: { flow: FlowPublic }) {
   const undo = useCanvas((s) => s.undo);
   const redo = useCanvas((s) => s.redo);
   const saveNow = useCanvas((s) => s.saveNow);
+  const status = useLifecycle((s) => s.status);
+  const busy = useLifecycle((s) => s.busy);
+  const versionsOpen = useLifecycle((s) => s.versionsOpen);
+  const toggleVersions = useLifecycle((s) => s.toggleVersions);
+
+  const onActivate = async () => {
+    // activation validates the SAVED graph — flush edits first
+    await saveNow();
+    await useLifecycle.getState().activate();
+  };
 
   return (
-    <div className="editor-toolbar">
-      <Link className="btn ghost" to={`/bots/${flow.botId}/flows`}>
-        {t('common.back')}
-      </Link>
-      <h1 className="editor-title">{t('editor.title', { name: flow.name })}</h1>
-      <span className="spacer" />
-      <button className="ghost" disabled={past.length === 0} onClick={undo} title="Ctrl+Z">
-        {t('editor.undo')}
-      </button>
-      <button className="ghost" disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
-        {t('editor.redo')}
-      </button>
-      <button className="btn" onClick={() => void saveNow()}>
-        {t('editor.save')}
-      </button>
-      <SaveBadge />
-    </div>
+    <>
+      <div className="editor-toolbar">
+        <Link className="btn ghost" to={`/bots/${flow.botId}/flows`}>
+          {t('common.back')}
+        </Link>
+        <h1 className="editor-title">{t('editor.title', { name: flow.name })}</h1>
+        <span className={`badge ${status === 'active' ? 'active' : 'draft'}`}>
+          {t(`flows.status.${status}` as MessageKey)}
+        </span>
+        <span className="spacer" />
+        <button className="ghost" disabled={past.length === 0} onClick={undo} title="Ctrl+Z">
+          {t('editor.undo')}
+        </button>
+        <button className="ghost" disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
+          {t('editor.redo')}
+        </button>
+        <button className="btn" onClick={() => void saveNow()}>
+          {t('editor.save')}
+        </button>
+        <div className="versions-anchor">
+          <button className="ghost" onClick={toggleVersions}>
+            {t('editor.versions.button')}
+          </button>
+          {versionsOpen ? <VersionsPanel /> : null}
+        </div>
+        {status === 'active' ? (
+          <button className="danger" disabled={busy} onClick={() => void useLifecycle.getState().deactivate()}>
+            {t('flows.action.deactivate')}
+          </button>
+        ) : (
+          <button className="primary" disabled={busy} onClick={() => void onActivate()}>
+            {t('flows.action.activate')}
+          </button>
+        )}
+        <SaveBadge />
+      </div>
+      <ProblemsStrip />
+    </>
   );
 }
 
@@ -89,7 +190,10 @@ export function FlowEditorPage() {
   useEffect(() => {
     api
       .getFlow(flowId)
-      .then(setFlow)
+      .then((f) => {
+        setFlow(f);
+        useLifecycle.getState().init(f.id, f.status);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     void load(flowId);
     // run data for the node detail view — best-effort, independent of the doc
@@ -100,6 +204,7 @@ export function FlowEditorPage() {
       if (saveState === 'dirty') void saveNow().finally(reset);
       else reset();
       useRunData.getState().reset();
+      useLifecycle.getState().reset();
     };
   }, [flowId, load]);
 

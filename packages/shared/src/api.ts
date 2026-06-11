@@ -105,6 +105,37 @@ export interface FlowPublic {
 }
 
 // ---------------------------------------------------------------------------
+// flow lifecycle (P2-T4 — versions, rollback, activation problems)
+// ---------------------------------------------------------------------------
+
+export const RollbackFlowBodySchema = z.object({
+  /** Snapshot version to restore (must exist in flow_versions). */
+  version: z.number().int().min(1),
+});
+export type RollbackFlowBody = z.infer<typeof RollbackFlowBodySchema>;
+
+/**
+ * One activation problem. `nodeId` points the canvas at the offending node
+ * (badge); null = flow-level (e.g. "no enabled trigger").
+ */
+export interface FlowProblem {
+  nodeId: string | null;
+  message: string;
+}
+
+/**
+ * GET /api/flows/:id/versions row — node/edge COUNTS instead of the full
+ * graph so the list stays cheap; the graph itself only travels on rollback
+ * (server-side restore).
+ */
+export interface FlowVersionInfo {
+  version: number;
+  createdAt: string;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+// ---------------------------------------------------------------------------
 // node types (GET /api/node-types — palette + param forms, P2-T2)
 // ---------------------------------------------------------------------------
 
@@ -172,4 +203,6 @@ export interface ApiErrorBody {
   /** Zod issues on 400 invalid_body; human strings on 422 activation problems. */
   issues?: unknown[];
   problems?: string[];
+  /** Structured activation problems (P2-T4) — lets the canvas badge the offending node. */
+  nodeProblems?: FlowProblem[];
 }

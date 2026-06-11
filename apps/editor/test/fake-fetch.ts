@@ -11,8 +11,11 @@ import {
   TgSendMessageParamsSchema,
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
+  problemStrings,
+  validateFlowForActivation,
   type BotPublic,
   type ExecutionDetail,
+  type FlowGraph,
   type FlowPublic,
   type NodeTypeInfo,
 } from '@ctb/shared';
@@ -34,6 +37,20 @@ function toParamsJsonSchema(schema: ZodType): Record<string, unknown> {
  * the same z.toJSONSchema options the real endpoint uses — so P2-T3 form
  * tests run against the genuine schemas.
  */
+/**
+ * type → params schema map for activation validation — the SAME schemas the
+ * real registry holds (I5), fed to the SAME shared validateFlowForActivation
+ * the real endpoint calls, so the fake's 422 semantics cannot drift.
+ */
+const PARAM_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
+  ['tg.trigger', TgTriggerParamsSchema],
+  ['tg.sendMessage', TgSendMessageParamsSchema],
+  ['tg.waitForReply', TgWaitForReplyParamsSchema],
+  ['flow.if', FlowIfParamsSchema],
+  ['data.setFields', DataSetFieldsParamsSchema],
+  ['flow.stopError', FlowStopErrorParamsSchema],
+]);
+
 export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
   { type: 'tg.trigger', category: 'trigger', meta: { labelKey: 'nodes.tg.trigger.label', icon: 'zap' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(TgTriggerParamsSchema) },
   { type: 'tg.sendMessage', category: 'telegram', meta: { labelKey: 'nodes.tg.sendMessage.label', icon: 'send' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(TgSendMessageParamsSchema) },
@@ -43,10 +60,18 @@ export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
   { type: 'flow.stopError', category: 'flow', meta: { labelKey: 'nodes.flow.stopError.label', icon: 'octagon-x' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: toParamsJsonSchema(FlowStopErrorParamsSchema) },
 ];
 
+interface FlowVersionRow {
+  version: number;
+  graph: FlowGraph;
+  createdAt: string;
+}
+
 export interface FakeServer {
   fetch: FetchLike;
   bots: Map<string, BotPublic & { token: string }>;
   flows: Map<string, FlowPublic>;
+  /** flowId → snapshots (mirrors flow_versions: outgoing graph per bump). */
+  flowVersions: Map<string, FlowVersionRow[]>;
   /** Seed executions here (newest first is the caller's job — fake sorts by startedAt desc). */
   executions: Map<string, ExecutionDetail>;
   loggedIn: boolean;
@@ -67,6 +92,7 @@ export function createFakeServer(): FakeServer {
   const srv: FakeServer = {
     bots: new Map(),
     flows: new Map(),
+    flowVersions: new Map(),
     executions: new Map(),
     loggedIn: false,
     calls: [],
@@ -188,17 +214,50 @@ export function createFakeServer(): FakeServer {
         srv.flows.set(id, flow);
         return json(201, { flow });
       }
+      // ---- flow lifecycle: versions + rollback (P2-T4) ----
+      const versionsMatch = path.match(/^\/api\/flows\/([^/]+)\/versions$/);
+      if (versionsMatch && method === 'GET') {
+        const flow = srv.flows.get(versionsMatch[1]!);
+        if (!flow) return json(404, { error: 'not_found' });
+        const versions = [...(srv.flowVersions.get(flow.id) ?? [])]
+          .sort((a, b) => b.version - a.version)
+          .map((v) => ({
+            version: v.version,
+            createdAt: v.createdAt,
+            nodeCount: v.graph.nodes.length,
+            edgeCount: v.graph.edges.length,
+          }));
+        return json(200, { current: flow.version, versions });
+      }
+      const rollbackMatch = path.match(/^\/api\/flows\/([^/]+)\/rollback$/);
+      if (rollbackMatch && method === 'POST') {
+        const flow = srv.flows.get(rollbackMatch[1]!);
+        if (!flow) return json(404, { error: 'not_found' });
+        const snaps = srv.flowVersions.get(flow.id) ?? [];
+        const snap = snaps.find((v) => v.version === body?.version);
+        if (!snap) return json(404, { error: 'version_not_found' });
+        // rollback is itself undoable: snapshot the outgoing graph too
+        snaps.push({ version: flow.version, graph: flow.graph, createdAt: new Date().toISOString() });
+        srv.flowVersions.set(flow.id, snaps);
+        flow.graph = snap.graph;
+        flow.version += 1;
+        flow.updatedAt = new Date().toISOString();
+        return json(200, { flow });
+      }
+
       const flowMatch = path.match(/^\/api\/flows\/([^/]+)(\/(activate|deactivate))?$/);
       if (flowMatch) {
         const flow = srv.flows.get(flowMatch[1]!);
         if (!flow) return json(404, { error: 'not_found' });
         const action = flowMatch[3];
         if (action === 'activate') {
-          const hasTrigger = flow.graph.nodes.some((n) => n.type === 'tg.trigger' && !n.disabled);
-          if (!hasTrigger) {
+          // same shared validator + schema map semantics as the real endpoint
+          const nodeProblems = validateFlowForActivation(flow.graph, PARAM_SCHEMAS);
+          if (nodeProblems.length > 0) {
             return json(422, {
               error: 'not_activatable',
-              problems: ['flow has no enabled tg.trigger node'],
+              problems: problemStrings(nodeProblems),
+              nodeProblems,
             });
           }
           flow.status = 'active';
@@ -213,8 +272,12 @@ export function createFakeServer(): FakeServer {
           if (body.graph !== undefined) {
             const parsed = FlowGraphSchema.safeParse(body.graph);
             if (!parsed.success) return json(400, { error: 'invalid_graph' });
+            // real server snapshots the OUTGOING graph into flow_versions + bumps
+            const snaps = srv.flowVersions.get(flow.id) ?? [];
+            snaps.push({ version: flow.version, graph: flow.graph, createdAt: new Date().toISOString() });
+            srv.flowVersions.set(flow.id, snaps);
             flow.graph = parsed.data;
-            flow.version += 1; // real server snapshots the outgoing graph + bumps
+            flow.version += 1;
           }
           if (body.name !== undefined) flow.name = body.name;
           flow.updatedAt = new Date().toISOString();

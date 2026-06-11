@@ -10,6 +10,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { memo } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
+import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
 import type { CtbNodeData } from './graph';
 
@@ -32,6 +33,8 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   // n8n-style run badge: how many items this node emitted on the last run
   const run = useRunData((s) => s.byNode.get(flowNode.id));
   const outCount = run ? Object.values(run.output).reduce((n, arr) => n + arr.length, 0) : null;
+  // activation problems for THIS node (P2-T4) — badge on the offending node
+  const nodeProblems = useLifecycle((s) => s.problemsByNode.get(flowNode.id));
 
   const inputs = info?.ports.inputs ?? ['main'];
   const outputs = info?.ports.outputs ?? ['main'];
@@ -57,6 +60,11 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
         {flowNode.note ? <div className="ctb-node-note">{flowNode.note}</div> : null}
         {flowNode.disabled ? <div className="ctb-node-flag">{t('editor.node.disabled')}</div> : null}
         {!info ? <div className="ctb-node-flag danger">{t('editor.node.unknownType')}</div> : null}
+        {nodeProblems && nodeProblems.length > 0 ? (
+          <div className="ctb-node-flag danger" title={nodeProblems.join('\n')}>
+            ⚠ {t('editor.node.problems', { n: nodeProblems.length })}
+          </div>
+        ) : null}
       </div>
 
       {inputs.map((port, i) => (

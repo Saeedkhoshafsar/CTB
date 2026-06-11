@@ -64,6 +64,8 @@ export interface NodeCtx {
   /** Telegram sender (centralized, rate-limited). Null when flow has no chat context. */
   tg: {
     sendMessage(opts: Record<string, unknown>): Promise<{ messageId: number }>;
+    /** editMessageText — optional capability (tg.menu edit_in_place, P2-T6). */
+    editMessageText?(opts: Record<string, unknown>): Promise<void>;
   } | null;
   /** Structured logging into exec_logs. */
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;

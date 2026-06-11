@@ -45,6 +45,12 @@ export interface RouterDeps {
   flows: FlowSource;
   /** Re-prompt channel for validation failures (centralized TgSender behind it). */
   sendText(botId: string, chatId: number, text: string): Promise<void>;
+  /**
+   * answerCallbackQuery channel (tg.menu answer_callback_text, P2-T6).
+   * Optional — a missing impl (older wiring/tests) silently skips the toast;
+   * failures are logged, never block the resume (the click must still work).
+   */
+  answerCallback?(botId: string, callbackQueryId: string, text?: string): Promise<void>;
   /** Execution id factory (injectable for deterministic tests). */
   newId?: () => string;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
@@ -175,12 +181,23 @@ export class UpdateRouter {
         if (!port) continue; // a different menu's button — not ours
         const flow = await this.flowOf(exec);
         if (!flow) continue;
+        // answerCallbackQuery FIRST (Telegram shows a spinner until answered);
+        // failure is logged but never blocks the resume.
+        if (this.deps.answerCallback) {
+          try {
+            await this.deps.answerCallback(event.botId, event.callbackQueryId, wait.answerText);
+          } catch (err) {
+            this.log('warn', `answerCallback failed for ${exec.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+        // "btn:key" port → bare key for the button-meta lookup (menu WaitSpec).
+        const key = port.startsWith('btn:') ? port.slice(4) : port;
         await this.deps.executor.resume({
           executionId: exec.id,
           graph: flow.graph,
           flow: { id: flow.id, name: flow.name },
           port,
-          items: [callbackItem(event)],
+          items: [callbackItem(event, wait.buttons?.[key])],
         });
         return true;
       }

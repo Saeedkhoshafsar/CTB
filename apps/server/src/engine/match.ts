@@ -187,12 +187,23 @@ export function replyItem(event: TgEvent, value: unknown): FlowItem {
   };
 }
 
-/** Menu resume emission per NODES.md: `{ json: { clicked: {...} } }`. */
-export function callbackItem(event: Extract<TgEvent, { kind: 'callback' }>): FlowItem {
+/**
+ * Menu resume emission per NODES.md: `{ json: { clicked: {...} } }`.
+ * `meta` is the per-key button info the menu node persisted in its WaitSpec
+ * (label/value — the node never re-executes on resume, DL #13); message_id
+ * lets a downstream edit_in_place menu edit THIS message.
+ */
+export function callbackItem(
+  event: Extract<TgEvent, { kind: 'callback' }>,
+  meta?: { label?: string | undefined; value?: string | undefined },
+): FlowItem {
   const key = event.data.startsWith('btn:') ? event.data.slice(4) : event.data;
+  const clicked: Record<string, unknown> = { key, data: event.data, message_id: event.messageId };
+  if (meta?.label !== undefined) clicked['label'] = meta.label;
+  if (meta?.value !== undefined) clicked['value'] = meta.value;
   return {
     json: {
-      clicked: { key, data: event.data },
+      clicked,
       user: { ...event.user },
       chat: { ...event.chat },
       callback_query_id: event.callbackQueryId,

@@ -7,12 +7,12 @@
  * convention, not text direction). Multi-output nodes get one labeled handle
  * per port (true/false, reply/timeout/invalid).
  */
-import { Handle, Position } from '@xyflow/react';
-import { memo } from 'react';
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
+import { memo, useEffect } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
-import type { CtbNodeData } from './graph';
+import { effectiveOutputs, type CtbNodeData } from './graph';
 
 const CATEGORY_COLOR: Record<string, string> = {
   trigger: 'var(--node-trigger)',
@@ -37,7 +37,16 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   const nodeProblems = useLifecycle((s) => s.problemsByNode.get(flowNode.id));
 
   const inputs = info?.ports.inputs ?? ['main'];
-  const outputs = info?.ports.outputs ?? ['main'];
+  // dynamic-port nodes (tg.menu / flow.switch, P2-T6) grow one handle per
+  // button/rule — computed from params via the shared helper.
+  const outputs = effectiveOutputs(flowNode, info);
+  // React Flow caches handle positions — tell it to re-measure whenever the
+  // dynamic port list changes (add/remove button) so edges re-anchor.
+  const updateNodeInternals = useUpdateNodeInternals();
+  const portsKey = outputs.join('|');
+  useEffect(() => {
+    updateNodeInternals(flowNode.id);
+  }, [portsKey, flowNode.id, updateNodeInternals]);
   const color = info ? (CATEGORY_COLOR[info.category] ?? 'var(--border)') : 'var(--danger)';
   // node labels live in the shared registry as i18n keys (nodes.tg.trigger.label)
   const label = info ? t(info.meta.labelKey as MessageKey) : flowNode.type;
@@ -86,7 +95,7 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
           />
           {outputs.length > 1 ? (
             <span className="ctb-port-label" style={{ top: handleTop(i, outputs.length) }}>
-              {port}
+              {port.startsWith('btn:') ? port.slice(4) : port}
             </span>
           ) : null}
         </div>

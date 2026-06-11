@@ -54,6 +54,17 @@ export const WaitSpecSchema = z.discriminatedUnion('kind', [
     messageId: z.number().int().optional(),
     /** Accepted callback keys → output ports ("btn:<key>"). */
     keys: z.array(z.string().min(1)).min(1),
+    /**
+     * Per-key button metadata (tg.menu, P2-T6): the router enriches the resume
+     * item's `$json.clicked` with label/value from here, because the menu node
+     * never re-executes on resume (Decision Log #13 applies to menus too).
+     * Optional + additive — waits persisted before P2-T6 still parse.
+     */
+    buttons: z
+      .record(z.string(), z.object({ label: z.string().optional(), value: z.string().optional() }))
+      .optional(),
+    /** answerCallbackQuery toast shown when a matching button is clicked. */
+    answerText: z.string().optional(),
     timeoutAt: z.iso.datetime().nullable().default(null),
   }),
   /** Durable delay (flow.wait). */

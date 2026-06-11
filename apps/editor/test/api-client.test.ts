@@ -86,7 +86,7 @@ describe('ApiClient (P2-T1)', () => {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).status).toBe(422);
       expect((err as ApiError).body.problems).toEqual([
-        'flow has no enabled tg.trigger node',
+        'flow has no enabled trigger node',
       ]);
     }
 

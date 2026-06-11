@@ -8,6 +8,7 @@ import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json'
 import {
   buildEdge,
   canConnect,
+  effectiveOutputs,
   flowToRfEdges,
   flowToRfNodes,
   nextEdgeId,
@@ -120,6 +121,96 @@ describe('canConnect (port-aware, type-checked edges)', () => {
         byType,
       ),
     ).toEqual({ ok: false, reason: 'unknownTargetPort' });
+  });
+});
+
+describe('dynamic ports — tg.menu / flow.switch (P2-T6)', () => {
+  const menuGraph = FlowGraphSchema.parse({
+    nodes: [
+      {
+        id: 'menu_1',
+        type: 'tg.menu',
+        params: {
+          text: 'انتخاب:',
+          buttons: [[{ text: 'خرید', key: 'buy' }], [{ text: 'راهنما', key: 'help' }]],
+          timeout: '15m',
+        },
+        position: { x: 0, y: 0 },
+      },
+      { id: 'greet', type: 'tg.sendMessage', params: { text: 'hi' }, position: { x: 0, y: 0 } },
+    ],
+    edges: [],
+  });
+  const menuNode = menuGraph.nodes[0]!;
+
+  it('effectiveOutputs computes ports from params (menu buttons + timeout)', () => {
+    expect(effectiveOutputs(menuNode, byType.get('tg.menu'))).toEqual([
+      'btn:buy',
+      'btn:help',
+      'timeout',
+    ]);
+    // static-port nodes fall back to the registry list
+    expect(effectiveOutputs(menuGraph.nodes[1]!, byType.get('tg.sendMessage'))).toEqual(['main']);
+    // draft-tolerant: half-typed buttons don't crash, valid keys still appear
+    const draft = { ...menuNode, params: { buttons: [[{ text: '', key: 'ok' }, { key: '' }]] } };
+    expect(effectiveOutputs(draft, byType.get('tg.menu'))).toEqual(['btn:ok']);
+  });
+
+  it('canConnect accepts a button port and rejects a removed one — menu ports render as separate edges', () => {
+    expect(
+      canConnect(
+        { from: { node: 'menu_1', port: 'btn:buy' }, to: { node: 'greet', port: 'main' } },
+        menuGraph,
+        byType,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      canConnect(
+        { from: { node: 'menu_1', port: 'btn:deleted' }, to: { node: 'greet', port: 'main' } },
+        menuGraph,
+        byType,
+      ),
+    ).toEqual({ ok: false, reason: 'unknownSourcePort' });
+
+    // each button becomes its own labeled edge on the canvas (P2-T6 acceptance)
+    const wired = FlowGraphSchema.parse({
+      nodes: menuGraph.nodes,
+      edges: [
+        { id: 'e1', from: { node: 'menu_1', port: 'btn:buy' }, to: { node: 'greet', port: 'main' } },
+        { id: 'e2', from: { node: 'menu_1', port: 'btn:help' }, to: { node: 'greet', port: 'main' } },
+      ],
+    });
+    const rfEdges = flowToRfEdges(wired, none);
+    expect(rfEdges.map((e) => ({ handle: e.sourceHandle, label: e.label }))).toEqual([
+      { handle: 'btn:buy', label: 'btn:buy' },
+      { handle: 'btn:help', label: 'btn:help' },
+    ]);
+  });
+
+  it('switch rule ports work the same way (rules + default)', () => {
+    const switchGraph = FlowGraphSchema.parse({
+      nodes: [
+        {
+          id: 'sw',
+          type: 'flow.switch',
+          params: { value: '{{ $json.kind }}', rules: [{ port: 'vip', match: 'vip' }] },
+          position: { x: 0, y: 0 },
+        },
+        { id: 'greet', type: 'tg.sendMessage', params: { text: 'hi' }, position: { x: 0, y: 0 } },
+      ],
+      edges: [],
+    });
+    expect(effectiveOutputs(switchGraph.nodes[0]!, byType.get('flow.switch'))).toEqual([
+      'vip',
+      'default',
+    ]);
+    expect(
+      canConnect(
+        { from: { node: 'sw', port: 'default' }, to: { node: 'greet', port: 'main' } },
+        switchGraph,
+        byType,
+      ),
+    ).toEqual({ ok: true });
   });
 });
 

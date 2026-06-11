@@ -20,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
-import { flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
+import { effectiveOutputs, flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
 import { useNodeDetail } from './NodeDetail';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
@@ -114,7 +114,8 @@ function CanvasInner() {
         const si = bt.get(source.type);
         const ti = bt.get(target.type);
         return Boolean(
-          si?.ports.outputs.includes(conn.sourceHandle ?? 'main') &&
+          si &&
+            effectiveOutputs(source, si).includes(conn.sourceHandle ?? 'main') &&
             ti?.ports.inputs.includes(conn.targetHandle ?? 'main'),
         );
       })();

@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   CTB_HOST: z.string().default('0.0.0.0'),
   CTB_ADMIN_USER: z.string().default('admin'),
   CTB_ADMIN_PASS: z.string().optional(),
+  /** Public base URL (https://bot.example.com) — required only for webhook-mode bots. */
+  CTB_PUBLIC_URL: z.string().url().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 export type Env = z.infer<typeof EnvSchema>;

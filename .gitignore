@@ -8,6 +8,7 @@ build/
 !.env.example
 *.sqlite
 *.db
-data/
+# runtime data dir at repo root only — NOT src/data/ source folders
+/data/
 coverage/
 .DS_Store

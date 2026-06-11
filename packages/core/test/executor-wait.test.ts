@@ -78,7 +78,7 @@ describe('executor — WAIT / resume (the heart of CTB, invariant I4)', () => {
 
     // brand-new Executor instance (new process) — shares only the store (the DB)
     const fresh = new Executor(makeRegistry(), store, {
-      kv: { get: async () => undefined, set: async () => undefined, delete: async () => undefined },
+      kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
       http: { request: async () => ({ status: 200, headers: {}, body: null }) },
       tg: () => null,
       log: (e) => logs.push(e),

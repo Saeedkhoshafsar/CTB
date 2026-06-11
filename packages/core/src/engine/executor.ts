@@ -53,10 +53,15 @@ export type StepLogger = (entry: StepLogEntry) => void;
 
 /** Host-injected capabilities handed to nodes via NodeCtx (invariant I3/I6). */
 export interface ExecutorServices {
-  kv: NodeCtx['kv'];
+  /** KV factory — per-bot, because one executor serves many bots (DL #15). */
+  kv: (botId: string) => NodeCtx['kv'];
   http: NodeCtx['http'];
-  /** Telegram sender factory — null when the execution has no chat context. */
-  tg: (chatId: number | null) => NodeCtx['tg'];
+  /**
+   * Telegram sender factory — null when no sender applies. Receives the
+   * execution's botId because ONE executor serves MANY bots (Decision Log #15):
+   * the server resolves the right per-bot rate-limited sender from it.
+   */
+  tg: (botId: string, chatId: number | null) => NodeCtx['tg'];
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -360,9 +365,9 @@ export class Executor {
         },
         all: () => ({ ...state.vars }),
       },
-      kv: this.services.kv,
+      kv: this.services.kv(exec.botId),
       http: this.services.http,
-      tg: this.services.tg(exec.chatId),
+      tg: this.services.tg(exec.botId, exec.chatId),
       log: (level, message, data) => this.log(exec.id, node.id, level, message, data),
       now: () => this.clock(),
     };

@@ -1,10 +1,15 @@
 /**
- * @ctb/server entrypoint — boots Fastify (P0-T4).
- * Validates env, opens DB + runs migrations, then listens.
+ * @ctb/server entrypoint — boots Fastify + the conversational engine (P1-T8).
+ * Validates env, opens DB + migrations, wires gateway→router→executor,
+ * re-starts bots that were active before the last shutdown (I4: a restart
+ * must never strand waiting conversations), then listens.
  */
+import { eq } from 'drizzle-orm';
 import { buildApp } from './app';
-import { openDb } from './db/index';
+import { openDb, schema } from './db/index';
 import { runMigrations } from './db/migrate';
+import { wireEngine } from './engine/wire';
+import { decrypt, deriveKey } from './lib/crypto';
 import { loadEnv } from './lib/env';
 
 async function main(): Promise<void> {
@@ -14,11 +19,47 @@ async function main(): Promise<void> {
   const { db, sqlite } = openDb(env.CTB_DB_PATH);
   runMigrations(db);
 
-  const app = buildApp({ env });
+  const engine = wireEngine({
+    db,
+    ctbSecret: env.CTB_SECRET,
+    log: (level, message, data) => {
+      // eslint-disable-next-line no-console
+      if (level === 'error' || level === 'warn') console.error(`[engine:${level}]`, message, data ?? '');
+    },
+  });
+
+  const app = buildApp({ env, db, engine });
   app.log.info({ dbPath: env.CTB_DB_PATH }, 'database migrated');
+
+  // Re-arm bots that were active before the last shutdown.
+  const key = deriveKey(env.CTB_SECRET);
+  const activeBots = db.select().from(schema.bots).where(eq(schema.bots.status, 'active')).all();
+  for (const bot of activeBots) {
+    try {
+      const token = decrypt(bot.tokenEnc, key);
+      engine.gateway.registerBot(bot.id, token);
+      if (bot.mode === 'webhook' && env.CTB_PUBLIC_URL) {
+        await engine.gateway.enableWebhook(bot.id, env.CTB_PUBLIC_URL);
+      } else {
+        await engine.gateway.startPolling(bot.id);
+      }
+      app.log.info({ botId: bot.id, mode: bot.mode }, 'bot restarted');
+    } catch (err) {
+      app.log.error({ botId: bot.id, err }, 'failed to restart bot');
+      db.update(schema.bots)
+        .set({ status: 'error', updatedAt: new Date().toISOString() })
+        .where(eq(schema.bots.id, bot.id))
+        .run();
+    }
+  }
+
+  // Durable-wait timeouts keep firing across restarts.
+  engine.router.startTimeoutScanner();
 
   const close = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
+    engine.router.stopTimeoutScanner();
+    await engine.gateway.stopAll();
     await app.close();
     sqlite.close();
     process.exit(0);

@@ -142,11 +142,11 @@ export function makeHarness(overrides: Partial<ExecutorServices> = {}): Harness 
   const store = new MemoryExecutionStore(() => new Date(1750000000000 + tick++ * 10));
   const logs: StepLogEntry[] = [];
   const services: ExecutorServices = {
-    kv: {
+    kv: () => ({
       get: async () => undefined,
       set: async () => undefined,
       delete: async () => undefined,
-    },
+    }),
     http: {
       request: async () => ({ status: 200, headers: {}, body: null }),
     },

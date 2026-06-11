@@ -12,8 +12,14 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { registerBotsApi, type BotsApiDeps } from './api/bots';
+import { registerFlowsApi } from './api/flows';
+import type { Db } from './db/index';
+import type { Engine } from './engine/wire';
 import type { Env } from './lib/env';
+import { deriveKey } from './lib/crypto';
 import { createSessionToken, safeEqual, verifySessionToken } from './lib/session';
+import { registerWebhookRoute } from './telegram/gateway';
 
 export const SESSION_COOKIE = 'ctb_session';
 
@@ -28,6 +34,15 @@ export interface BuildAppOptions {
   editorDistDir?: string;
   /** Fastify logger options; false disables (tests). */
   logger?: boolean | object;
+  /**
+   * Engine integration (P1-T8): when db+engine are provided, the bots/flows
+   * APIs and the Telegram webhook route are mounted. Tests that only exercise
+   * auth/static may omit them — the app still boots.
+   */
+  db?: Db;
+  engine?: Engine;
+  /** Extra bot-registration opts per bot (botInfo/fake transport in tests). */
+  botRegisterOpts?: BotsApiDeps['registerOpts'];
 }
 
 function defaultEditorDist(): string {
@@ -103,6 +118,20 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     if (req.url.startsWith('/api/auth/')) return;
     await requireAuth(req, reply);
   });
+
+  // ---- engine APIs (P1-T8) -------------------------------------------------
+  if (opts.db && opts.engine) {
+    const key = deriveKey(env.CTB_SECRET);
+    registerBotsApi(app, {
+      db: opts.db,
+      key,
+      gateway: opts.engine.gateway,
+      publicUrl: env.CTB_PUBLIC_URL,
+      ...(opts.botRegisterOpts ? { registerOpts: opts.botRegisterOpts } : {}),
+    });
+    registerFlowsApi(app, { db: opts.db });
+    registerWebhookRoute(app, opts.engine.gateway);
+  }
 
   // ---- editor static ------------------------------------------------------
   const distDir = opts.editorDistDir ?? defaultEditorDist();

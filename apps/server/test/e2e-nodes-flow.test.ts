@@ -36,7 +36,7 @@ function makeWorld(store = new MemoryExecutionStore()) {
   const sent: Sent[] = [];
   const registry = registerBuiltinNodes(new NodeRegistry());
   const services: ExecutorServices = {
-    kv: { get: async () => undefined, set: async () => undefined, delete: async () => undefined },
+    kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
     http: { request: async () => ({ status: 200, headers: {}, body: null }) },
     tg: () => ({
       async sendMessage(opts) {

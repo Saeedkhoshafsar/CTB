@@ -9,25 +9,15 @@
  * All routes live under /api/ and are covered by the app-level auth guard.
  */
 import { randomUUID } from 'node:crypto';
-import { FlowGraphSchema } from '@ctb/shared';
+import { CreateFlowBodySchema, FlowGraphSchema, UpdateFlowBodySchema } from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { z } from 'zod';
 import type { Db } from '../db/index';
 import { bots, flowVersions, flows } from '../db/schema';
 
-const EMPTY_GRAPH = { nodes: [], edges: [] };
-
-const CreateFlowSchema = z.object({
-  botId: z.string().min(1),
-  name: z.string().min(1).max(200),
-  graph: FlowGraphSchema.default(EMPTY_GRAPH),
-});
-
-const UpdateFlowSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  graph: FlowGraphSchema.optional(),
-});
+// Body schemas live in @ctb/shared (P2-T1) so the editor's typed client
+// validates against the exact same contract (invariant I5).
 
 type FlowRow = typeof flows.$inferSelect;
 
@@ -76,7 +66,7 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
   });
 
   app.post('/api/flows', async (req, reply) => {
-    const parsed = CreateFlowSchema.safeParse(req.body);
+    const parsed = CreateFlowBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     }
@@ -98,7 +88,7 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
 
   app.patch('/api/flows/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const parsed = UpdateFlowSchema.safeParse(req.body);
+    const parsed = UpdateFlowBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     }

@@ -12,6 +12,14 @@ export interface Segment {
 }
 
 /**
+ * MIME type for dropping a data-field expression onto an expression input
+ * (n8n-style drag-to-map, P2-T3.5). Lives in the PURE half of the form
+ * engine so both sides — the canvas data panel (drag source) and the
+ * ExpressionInput widget (drop target) — share it without DOM imports.
+ */
+export const FIELD_DRAG_MIME = 'application/x-ctb-field-expr';
+
+/**
  * Tokenize like the engine: `{{ ... }}` non-greedy; an unclosed `{{` is a
  * literal (the core tokenizer treats it the same way, so the highlight never
  * promises an expression the engine won't evaluate).

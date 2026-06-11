@@ -13,6 +13,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { registerBotsApi, type BotsApiDeps } from './api/bots';
+import { registerExecutionsApi } from './api/executions';
 import { registerFlowsApi } from './api/flows';
 import { registerNodeTypesApi } from './api/node-types';
 import type { Db } from './db/index';
@@ -131,6 +132,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       ...(opts.botRegisterOpts ? { registerOpts: opts.botRegisterOpts } : {}),
     });
     registerFlowsApi(app, { db: opts.db });
+    registerExecutionsApi(app, { db: opts.db });
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);
   }

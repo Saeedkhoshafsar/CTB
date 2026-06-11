@@ -12,6 +12,7 @@ import {
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
   type BotPublic,
+  type ExecutionDetail,
   type FlowPublic,
   type NodeTypeInfo,
 } from '@ctb/shared';
@@ -46,6 +47,8 @@ export interface FakeServer {
   fetch: FetchLike;
   bots: Map<string, BotPublic & { token: string }>;
   flows: Map<string, FlowPublic>;
+  /** Seed executions here (newest first is the caller's job — fake sorts by startedAt desc). */
+  executions: Map<string, ExecutionDetail>;
   loggedIn: boolean;
   calls: { method: string; path: string; body?: unknown }[];
 }
@@ -64,6 +67,7 @@ export function createFakeServer(): FakeServer {
   const srv: FakeServer = {
     bots: new Map(),
     flows: new Map(),
+    executions: new Map(),
     loggedIn: false,
     calls: [],
     fetch: async (input, init) => {
@@ -92,6 +96,24 @@ export function createFakeServer(): FakeServer {
       }
 
       if (!srv.loggedIn) return json(401, { error: 'unauthorized' });
+
+      // ---- executions (P2-T3.5) ----
+      if (path === '/api/executions' && method === 'GET') {
+        const flowId = url.searchParams.get('flowId');
+        const botId = url.searchParams.get('botId');
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 50), 1), 200);
+        const executions = [...srv.executions.values()]
+          .filter((e) => (!flowId || e.flowId === flowId) && (!botId || e.botId === botId))
+          .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
+          .slice(0, limit)
+          .map(({ wait: _w, logs: _l, ...summary }) => summary);
+        return json(200, { executions });
+      }
+      const execMatch = path.match(/^\/api\/executions\/([^/]+)$/);
+      if (execMatch && method === 'GET') {
+        const exec = srv.executions.get(execMatch[1]!);
+        return exec ? json(200, { execution: exec }) : json(404, { error: 'not_found' });
+      }
 
       // ---- node types (P2-T2) ----
       if (path === '/api/node-types' && method === 'GET') {

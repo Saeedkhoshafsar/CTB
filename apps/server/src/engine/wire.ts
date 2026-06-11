@@ -121,8 +121,10 @@ export function wireEngine(opts: WireOptions): Engine {
           nodeId: entry.nodeId,
           level: entry.level,
           message: entry.message,
-          input: null,
-          output: entry.data !== undefined ? entry.data : null,
+          // I/O snapshots from the executor (P2-T3.5) feed the editor's
+          // node detail view; generic `data` rides output for plain rows.
+          input: entry.input ?? null,
+          output: entry.output ?? (entry.data !== undefined ? entry.data : null),
           error: entry.level === 'error' ? entry.message : null,
           durationMs: entry.durationMs ?? null,
           ts: entry.ts,

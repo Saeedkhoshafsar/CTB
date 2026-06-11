@@ -9,10 +9,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { FlowCanvas } from '../canvas/FlowCanvas';
+import { NodeDetail } from '../canvas/NodeDetail';
 import { Palette } from '../canvas/Palette';
 import { ParamPanel } from '../canvas/ParamPanel';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
+import { useRunData } from '../stores/run-data';
 
 function SaveBadge() {
   const t = useI18n((s) => s.t);
@@ -90,11 +92,14 @@ export function FlowEditorPage() {
       .then(setFlow)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     void load(flowId);
+    // run data for the node detail view — best-effort, independent of the doc
+    void useRunData.getState().load(flowId);
     return () => {
       // leaving the editor: flush a pending autosave so edits aren't lost
       const { saveState, saveNow, reset } = useCanvas.getState();
       if (saveState === 'dirty') void saveNow().finally(reset);
       else reset();
+      useRunData.getState().reset();
     };
   }, [flowId, load]);
 
@@ -141,6 +146,7 @@ export function FlowEditorPage() {
           </div>
           <ParamPanel />
         </div>
+        <NodeDetail />
       </div>
     </ReactFlowProvider>
   );

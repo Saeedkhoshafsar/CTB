@@ -10,6 +10,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { memo } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
+import { useRunData } from '../stores/run-data';
 import type { CtbNodeData } from './graph';
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -28,6 +29,9 @@ function handleTop(index: number, count: number): string {
 export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   const t = useI18n((s) => s.t);
   const { flowNode, info } = data;
+  // n8n-style run badge: how many items this node emitted on the last run
+  const run = useRunData((s) => s.byNode.get(flowNode.id));
+  const outCount = run ? Object.values(run.output).reduce((n, arr) => n + arr.length, 0) : null;
 
   const inputs = info?.ports.inputs ?? ['main'];
   const outputs = info?.ports.outputs ?? ['main'];
@@ -45,6 +49,11 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
       </div>
       <div className="ctb-node-body">
         <span className="ctb-node-id">{flowNode.id}</span>
+        {outCount !== null && outCount > 0 ? (
+          <span className="ctb-node-run" title={t('data.lastRun')}>
+            {t('data.items', { n: outCount })}
+          </span>
+        ) : null}
         {flowNode.note ? <div className="ctb-node-note">{flowNode.note}</div> : null}
         {flowNode.disabled ? <div className="ctb-node-flag">{t('editor.node.disabled')}</div> : null}
         {!info ? <div className="ctb-node-flag danger">{t('editor.node.unknownType')}</div> : null}

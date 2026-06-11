@@ -261,6 +261,28 @@ export const en: Record<keyof typeof fa, string> = {
   'executions.title': 'Executions',
   'executions.placeholder': 'The executions inspector lands in P2-T5.',
 
+  // ── node detail view + data panes (P2-T3.5) ──
+  'data.input': 'Input',
+  'data.output': 'Output',
+  'data.view.schema': 'Schema',
+  'data.view.table': 'Table',
+  'data.view.json': 'JSON',
+  'data.items': '{n} item(s)',
+  'data.itemN': 'Item {n}',
+  'data.noRun': 'This flow has not run yet. Test it once with the bot to see real data here.',
+  'data.emptyNode': 'No data passed through this node on the last run (another branch may have run).',
+  'data.triggerNoInput': 'A trigger node has no input — the flow starts here.',
+  'data.refresh': 'Refresh',
+  'data.loading': 'Loading…',
+  'data.copied': 'Copied ✓',
+  'data.dragHint': 'drag onto a parameter field, or click to copy',
+  'data.lastRun': 'Items emitted on the last run',
+  'exec.status.running': 'Running',
+  'exec.status.waiting': 'Waiting',
+  'exec.status.done': 'Done',
+  'exec.status.error': 'Error',
+  'exec.status.canceled': 'Canceled',
+
   'error.network': 'Failed to reach the server',
   'error.notFound': 'Not found',
   'error.validation': 'Invalid input',
@@ -268,5 +290,6 @@ export const en: Record<keyof typeof fa, string> = {
 
   'common.cancel': 'Cancel',
   'common.back': 'Back',
+  'common.close': 'Close',
   'common.language': 'فارسی',
 };

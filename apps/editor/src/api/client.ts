@@ -15,6 +15,8 @@ import {
   CreateBotBodySchema,
   type CreateFlowBody,
   CreateFlowBodySchema,
+  type ExecutionDetail,
+  type ExecutionSummary,
   type FlowPublic,
   type LoginBody,
   LoginBodySchema,
@@ -178,6 +180,22 @@ export class ApiClient {
 
   async listNodeTypes(): Promise<NodeTypeInfo[]> {
     return (await this.request<{ nodeTypes: NodeTypeInfo[] }>('GET', '/api/node-types')).nodeTypes;
+  }
+
+  // -- executions (NDV run data, P2-T3.5) -------------------------------------
+
+  async listExecutions(opts: { flowId?: string; botId?: string; status?: string; limit?: number } = {}): Promise<ExecutionSummary[]> {
+    const params = new URLSearchParams();
+    if (opts.flowId) params.set('flowId', opts.flowId);
+    if (opts.botId) params.set('botId', opts.botId);
+    if (opts.status) params.set('status', opts.status);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.size > 0 ? `?${params.toString()}` : '';
+    return (await this.request<{ executions: ExecutionSummary[] }>('GET', `/api/executions${qs}`)).executions;
+  }
+
+  async getExecution(id: string): Promise<ExecutionDetail> {
+    return (await this.request<{ execution: ExecutionDetail }>('GET', `/api/executions/${id}`)).execution;
   }
 }
 

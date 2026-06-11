@@ -742,3 +742,43 @@ button.danger { color: var(--danger); }
 .badge.exec-running { color: var(--accent); border-color: var(--accent); }
 .badge.exec-error { color: var(--danger); border-color: var(--danger); }
 .badge.exec-canceled { color: var(--text-dim); border-color: var(--text-dim); }
+
+/* ── flow lifecycle (P2-T4): versions dropdown + activation problems ── */
+.versions-anchor { position: relative; }
+.versions-panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 340px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.5rem;
+}
+.versions-head {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  padding: 0.25rem 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.35rem;
+}
+.versions-empty { font-size: 12.5px; color: var(--text-dim); padding: 0.5rem 0.4rem; }
+.versions-list { list-style: none; margin: 0; padding: 0; }
+.versions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+}
+.versions-row:hover { background: var(--bg); }
+.versions-v { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.versions-meta { flex: 1; font-size: 11.5px; color: var(--text-dim); direction: ltr; text-align: end; }
+
+.problems-strip { margin-bottom: 0.75rem; display: flex; align-items: flex-start; gap: 0.6rem; }
+.problems-strip ul { flex: 1; margin: 0; padding-inline-start: 1.2rem; }
+.problems-strip li { font-size: 13px; }

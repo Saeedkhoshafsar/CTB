@@ -18,6 +18,8 @@ import {
   type ExecutionDetail,
   type ExecutionSummary,
   type FlowPublic,
+  type FlowVersionInfo,
+  RollbackFlowBodySchema,
   type LoginBody,
   LoginBodySchema,
   type NodeTypeInfo,
@@ -174,6 +176,23 @@ export class ApiClient {
 
   async deactivateFlow(id: string): Promise<void> {
     await this.request<{ ok: true }>('POST', `/api/flows/${id}/deactivate`);
+  }
+
+  // -- flow lifecycle (P2-T4) -------------------------------------------------
+
+  async listFlowVersions(id: string): Promise<{ current: number; versions: FlowVersionInfo[] }> {
+    return this.request<{ current: number; versions: FlowVersionInfo[] }>(
+      'GET',
+      `/api/flows/${id}/versions`,
+    );
+  }
+
+  /** Restore an older snapshot; server bumps version and returns the new flow. */
+  async rollbackFlow(id: string, version: number): Promise<FlowPublic> {
+    const valid = this.validate(RollbackFlowBodySchema, { version });
+    return (
+      await this.request<{ flow: FlowPublic }>('POST', `/api/flows/${id}/rollback`, valid)
+    ).flow;
   }
 
   // -- node types (canvas palette, P2-T2) -------------------------------------

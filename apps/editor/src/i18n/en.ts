@@ -64,6 +64,16 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.save.error': 'Save failed',
   'editor.node.disabled': 'Disabled',
   'editor.node.unknownType': 'Unknown type',
+  'editor.node.problems': '{n} problem(s)',
+
+  // ── flow lifecycle (P2-T4) ──
+  'editor.versions.button': 'Versions',
+  'editor.versions.title': 'Version history',
+  'editor.versions.empty': 'No snapshots yet — the first saved change creates one.',
+  'editor.versions.confirm': 'Restore version {n}? The current graph is also saved as a version and can be restored.',
+  'editor.versions.counts': '{nodes} nodes · {edges} edges',
+  'editor.versions.restore': 'Restore',
+  'editor.problems.title': 'Activation blocked — fix these first:',
 
   'editor.palette.title': 'Nodes',
   'editor.palette.cat.trigger': 'Triggers',

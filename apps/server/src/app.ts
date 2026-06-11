@@ -131,7 +131,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       publicUrl: env.CTB_PUBLIC_URL,
       ...(opts.botRegisterOpts ? { registerOpts: opts.botRegisterOpts } : {}),
     });
-    registerFlowsApi(app, { db: opts.db });
+    registerFlowsApi(app, { db: opts.db, registry: opts.engine.registry });
     registerExecutionsApi(app, { db: opts.db });
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);

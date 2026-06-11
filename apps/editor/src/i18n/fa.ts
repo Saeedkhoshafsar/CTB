@@ -62,6 +62,16 @@ export const fa = {
   'editor.save.error': 'خطا در ذخیره',
   'editor.node.disabled': 'غیرفعال',
   'editor.node.unknownType': 'نوع ناشناخته',
+  'editor.node.problems': '{n} مشکل',
+
+  // ── flow lifecycle (P2-T4) ──
+  'editor.versions.button': 'نسخه‌ها',
+  'editor.versions.title': 'تاریخچهٔ نسخه‌ها',
+  'editor.versions.empty': 'هنوز نسخهٔ قبلی‌ای ثبت نشده — با اولین ذخیرهٔ تغییرات ساخته می‌شود.',
+  'editor.versions.confirm': 'بازگردانی به نسخهٔ {n}؟ گراف فعلی هم به‌عنوان نسخه ذخیره می‌شود و قابل بازگشت است.',
+  'editor.versions.counts': '{nodes} نود · {edges} یال',
+  'editor.versions.restore': 'بازگردانی',
+  'editor.problems.title': 'فعال‌سازی انجام نشد — این موارد را برطرف کنید:',
 
   'editor.palette.title': 'نودها',
   'editor.palette.cat.trigger': 'شروع‌کننده',

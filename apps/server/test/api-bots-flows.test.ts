@@ -230,3 +230,155 @@ describe('flows API (P1-T8)', () => {
     expect(w.db.select().from(schema.flows).all()).toHaveLength(0);
   });
 });
+
+describe('flow lifecycle: versions + rollback + activation problems (P2-T4)', () => {
+  let w: World;
+  let botId: string;
+  beforeEach(async () => {
+    w = await makeWorld();
+    botId = (await w.app.inject({
+      method: 'POST', url: '/api/bots', cookies: w.cookie,
+      payload: { name: 'A', token: TOKEN },
+    })).json().bot.id;
+  });
+  afterEach(async () => { await w.engine.gateway.stopAll(); await w.app.close(); });
+
+  // parsed through the schema so defaults (disabled:false) match what the
+  // server stores — graph PATCH bodies get FlowGraphSchema'd on write
+  const V2_GRAPH = FlowGraphSchema.parse({
+    nodes: [{ id: 't', type: 'tg.trigger', params: { event: 'any_message' }, position: { x: 0, y: 0 } }],
+    edges: [],
+  });
+
+  async function makeFlowWithHistory(): Promise<string> {
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie,
+      payload: { botId, name: 'f', graph: GRAPH },
+    })).json().flow;
+    // bump to v2 — v1 (the full sample flow) becomes a snapshot
+    await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { graph: V2_GRAPH },
+    });
+    return flow.id as string;
+  }
+
+  it('GET /versions lists snapshots newest-first with node/edge counts', async () => {
+    const id = await makeFlowWithHistory();
+    const res = await w.app.inject({ method: 'GET', url: `/api/flows/${id}/versions`, cookies: w.cookie });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.current).toBe(2);
+    expect(body.versions).toHaveLength(1);
+    expect(body.versions[0]).toMatchObject({
+      version: 1,
+      nodeCount: GRAPH.nodes.length,
+      edgeCount: GRAPH.edges.length,
+    });
+
+    const missing = await w.app.inject({ method: 'GET', url: '/api/flows/nope/versions', cookies: w.cookie });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('rollback restores the older graph, bumps version, and is itself undoable', async () => {
+    const id = await makeFlowWithHistory();
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/flows/${id}/rollback`, cookies: w.cookie,
+      payload: { version: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    const { flow } = res.json();
+    expect(flow.version).toBe(3);
+    expect(flow.graph).toEqual(GRAPH); // acceptance: rollback restores older graph
+
+    // the outgoing v2 graph was snapshotted → rollback of the rollback works
+    const versions = (await w.app.inject({
+      method: 'GET', url: `/api/flows/${id}/versions`, cookies: w.cookie,
+    })).json();
+    expect(versions.versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
+
+    const back = await w.app.inject({
+      method: 'POST', url: `/api/flows/${id}/rollback`, cookies: w.cookie,
+      payload: { version: 2 },
+    });
+    expect(back.json().flow.graph).toEqual(V2_GRAPH);
+  });
+
+  it('rollback rejects unknown versions and bad bodies', async () => {
+    const id = await makeFlowWithHistory();
+    const unknown = await w.app.inject({
+      method: 'POST', url: `/api/flows/${id}/rollback`, cookies: w.cookie,
+      payload: { version: 99 },
+    });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json().error).toBe('version_not_found');
+
+    const bad = await w.app.inject({
+      method: 'POST', url: `/api/flows/${id}/rollback`, cookies: w.cookie,
+      payload: { version: 'one' },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('activation validates node params against the registry → 422 with nodeProblems', async () => {
+    // tg.sendMessage type=text REQUIRES non-empty text (real registry schema)
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie,
+      payload: {
+        botId, name: 'bad-params',
+        graph: {
+          nodes: [
+            { id: 't', type: 'tg.trigger', params: { event: 'any_message' }, position: { x: 0, y: 0 } },
+            { id: 's', type: 'tg.sendMessage', params: {}, position: { x: 200, y: 0 } },
+          ],
+          edges: [{ id: 'e1', from: { node: 't', port: 'main' }, to: { node: 's', port: 'main' } }],
+        },
+      },
+    })).json().flow;
+
+    const res = await w.app.inject({ method: 'POST', url: `/api/flows/${flow.id}/activate`, cookies: w.cookie });
+    expect(res.statusCode).toBe(422);
+    const body = res.json();
+    expect(body.error).toBe('not_activatable');
+    // structured problems point the canvas at the offending node
+    expect(body.nodeProblems).toEqual([
+      expect.objectContaining({ nodeId: 's' }),
+    ]);
+    expect(body.problems[0]).toContain('s: ');
+
+    // fix the param → activates
+    await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: {
+        graph: {
+          nodes: [
+            { id: 't', type: 'tg.trigger', params: { event: 'any_message' }, position: { x: 0, y: 0 } },
+            { id: 's', type: 'tg.sendMessage', params: { text: 'سلام' }, position: { x: 200, y: 0 } },
+          ],
+          edges: [{ id: 'e1', from: { node: 't', port: 'main' }, to: { node: 's', port: 'main' } }],
+        },
+      },
+    });
+    const ok = await w.app.inject({ method: 'POST', url: `/api/flows/${flow.id}/activate`, cookies: w.cookie });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it('expression params are not judged at activation time', async () => {
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie,
+      payload: {
+        botId, name: 'expr',
+        graph: {
+          nodes: [
+            { id: 't', type: 'tg.trigger', params: { event: 'any_message' }, position: { x: 0, y: 0 } },
+            // text is an expression — static validation must not block it
+            { id: 's', type: 'tg.sendMessage', params: { text: '{{ $vars.greeting }}' }, position: { x: 200, y: 0 } },
+          ],
+          edges: [{ id: 'e1', from: { node: 't', port: 'main' }, to: { node: 's', port: 'main' } }],
+        },
+      },
+    })).json().flow;
+    const res = await w.app.inject({ method: 'POST', url: `/api/flows/${flow.id}/activate`, cookies: w.cookie });
+    expect(res.statusCode).toBe(200);
+  });
+});

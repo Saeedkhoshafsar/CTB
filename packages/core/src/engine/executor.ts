@@ -87,6 +87,12 @@ export interface ResumeInput {
   /** Output port of the wait node the injected items leave through. */
   port: PortName;
   items: FlowItem[];
+  /**
+   * $vars entries applied before the loop continues (durable — part of the
+   * persisted state). Used by the router for WaitSpec.saveTo (Decision Log #14):
+   * the wait node never re-executes on resume, so it can't save its own reply.
+   */
+  varsPatch?: Record<string, unknown>;
 }
 
 export interface RunResult {
@@ -148,6 +154,7 @@ export class Executor {
       throw new Error(`execution ${input.executionId} is not waiting (status=${exec.status})`);
     }
     const state: ExecutionState = structuredClone(exec.state);
+    if (input.varsPatch) Object.assign(state.vars, input.varsPatch);
     const edges = indexEdges(input.graph);
     const next = routeOutputs(edges, exec.wait.nodeId, { [input.port]: input.items });
     // waiting → running, wait cleared (the wait is consumed by this injection)
@@ -357,6 +364,7 @@ export class Executor {
       http: this.services.http,
       tg: this.services.tg(exec.chatId),
       log: (level, message, data) => this.log(exec.id, node.id, level, message, data),
+      now: () => this.clock(),
     };
   }
 

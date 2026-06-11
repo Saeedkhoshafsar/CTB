@@ -224,6 +224,9 @@ export class UpdateRouter {
           flow: { id: flow.id, name: flow.name },
           port: 'reply',
           items: [replyItem(event, verdict.value)],
+          // save_to → $vars (Decision Log #14): the wait node never re-executes
+          // on resume, so the router applies its saveTo durably via varsPatch.
+          ...(wait.saveTo !== undefined ? { varsPatch: { [wait.saveTo]: verdict.value } } : {}),
         });
         return true;
       }

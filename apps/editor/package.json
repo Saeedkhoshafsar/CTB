@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ctb/shared": "*",
+    "@xyflow/react": "^12.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.17.0",

@@ -3,8 +3,24 @@
  * Mirrors the real route semantics (status codes, envelopes, token masking)
  * closely enough to exercise the typed client and stores without a server.
  */
-import type { BotPublic, FlowPublic } from '@ctb/shared';
+import { FlowGraphSchema, type BotPublic, type FlowPublic, type NodeTypeInfo } from '@ctb/shared';
 import type { FetchLike } from '../src/api/client';
+
+/**
+ * Static mirror of GET /api/node-types for the P1 builtin six.
+ * The editor may not import @ctb/nodes (dependency direction, I3), so the
+ * fake hardcodes the SAME ports the real registry exposes — the server-side
+ * node-types.test.ts asserts those ports against the real registry, keeping
+ * this copy honest.
+ */
+export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
+  { type: 'tg.trigger', category: 'trigger', meta: { labelKey: 'nodes.tg.trigger.label', icon: 'zap' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'tg.sendMessage', category: 'telegram', meta: { labelKey: 'nodes.tg.sendMessage.label', icon: 'send' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'tg.waitForReply', category: 'telegram', meta: { labelKey: 'nodes.tg.waitForReply.label', icon: 'message-circle-question' }, ports: { inputs: ['main'], outputs: ['reply', 'timeout', 'invalid'] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'flow.if', category: 'flow', meta: { labelKey: 'nodes.flow.if.label', icon: 'git-branch' }, ports: { inputs: ['main'], outputs: ['true', 'false'] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'data.setFields', category: 'data', meta: { labelKey: 'nodes.data.setFields.label', icon: 'pencil' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: { type: 'object' } },
+  { type: 'flow.stopError', category: 'flow', meta: { labelKey: 'nodes.flow.stopError.label', icon: 'octagon-x' }, ports: { inputs: ['main'], outputs: [] }, paramsJsonSchema: { type: 'object' } },
+];
 
 export interface FakeServer {
   fetch: FetchLike;
@@ -56,6 +72,11 @@ export function createFakeServer(): FakeServer {
       }
 
       if (!srv.loggedIn) return json(401, { error: 'unauthorized' });
+
+      // ---- node types (P2-T2) ----
+      if (path === '/api/node-types' && method === 'GET') {
+        return json(200, { nodeTypes: FAKE_NODE_TYPES });
+      }
 
       // ---- bots ----
       if (path === '/api/bots' && method === 'GET') {
@@ -146,6 +167,17 @@ export function createFakeServer(): FakeServer {
           return json(200, { ok: true, status: 'draft' });
         }
         if (method === 'GET') return json(200, { flow });
+        if (method === 'PATCH') {
+          if (body.graph !== undefined) {
+            const parsed = FlowGraphSchema.safeParse(body.graph);
+            if (!parsed.success) return json(400, { error: 'invalid_graph' });
+            flow.graph = parsed.data;
+            flow.version += 1; // real server snapshots the outgoing graph + bumps
+          }
+          if (body.name !== undefined) flow.name = body.name;
+          flow.updatedAt = new Date().toISOString();
+          return json(200, { flow });
+        }
         if (method === 'DELETE') {
           srv.flows.delete(flow.id);
           return json(200, { ok: true });

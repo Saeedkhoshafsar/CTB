@@ -18,6 +18,7 @@ import {
   type FlowPublic,
   type LoginBody,
   LoginBodySchema,
+  type NodeTypeInfo,
   type SessionUser,
   type UpdateBotBody,
   UpdateBotBodySchema,
@@ -171,6 +172,12 @@ export class ApiClient {
 
   async deactivateFlow(id: string): Promise<void> {
     await this.request<{ ok: true }>('POST', `/api/flows/${id}/deactivate`);
+  }
+
+  // -- node types (canvas palette, P2-T2) -------------------------------------
+
+  async listNodeTypes(): Promise<NodeTypeInfo[]> {
+    return (await this.request<{ nodeTypes: NodeTypeInfo[] }>('GET', '/api/node-types')).nodeTypes;
   }
 }
 

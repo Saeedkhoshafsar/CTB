@@ -161,3 +161,128 @@ input[dir='ltr'] { direction: ltr; }
 /* ---- splash ---- */
 
 .splash { display: grid; place-items: center; height: 100%; color: var(--text-dim); }
+
+/* ---- flow editor (P2-T2) ---- */
+
+:root {
+  --node-trigger: #b07a2e;
+  --node-telegram: #2e6fb0;
+  --node-flow: #7a4fb0;
+  --node-data: #2e9e74;
+  --node-ai: #b03a6e;
+}
+
+.editor-layout {
+  display: flex;
+  flex-direction: column;
+  /* fill .content minus its padding */
+  height: calc(100vh - 52px - 3rem);
+  min-height: 420px;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.editor-toolbar .editor-title { margin: 0; font-size: 17px; }
+.editor-toolbar .spacer { flex: 1; }
+.badge.save-dirty { color: var(--warn); border-color: var(--warn); }
+.badge.save-saving { color: var(--accent); border-color: var(--accent); }
+.badge.save-saved { color: var(--ok); border-color: var(--ok); }
+.badge.save-error { color: var(--danger); border-color: var(--danger); }
+
+.editor-main {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* palette */
+.palette {
+  width: 200px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+.palette-title { font-weight: 700; margin-bottom: 0.6rem; }
+.palette-cat {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0.7rem 0 0.3rem;
+}
+.palette-item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  margin-bottom: 0.3rem;
+  cursor: grab;
+  border-inline-start: 3px solid var(--border);
+}
+.palette-item.cat-trigger { border-inline-start-color: var(--node-trigger); }
+.palette-item.cat-telegram { border-inline-start-color: var(--node-telegram); }
+.palette-item.cat-flow { border-inline-start-color: var(--node-flow); }
+.palette-item.cat-data { border-inline-start-color: var(--node-data); }
+.palette-item.cat-ai { border-inline-start-color: var(--node-ai); }
+
+/* canvas — React Flow needs LTR coordinates; flow direction is a diagram
+   convention, not text direction, so the canvas itself is always LTR. */
+.editor-canvas {
+  flex: 1;
+  min-width: 0;
+  direction: ltr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* nodes */
+.ctb-node {
+  min-width: 150px;
+  max-width: 230px;
+  background: var(--bg-raised);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  overflow: visible;
+}
+.ctb-node.disabled { opacity: 0.5; }
+.ctb-node.unknown { border-style: dashed; }
+.ctb-node-head {
+  padding: 0.3rem 0.6rem;
+  border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
+  font-weight: 600;
+  color: #fff;
+}
+.ctb-node-body { padding: 0.4rem 0.6rem 0.5rem; }
+.ctb-node-id { color: var(--text-dim); font-size: 11px; direction: ltr; unicode-bidi: plaintext; }
+.ctb-node-note { color: var(--text-dim); font-size: 11px; margin-top: 0.2rem; }
+.ctb-node-flag { font-size: 10.5px; color: var(--warn); margin-top: 0.2rem; }
+.ctb-node-flag.danger { color: var(--danger); }
+
+.ctb-port-label {
+  position: absolute;
+  left: calc(100% + 10px);
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text-dim);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  border: 1.5px solid var(--bg);
+}
+.react-flow__edge-text { fill: var(--text-dim); font-size: 10px; }
+.react-flow__edge-textbg { fill: var(--bg); }

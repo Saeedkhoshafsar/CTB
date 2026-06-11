@@ -103,6 +103,26 @@ export interface FlowPublic {
 }
 
 // ---------------------------------------------------------------------------
+// node types (GET /api/node-types — palette + param forms, P2-T2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Serializable projection of a NodeDef for the editor. `paramsJsonSchema` is
+ * the Zod schema converted to JSON Schema (z.toJSONSchema) — the canvas needs
+ * ports/meta now; the P2-T3 form engine will consume the schema.
+ *
+ * Note: nodes with `dynamicOutputs` (Menu/Switch, P2-T6) additionally compute
+ * ports from params client-side; `ports.outputs` here is the static base.
+ */
+export interface NodeTypeInfo {
+  type: string;
+  category: 'trigger' | 'telegram' | 'flow' | 'data' | 'ai';
+  meta: { labelKey: string; descriptionKey?: string; icon?: string };
+  ports: { inputs: string[]; outputs: string[] };
+  paramsJsonSchema: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
 // error envelope (shared shape of every non-2xx body)
 // ---------------------------------------------------------------------------
 

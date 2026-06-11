@@ -141,6 +141,30 @@ export function unionBranches(s: JsonSchema): FieldSpec[] {
   }));
 }
 
+/**
+ * Convert a value while switching union branches so the user's work is
+ * preserved (n8n behaviour): string → object carries the text into a `text`
+ * property; object → string extracts `.text`. Anything else starts fresh.
+ */
+export function convertBranchValue(to: JsonSchema, value: unknown): unknown {
+  if (typeof value === 'string' && to.type === 'object' && to.properties && 'text' in to.properties) {
+    const seed = emptyValue(to);
+    return seed !== null && typeof seed === 'object'
+      ? { ...(seed as Record<string, unknown>), text: value }
+      : { text: value };
+  }
+  if (
+    to.type === 'string' &&
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).text === 'string'
+  ) {
+    return (value as Record<string, unknown>).text;
+  }
+  return emptyValue(to);
+}
+
 /** Which union branch matches the current value (for initial selection). */
 export function matchBranch(s: JsonSchema, value: unknown): number {
   const branches = s.anyOf ?? s.oneOf ?? [];

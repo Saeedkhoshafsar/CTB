@@ -10,7 +10,7 @@
  * decides when/where to persist (the node param panel debounce-commits into
  * the canvas store; a Collection form will POST on submit).
  */
-import { useLabel, FieldRow, SchemaWidget } from './widgets';
+import { useDesc, useLabel, FieldRow, SchemaWidget } from './widgets';
 import { objectFields, type JsonSchema } from './schema';
 import { setAtPath } from './model';
 import { useI18n } from '../i18n';
@@ -26,6 +26,7 @@ export function SchemaForm({
 }) {
   const t = useI18n((s) => s.t);
   const label = useLabel();
+  const desc = useDesc();
   const fields = objectFields(schema);
   if (fields.length === 0) {
     return <p className="form-empty">{t('form.noParams')}</p>;
@@ -33,7 +34,7 @@ export function SchemaForm({
   return (
     <div className="schema-form">
       {fields.map((spec) => (
-        <FieldRow key={spec.key} label={label(spec.key)} required={spec.required} inline={spec.widget === 'boolean'}>
+        <FieldRow key={spec.key} label={label(spec.key)} required={spec.required} desc={desc(spec.key)} inline={spec.widget === 'boolean'}>
           <SchemaWidget
             spec={spec}
             value={value[spec.key]}

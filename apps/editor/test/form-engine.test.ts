@@ -24,6 +24,7 @@ import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json'
 import { insertHint, splitSegments } from '../src/form/expression';
 import { getAtPath, moveRow, pruneEmpty, setAtPath, type Path } from '../src/form/model';
 import {
+  convertBranchValue,
   emptyValue,
   isConditionsSchema,
   isKeyboardSchema,
@@ -100,6 +101,19 @@ describe('schema resolver (against real /api/node-types output)', () => {
     expect(matchBranch(prompt, { text: 'hi' })).toBe(1); // object branch
     const objBranch = prompt.anyOf![1]!;
     expect(emptyValue(objBranch)).toEqual({ text: '' }); // required `text` seeded
+  });
+
+  it('union: switching branches preserves the user\u2019s text (the ساده⇔پیشرفته bug)', () => {
+    const prompt = schemaOf('tg.waitForReply').properties!.prompt!;
+    const strBranch = prompt.anyOf![0]!;
+    const objBranch = prompt.anyOf![1]!;
+    // simple → advanced: text carried into { text }
+    expect(convertBranchValue(objBranch, 'اسمت چیه؟')).toEqual({ text: 'اسمت چیه؟' });
+    // advanced → simple: .text extracted back out
+    expect(convertBranchValue(strBranch, { text: 'چند سالته؟', parse_mode: 'HTML' })).toBe('چند سالته؟');
+    // no carry possible → fresh empty value
+    expect(convertBranchValue(objBranch, undefined)).toEqual({ text: '' });
+    expect(convertBranchValue(strBranch, undefined)).toBe('');
   });
 });
 

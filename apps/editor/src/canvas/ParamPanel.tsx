@@ -79,6 +79,10 @@ function PanelInner({ node }: { node: FlowNode }) {
   );
 
   const label = info ? t(info.meta.labelKey as MessageKey) : node.type;
+  // node-level help: `nodeDesc.<type>` — what the node does, in one line.
+  const descKey = `nodeDesc.${node.type}`;
+  const descMsg = t(descKey as MessageKey);
+  const nodeDesc = descMsg === descKey ? null : descMsg;
 
   return (
     <aside className="param-panel" data-testid="param-panel">
@@ -86,6 +90,7 @@ function PanelInner({ node }: { node: FlowNode }) {
         <strong>{label}</strong>
         <span className="ctb-node-id">{node.id}</span>
       </div>
+      {nodeDesc ? <p className="param-desc">{nodeDesc}</p> : null}
 
       {info ? (
         <SchemaForm schema={info.paramsJsonSchema as JsonSchema} value={draft} onChange={onFormChange} />
@@ -106,7 +111,10 @@ function PanelInner({ node }: { node: FlowNode }) {
         </div>
       </div>
       <div className="field-row">
-        <label className="field-label">{t('panel.note')}</label>
+        <div className="field-head">
+          <label className="field-label">{t('panel.note')}</label>
+          <span className="field-desc">{t('paramDesc.panel.note')}</span>
+        </div>
         <div className="field-input">
           <textarea
             rows={2}

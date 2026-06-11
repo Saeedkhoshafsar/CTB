@@ -6,10 +6,11 @@
  * node type they belong to — they are keyed by structural WidgetKind
  * (see schema.ts), so Phase 3.5 Collection forms reuse them as-is.
  */
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
-import { SCOPE_HINTS, hasExpression, insertHint, splitSegments } from './expression';
+import { SCOPE_HINTS, hasExpression, insertHint } from './expression';
 import {
+  convertBranchValue,
   emptyValue,
   matchBranch,
   objectFields,
@@ -38,19 +39,34 @@ export function useLabel(): (key: string) => string {
   };
 }
 
-// ── expression-aware text input ──────────────────────────────────────────────
-
-function ExprHighlight({ text }: { text: string }) {
-  return (
-    <>
-      {splitSegments(text).map((seg, i) =>
-        seg.expr ? <mark key={i}>{seg.text}</mark> : <span key={i}>{seg.text}</span>,
-      )}
-      {/* trailing newline keeps overlay height in sync with the textarea */}
-      {'\u200b'}
-    </>
-  );
+/** Param help text: i18n `paramDesc.<key>` when present, nothing otherwise. */
+export function useDesc(): (key: string) => string | undefined {
+  const t = useI18n((s) => s.t);
+  return (key: string) => {
+    const k = `paramDesc.${key}`;
+    const msg = t(k as MessageKey);
+    return msg === k ? undefined : msg;
+  };
 }
+
+/** Example placeholder: i18n `ph.<key>` when present. */
+function usePlaceholder(): (key: string) => string | undefined {
+  const t = useI18n((s) => s.t);
+  return (key: string) => {
+    const k = `ph.${key}`;
+    const msg = t(k as MessageKey);
+    return msg === k ? undefined : msg;
+  };
+}
+
+// ── expression-aware text input ──────────────────────────────────────────────
+// Expression presence is signalled by an accent border + colored {x} badge.
+// (A per-segment highlight OVERLAY was tried and removed: with mixed
+// Persian/{{ }} bidi text the overlay's separate spans wrap/order differently
+// from the input's plain text, so highlights drifted — worse than no highlight.)
+
+const HINTS_WIDTH = 250;
+const HINTS_MAX_HEIGHT = 230;
 
 export function ExpressionInput({
   value,
@@ -64,25 +80,58 @@ export function ExpressionInput({
   placeholder?: string | undefined;
 }) {
   const t = useI18n((s) => s.t);
-  const [hintsOpen, setHintsOpen] = useState(false);
+  // The hints dropdown renders position:fixed at viewport coordinates so the
+  // narrow side-panel / scroll containers can never clip it (the previous
+  // absolute-in-panel version overflowed the 320px panel and was unreadable).
+  const [hintsPos, setHintsPos] = useState<{ top: number; left: number } | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const fxRef = useRef<HTMLButtonElement | null>(null);
 
-  const syncScroll = () => {
-    const input = inputRef.current;
-    const overlay = overlayRef.current;
-    if (input && overlay) {
-      overlay.scrollTop = input.scrollTop;
-      overlay.scrollLeft = input.scrollLeft;
-    }
+  const toggleHints = () => {
+    if (hintsPos) return setHintsPos(null);
+    const anchor = fxRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    const left = Math.max(8, Math.min(anchor.right - HINTS_WIDTH, window.innerWidth - HINTS_WIDTH - 8));
+    const below = anchor.bottom + 4;
+    const top =
+      below + HINTS_MAX_HEIGHT > window.innerHeight
+        ? Math.max(8, anchor.top - 4 - HINTS_MAX_HEIGHT)
+        : below;
+    setHintsPos({ top, left });
   };
+
+  // Open dropdown: close on outside pointer-down, Escape, or any scroll
+  // (scrolling would strand the fixed-position list away from its anchor).
+  useEffect(() => {
+    if (!hintsPos) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setHintsPos(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHintsPos(null);
+    };
+    const onScroll = (e: Event) => {
+      // ignore scrolls inside the dropdown itself
+      if (rootRef.current?.querySelector('.expr-hints')?.contains(e.target as Node)) return;
+      setHintsPos(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }, [hintsPos]);
 
   const pickHint = (name: string) => {
     const input = inputRef.current;
     const caret = input?.selectionStart ?? value.length;
     const next = insertHint(value, caret, name);
     onChange(next.text);
-    setHintsOpen(false);
+    setHintsPos(null);
     requestAnimationFrame(() => {
       input?.focus();
       input?.setSelectionRange(next.caret, next.caret);
@@ -91,11 +140,8 @@ export function ExpressionInput({
 
   const cls = `expr-input${hasExpression(value) ? ' has-expr' : ''}${multiline ? ' multiline' : ''}`;
   return (
-    <div className={cls}>
+    <div className={cls} ref={rootRef}>
       <div className="expr-box">
-        <div ref={overlayRef} className="expr-overlay" aria-hidden>
-          <ExprHighlight text={value} />
-        </div>
         {multiline ? (
           <textarea
             ref={(el) => void (inputRef.current = el)}
@@ -103,7 +149,6 @@ export function ExpressionInput({
             placeholder={placeholder}
             rows={3}
             onChange={(e) => onChange(e.target.value)}
-            onScroll={syncScroll}
             dir="auto"
           />
         ) : (
@@ -113,21 +158,28 @@ export function ExpressionInput({
             value={value}
             placeholder={placeholder}
             onChange={(e) => onChange(e.target.value)}
-            onScroll={syncScroll}
             dir="auto"
           />
         )}
       </div>
       <button
+        ref={fxRef}
         type="button"
         className="expr-fx ghost"
         title={t('form.expr.hints')}
-        onClick={() => setHintsOpen((o) => !o)}
+        onClick={toggleHints}
       >
         {'{x}'}
       </button>
-      {hintsOpen ? (
-        <ul className="expr-hints" role="listbox">
+      {hintsPos ? (
+        <ul
+          className="expr-hints"
+          role="listbox"
+          style={{ top: hintsPos.top, left: hintsPos.left, width: HINTS_WIDTH, maxHeight: HINTS_MAX_HEIGHT }}
+        >
+          <li className="expr-hints-title" aria-hidden>
+            {t('form.expr.hintsTitle')}
+          </li>
           {SCOPE_HINTS.map((h) => (
             <li key={h.name}>
               <button type="button" onClick={() => pickHint(h.name)}>
@@ -145,11 +197,13 @@ export function ExpressionInput({
 // ── primitive widgets ────────────────────────────────────────────────────────
 
 function TextWidget({ spec, value, onChange, multiline }: WidgetProps & { multiline?: boolean }) {
+  const placeholder = usePlaceholder();
   return (
     <ExpressionInput
       value={value === undefined || value === null ? '' : String(value)}
       onChange={(v) => onChange(v === '' && !spec.required ? undefined : v)}
       multiline={multiline}
+      placeholder={placeholder(spec.key)}
     />
   );
 }
@@ -182,8 +236,19 @@ function BooleanWidget({ value, onChange }: WidgetProps) {
 }
 
 function SelectWidget({ spec, value, onChange }: WidgetProps) {
+  const t = useI18n((s) => s.t);
   const options = spec.schema.enum ?? [];
-  const current = value === undefined ? '' : String(value);
+  // Unset + schema default → SHOW the default (n8n behaviour: the user sees
+  // what the engine will actually do). The value itself stays unset — Zod
+  // applies the same default server-side.
+  const effective = value === undefined ? spec.schema.default : value;
+  const current = effective === undefined ? '' : String(effective);
+  /** Translated option label (`option.<param>.<value>`) — raw value otherwise. */
+  const optionLabel = (o: string | number): string => {
+    const k = `option.${spec.key}.${String(o)}`;
+    const msg = t(k as MessageKey);
+    return msg === k ? String(o) : msg;
+  };
   return (
     <select
       value={current}
@@ -197,7 +262,7 @@ function SelectWidget({ spec, value, onChange }: WidgetProps) {
       {!spec.required || current === '' ? <option value="">—</option> : null}
       {options.map((o) => (
         <option key={String(o)} value={String(o)}>
-          {String(o)}
+          {optionLabel(o)}
         </option>
       ))}
     </select>
@@ -236,6 +301,7 @@ function DurationWidget({ value, onChange }: WidgetProps) {
 
 function ObjectWidget({ spec, value, onChange }: WidgetProps) {
   const label = useLabel();
+  const desc = useDesc();
   const obj =
     value !== null && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -243,7 +309,7 @@ function ObjectWidget({ spec, value, onChange }: WidgetProps) {
   return (
     <div className="object-widget">
       {objectFields(spec.schema).map((child) => (
-        <FieldRow key={child.key} label={label(child.key)} required={child.required} inline={child.widget === 'boolean'}>
+        <FieldRow key={child.key} label={label(child.key)} required={child.required} desc={desc(child.key)} inline={child.widget === 'boolean'}>
           <SchemaWidget
             spec={child}
             value={obj[child.key]}
@@ -319,22 +385,39 @@ function swap(rows: unknown[], a: number, b: number): unknown[] {
 function UnionWidget({ spec, value, onChange }: WidgetProps) {
   const t = useI18n((s) => s.t);
   const branches = unionBranches(spec.schema);
-  const active = matchBranch(spec.schema, value);
+  // The chosen branch is LOCAL UI STATE seeded from the value. Deriving it
+  // from the value on every render caused the reported snap-back: switching
+  // to "advanced" produced {text:''}, the debounced commit pruned the empty
+  // object away, and the re-derived tab jumped back to "simple".
+  const [chosen, setChosen] = useState(() => matchBranch(spec.schema, value));
+  const valueBranch = matchBranch(spec.schema, value);
+  useEffect(() => {
+    // Adopt the value's branch only when a real value decisively points at a
+    // different branch (undo/redo / external edits). Empty values stay put.
+    if (value !== undefined && value !== '' && valueBranch !== chosen) setChosen(valueBranch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueBranch]);
   const branchLabel = (b: FieldSpec, i: number): string =>
     b.schema.type === 'string' || b.schema.type === 'number'
       ? t('form.union.simple')
       : `${t('form.union.advanced')}${branches.length > 2 ? ` ${i + 1}` : ''}`;
-  const branch = branches[active];
+  const branch = branches[Math.min(chosen, branches.length - 1)];
   return (
     <div className="union-widget">
-      <div className="union-tabs">
+      <div className="union-tabs" role="tablist">
         {branches.map((b, i) => (
           <button
             key={i}
             type="button"
-            className={`ghost sm${i === active ? ' active' : ''}`}
+            role="tab"
+            aria-selected={i === chosen}
+            className={i === chosen ? 'active' : ''}
             onClick={() => {
-              if (i !== active) onChange(emptyValue(b.schema));
+              if (i === chosen) return;
+              setChosen(i);
+              // convertBranchValue preserves the user's text across the
+              // simple⇔advanced switch instead of wiping it.
+              onChange(convertBranchValue(b.schema, value));
             }}
           >
             {branchLabel(b, i)}
@@ -517,32 +600,37 @@ function ConditionsWidget({ spec, value, onChange }: WidgetProps) {
         const op = row.operator ?? operators[0] ?? 'equals';
         return (
           <div className="cond-row" key={i}>
-            <ExpressionInput
-              value={row.value1 === undefined ? '' : String(row.value1)}
-              placeholder="{{ $json.value }}"
-              onChange={(v) => setRow(i, { value1: v })}
-            />
-            <select value={op} onChange={(e) => setRow(i, { operator: e.target.value, ...(NO_VALUE2.has(e.target.value) ? { value2: undefined } : {}) })}>
-              {operators.map((o) => {
-                const k = `form.cond.op.${o}`;
-                const msg = t(k as MessageKey);
-                return (
-                  <option key={o} value={o}>
-                    {msg === k ? o : msg}
-                  </option>
-                );
-              })}
-            </select>
-            {!NO_VALUE2.has(op) ? (
+            <div className="cond-v1">
               <ExpressionInput
-                value={row.value2 === undefined ? '' : String(row.value2)}
-                onChange={(v) => setRow(i, { value2: v })}
+                value={row.value1 === undefined ? '' : String(row.value1)}
+                placeholder="{{ $vars.age }}"
+                onChange={(v) => setRow(i, { value1: v })}
               />
-            ) : (
-              <span className="cond-noval">—</span>
-            )}
-            <button type="button" className="ghost sm danger" title={t('form.removeRow')}
+            </div>
+            <button type="button" className="ghost sm danger cond-del" title={t('form.removeRow')}
               onClick={() => onChange(rows.filter((_, j) => j !== i))}>✕</button>
+            <div className="cond-op">
+              <select value={op} onChange={(e) => setRow(i, { operator: e.target.value, ...(NO_VALUE2.has(e.target.value) ? { value2: undefined } : {}) })}>
+                {operators.map((o) => {
+                  const k = `form.cond.op.${o}`;
+                  const msg = t(k as MessageKey);
+                  return (
+                    <option key={o} value={o}>
+                      {msg === k ? o : msg}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {!NO_VALUE2.has(op) ? (
+              <div className="cond-v2">
+                <ExpressionInput
+                  value={row.value2 === undefined ? '' : String(row.value2)}
+                  placeholder="18"
+                  onChange={(v) => setRow(i, { value2: v })}
+                />
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -559,20 +647,25 @@ function ConditionsWidget({ spec, value, onChange }: WidgetProps) {
 export function FieldRow({
   label,
   required,
+  desc,
   inline = false,
   children,
 }: {
   label: string;
   required: boolean;
+  desc?: string | undefined;
   inline?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={`field-row${inline ? ' inline' : ''}`}>
-      <label className="field-label">
-        {label}
-        {required ? <span className="req">*</span> : null}
-      </label>
+      <div className="field-head">
+        <label className="field-label">
+          {label}
+          {required ? <span className="req">*</span> : null}
+        </label>
+        {desc ? <span className="field-desc">{desc}</span> : null}
+      </div>
       <div className="field-input">{children}</div>
     </div>
   );

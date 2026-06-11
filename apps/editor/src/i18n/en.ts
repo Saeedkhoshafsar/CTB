@@ -269,7 +269,23 @@ export const en: Record<keyof typeof fa, string> = {
   'option.op.remove': 'Remove',
 
   'executions.title': 'Executions',
-  'executions.placeholder': 'The executions inspector lands in P2-T5.',
+
+  // ── executions inspector (P2-T5) ──
+  'execs.filter.all': 'All',
+  'execs.empty': 'No executions match this filter.',
+  'execs.selectHint': 'Select an execution from the list to see its step-by-step detail.',
+  'execs.chat': 'chat {id}',
+  'execs.scopedToFlow': 'Flow “{name}” only',
+  'execs.cancel': 'Cancel execution',
+  'execs.cancel.confirm': 'Cancel this execution? The waiting conversation will be closed; this cannot be undone.',
+  'execs.noLogs': 'No log entries recorded for this execution yet.',
+  'execs.wait.title': 'This execution is waiting for:',
+  'execs.wait.reply': 'a user reply of type “{expect}”',
+  'execs.wait.callback': 'a click on one of the buttons: {keys}',
+  'execs.wait.delay': 'a scheduled delay to elapse',
+  'execs.wait.node': 'node',
+  'execs.wait.retries': '{n} retries left',
+  'execs.wait.until': 'deadline {time}',
 
   // ── node detail view + data panes (P2-T3.5) ──
   'data.input': 'Input',

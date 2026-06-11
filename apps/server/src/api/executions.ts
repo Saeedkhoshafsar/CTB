@@ -1,18 +1,24 @@
 /**
- * Executions REST API (P2-T3.5 slice of P2-T5) — read-only inspector data.
+ * Executions REST API (P2-T3.5 read endpoints + P2-T5 cancel).
  *
- *   GET /api/executions?flowId=&status=&limit=   → ExecutionSummary[]
- *   GET /api/executions/:id                      → ExecutionDetail (logs incl.
+ *   GET  /api/executions?flowId=&status=&limit=  → ExecutionSummary[]
+ *   GET  /api/executions/:id                     → ExecutionDetail (logs incl.
  *                                                  per-step I/O item snapshots)
+ *   POST /api/executions/:id/cancel              → waiting/running → canceled
  *
  * The editor's node detail view (NDV) loads the latest execution of the open
  * flow and maps exec_logs "executed" rows (input/output FlowItems, recorded
  * by the executor with LOG_ITEMS_CAP) onto canvas nodes — the n8n pattern:
- * INPUT pane | params | OUTPUT pane. The full executions page is P2-T5;
- * cancel/management actions land there.
+ * INPUT pane | params | OUTPUT pane. The P2-T5 inspector page lists/filters
+ * executions, renders the node-by-node log and cancels stuck conversations.
+ *
+ * Cancel semantics mirror the router's /cancel path: status → canceled,
+ * wait cleared (the timeout scanner ignores non-waiting rows; the chat is
+ * free for a fresh trigger). Finished executions can't be canceled → 409 —
+ * the inspector disables the button, but a refresh race must still be safe.
  */
 import type { ExecLogEntry, ExecutionSummary } from '@ctb/shared';
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/index';
 import { execLogs, executions } from '../db/schema';
@@ -57,10 +63,12 @@ function toLog(row: LogRow): ExecLogEntry {
 
 export interface ExecutionsApiDeps {
   db: Db;
+  clock?: () => Date;
 }
 
 export function registerExecutionsApi(app: FastifyInstance, deps: ExecutionsApiDeps): void {
   const { db } = deps;
+  const now = (): string => (deps.clock ?? (() => new Date()))().toISOString();
 
   app.get('/api/executions', async (req, reply) => {
     const q = req.query as { flowId?: string; botId?: string; status?: string; limit?: string };
@@ -100,5 +108,32 @@ export function registerExecutionsApi(app: FastifyInstance, deps: ExecutionsApiD
       logs: logs.map(toLog),
     };
     return { execution: detail };
+  });
+
+  app.post('/api/executions/:id/cancel', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    // Single guarded UPDATE — no read-then-write race with the router: only
+    // a still-live row flips, exactly like the router's /cancel handler
+    // (status → canceled, wait cleared so the timeout scanner ignores it).
+    const ts = now();
+    const res = db
+      .update(executions)
+      .set({ status: 'canceled', wait: null, waitTimeoutAt: null, updatedAt: ts })
+      .where(and(eq(executions.id, id), inArray(executions.status, ['waiting', 'running'])))
+      .run();
+
+    if (res.changes === 0) {
+      const row = db.select().from(executions).where(eq(executions.id, id)).get();
+      if (!row) return reply.code(404).send({ error: 'not_found' });
+      return reply.code(409).send({ error: 'not_cancelable', status: row.status });
+    }
+
+    // Audit row in the step log so the inspector shows WHO/WHAT ended the run.
+    db.insert(execLogs)
+      .values({ executionId: id, nodeId: null, level: 'info', message: 'canceled via inspector', ts })
+      .run();
+
+    const row = db.select().from(executions).where(eq(executions.id, id)).get();
+    return { ok: true, execution: toSummary(row!) };
   });
 }

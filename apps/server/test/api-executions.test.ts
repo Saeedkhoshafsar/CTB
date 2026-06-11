@@ -164,4 +164,69 @@ describe('executions API (P2-T3.5)', () => {
     });
     expect(bad.statusCode).toBe(400);
   });
+
+  // ── cancel (P2-T5) ─────────────────────────────────────────────────────────
+
+  it('cancels a waiting execution: status flips, wait cleared, audit log row, chat freed', async () => {
+    await w.engine.gateway.dispatch('b1', tgUpdate('/start', 55)); // → waiting for name
+    const list = await w.app.inject({
+      method: 'GET', url: '/api/executions?status=waiting', cookies: w.cookie,
+    });
+    const { executions } = list.json() as { executions: ExecutionSummary[] };
+    expect(executions).toHaveLength(1);
+    const id = executions[0]!.id;
+
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/executions/${id}/cancel`, cookies: w.cookie,
+    });
+    expect(res.statusCode).toBe(200);
+    const { execution } = res.json() as { ok: true; execution: ExecutionSummary };
+    expect(execution.status).toBe('canceled');
+
+    // detail: wait cleared + audit row recorded
+    const det = await w.app.inject({
+      method: 'GET', url: `/api/executions/${id}`, cookies: w.cookie,
+    });
+    const { execution: detail } = det.json() as { execution: ExecutionDetail };
+    expect(detail.status).toBe('canceled');
+    expect(detail.wait).toBeNull();
+    expect(detail.logs.some((l) => l.message === 'canceled via inspector')).toBe(true);
+
+    // the chat is genuinely free: a fresh /start opens a NEW execution
+    // (the canceled one must not swallow the reply — I4 semantics)
+    await w.engine.gateway.dispatch('b1', tgUpdate('/start', 55));
+    const after = await w.app.inject({
+      method: 'GET', url: '/api/executions?status=waiting', cookies: w.cookie,
+    });
+    const waiting = (after.json() as { executions: ExecutionSummary[] }).executions;
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]!.id).not.toBe(id);
+  });
+
+  it('cancel on a finished execution → 409; unknown id → 404; no auth → 401', async () => {
+    // finish a conversation
+    await w.engine.gateway.dispatch('b1', tgUpdate('/start'));
+    await w.engine.gateway.dispatch('b1', tgUpdate('علی'));
+    await w.engine.gateway.dispatch('b1', tgUpdate('۳۵'));
+    const list = await w.app.inject({
+      method: 'GET', url: '/api/executions?status=done', cookies: w.cookie,
+    });
+    const done = (list.json() as { executions: ExecutionSummary[] }).executions[0]!;
+
+    const conflict = await w.app.inject({
+      method: 'POST', url: `/api/executions/${done.id}/cancel`, cookies: w.cookie,
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect((conflict.json() as { status: string }).status).toBe('done');
+
+    const nf = await w.app.inject({
+      method: 'POST', url: '/api/executions/ghost/cancel', cookies: w.cookie,
+    });
+    expect(nf.statusCode).toBe(404);
+
+    const noAuth = await w.app.inject({
+      method: 'POST', url: `/api/executions/${done.id}/cancel`,
+    });
+    expect(noAuth.statusCode).toBe(401);
+  });
 });

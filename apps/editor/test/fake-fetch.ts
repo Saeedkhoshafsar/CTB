@@ -6,6 +6,8 @@
 import {
   DataKvParamsSchema,
   DataSetFieldsParamsSchema,
+  FLOW_TEMPLATES,
+  FlowExportSchema,
   FlowGraphSchema,
   FlowIfParamsSchema,
   FlowManualTriggerParamsSchema,
@@ -19,7 +21,10 @@ import {
   TgWaitForReplyParamsSchema,
   UpdateUserBodySchema,
   defaultFlowSettings,
+  findFlowTemplate,
+  flowTemplateInfo,
   problemStrings,
+  toFlowExport,
   userDisplayName,
   validateFlowForActivation,
   type BotPublic,
@@ -266,6 +271,58 @@ export function createFakeServer(): FakeServer {
         srv.flows.set(id, flow);
         return json(201, { flow });
       }
+
+      // ---- import / export + template gallery (P3-T7) ----
+      // Static routes BEFORE the parametric flowMatch so they aren't shadowed.
+      if (path === '/api/flow-templates' && method === 'GET') {
+        return json(200, { templates: FLOW_TEMPLATES.map(flowTemplateInfo) });
+      }
+      if (path === '/api/flows/import' && method === 'POST') {
+        if (!srv.bots.has(body.botId)) return json(400, { error: 'unknown_bot' });
+        const env = FlowExportSchema.safeParse(body.export);
+        if (!env.success) return json(400, { error: 'invalid_export', issues: env.error.issues });
+        const id = uid('flow');
+        const flow: FlowPublic = {
+          id,
+          botId: body.botId,
+          name: body.name ?? env.data.name,
+          status: 'draft',
+          graph: env.data.graph,
+          settings: { executionPolicy: env.data.settings.executionPolicy, errorHandlerFlowId: null },
+          version: 1,
+          updatedAt: new Date().toISOString(),
+        };
+        srv.flows.set(id, flow);
+        return json(201, { flow });
+      }
+      if (path === '/api/flows/import-template' && method === 'POST') {
+        if (!srv.bots.has(body.botId)) return json(400, { error: 'unknown_bot' });
+        const template = findFlowTemplate(body.templateId);
+        if (!template) return json(404, { error: 'unknown_template' });
+        const id = uid('flow');
+        const flow: FlowPublic = {
+          id,
+          botId: body.botId,
+          name: body.name ?? template.export.name,
+          status: 'draft',
+          graph: template.export.graph,
+          settings: { executionPolicy: template.export.settings.executionPolicy, errorHandlerFlowId: null },
+          version: 1,
+          updatedAt: new Date().toISOString(),
+        };
+        srv.flows.set(id, flow);
+        return json(201, { flow });
+      }
+      {
+        const exportMatch = path.match(/^\/api\/flows\/([^/]+)\/export$/);
+        if (exportMatch && method === 'GET') {
+          const flow = srv.flows.get(exportMatch[1]!);
+          if (!flow) return json(404, { error: 'not_found' });
+          const exported = toFlowExport({ name: flow.name, graph: flow.graph, settings: flow.settings });
+          return json(200, { export: exported });
+        }
+      }
+
       // ---- flow lifecycle: versions + rollback (P2-T4) ----
       const versionsMatch = path.match(/^\/api\/flows\/([^/]+)\/versions$/);
       if (versionsMatch && method === 'GET') {

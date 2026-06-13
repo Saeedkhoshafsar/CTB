@@ -18,13 +18,21 @@ import { randomUUID } from 'node:crypto';
 import type { Executor, NodeRegistry } from '@ctb/core';
 import {
   CreateFlowBodySchema,
+  FLOW_TEMPLATES,
+  FlowExportSchema,
   FlowGraphSchema,
   FlowSettingsSchema,
+  ImportFlowBodySchema,
+  ImportTemplateBodySchema,
   RollbackFlowBodySchema,
   UpdateFlowBodySchema,
   defaultFlowSettings,
+  findFlowTemplate,
+  flowTemplateInfo,
   problemStrings,
+  toFlowExport,
   validateFlowForActivation,
+  type FlowExport,
   type FlowSettings,
   type FlowVersionInfo,
 } from '@ctb/shared';
@@ -241,6 +249,86 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       .run();
     const updated = db.select().from(flows).where(eq(flows.id, id)).get()!;
     return { flow: toPublic(updated) };
+  });
+
+  // ---- import / export (P3-T7) --------------------------------------------
+  //
+  // A flow's design is portable: GET /:id/export emits a versioned, identity-
+  // free envelope (graph + settings minus the un-portable error handler);
+  // POST /import re-hydrates one into a NEW flow on the named bot. The shared
+  // FlowExportSchema validates on the way out AND in (I5), so export→import
+  // is identical-semantics by construction (the graph round-trips byte-for-
+  // byte; only the cross-flow error handler is intentionally dropped).
+
+  /** Persist a validated export as a brand-new draft flow on `botId`. */
+  function createFromExport(botId: string, exp: FlowExport, nameOverride?: string): FlowRow {
+    const settings: FlowSettings = {
+      executionPolicy: exp.settings.executionPolicy,
+      // export never carries a handler (un-portable); a fresh flow starts clean.
+      errorHandlerFlowId: null,
+    };
+    const row: FlowRow = {
+      id: randomUUID(),
+      botId,
+      name: nameOverride ?? exp.name,
+      status: 'draft',
+      graph: exp.graph,
+      settings,
+      version: 1,
+      updatedAt: now(),
+    };
+    db.insert(flows).values(row).run();
+    return row;
+  }
+
+  app.get('/api/flows/:id/export', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = db.select().from(flows).where(eq(flows.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    // Re-validate the stored graph before emitting it — never export junk.
+    const graph = FlowGraphSchema.safeParse(row.graph);
+    if (!graph.success) {
+      return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+    }
+    const exported = toFlowExport({ name: row.name, graph: graph.data, settings: readSettings(row.settings) });
+    return { export: exported };
+  });
+
+  app.post('/api/flows/import', async (req, reply) => {
+    const parsed = ImportFlowBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    }
+    const bot = db.select().from(bots).where(eq(bots.id, parsed.data.botId)).get();
+    if (!bot) return reply.code(400).send({ error: 'unknown_bot' });
+
+    const env = FlowExportSchema.safeParse(parsed.data.export);
+    if (!env.success) {
+      return reply.code(400).send({ error: 'invalid_export', issues: env.error.issues });
+    }
+    const row = createFromExport(parsed.data.botId, env.data, parsed.data.name);
+    return reply.code(201).send({ flow: toPublic(row) });
+  });
+
+  // ---- starter template gallery (P3-T7) -----------------------------------
+
+  app.get('/api/flow-templates', async () => {
+    return { templates: FLOW_TEMPLATES.map(flowTemplateInfo) };
+  });
+
+  app.post('/api/flows/import-template', async (req, reply) => {
+    const parsed = ImportTemplateBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    }
+    const bot = db.select().from(bots).where(eq(bots.id, parsed.data.botId)).get();
+    if (!bot) return reply.code(400).send({ error: 'unknown_bot' });
+
+    const template = findFlowTemplate(parsed.data.templateId);
+    if (!template) return reply.code(404).send({ error: 'unknown_template' });
+
+    const row = createFromExport(parsed.data.botId, template.export, parsed.data.name);
+    return reply.code(201).send({ flow: toPublic(row) });
   });
 
   // ---- manual test run (P2-T7) --------------------------------------------

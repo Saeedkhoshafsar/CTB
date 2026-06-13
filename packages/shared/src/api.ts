@@ -122,6 +122,31 @@ export const UpdateFlowBodySchema = z.object({
 });
 export type UpdateFlowBody = z.infer<typeof UpdateFlowBodySchema>;
 
+/**
+ * POST /api/flows/import (P3-T7) — create a NEW flow from an export envelope.
+ * `export` is validated against FlowExportSchema server-side; `name` lets the
+ * importer override the envelope's name (e.g. "Quiz" → "Quiz (copy)").
+ */
+export const ImportFlowBodySchema = z.object({
+  botId: z.string().min(1),
+  /** The portable envelope (validated by FlowExportSchema in the import route). */
+  export: z.unknown(),
+  /** Optional name override; falls back to the envelope's own name. */
+  name: z.string().min(1).max(200).optional(),
+});
+export type ImportFlowBody = z.infer<typeof ImportFlowBodySchema>;
+
+/**
+ * POST /api/flows/import-template (P3-T7) — create a NEW flow from a gallery
+ * template by its stable id (feedback/quiz/faq/reminder).
+ */
+export const ImportTemplateBodySchema = z.object({
+  botId: z.string().min(1),
+  templateId: z.string().min(1),
+  name: z.string().min(1).max(200).optional(),
+});
+export type ImportTemplateBody = z.infer<typeof ImportTemplateBodySchema>;
+
 /** What GET /api/flows returns per row. */
 export interface FlowPublic {
   id: string;

@@ -20,6 +20,12 @@ import {
   type CredentialPublic,
   type ExecutionDetail,
   type ExecutionSummary,
+  type FlowExport,
+  type FlowTemplateInfo,
+  type ImportFlowBody,
+  ImportFlowBodySchema,
+  type ImportTemplateBody,
+  ImportTemplateBodySchema,
   type RunFlowResult,
   type FlowPublic,
   type FlowVersionInfo,
@@ -202,6 +208,32 @@ export class ApiClient {
     return (
       await this.request<{ flow: FlowPublic }>('POST', `/api/flows/${id}/rollback`, valid)
     ).flow;
+  }
+
+  // -- import / export + template gallery (P3-T7) -----------------------------
+
+  /** Download a flow's portable design envelope (graph + settings, no identity). */
+  async exportFlow(id: string): Promise<FlowExport> {
+    return (await this.request<{ export: FlowExport }>('GET', `/api/flows/${id}/export`)).export;
+  }
+
+  /** Create a NEW flow on `botId` from an export envelope (server re-validates). */
+  async importFlow(body: ImportFlowBody): Promise<FlowPublic> {
+    const valid = this.validate(ImportFlowBodySchema, body);
+    return (await this.request<{ flow: FlowPublic }>('POST', '/api/flows/import', valid)).flow;
+  }
+
+  /** The generic starter template gallery. */
+  async listFlowTemplates(): Promise<FlowTemplateInfo[]> {
+    return (await this.request<{ templates: FlowTemplateInfo[] }>('GET', '/api/flow-templates'))
+      .templates;
+  }
+
+  /** Create a NEW flow from a gallery template by its stable id. */
+  async importTemplate(body: ImportTemplateBody): Promise<FlowPublic> {
+    const valid = this.validate(ImportTemplateBodySchema, body);
+    return (await this.request<{ flow: FlowPublic }>('POST', '/api/flows/import-template', valid))
+      .flow;
   }
 
   // -- credentials (P3-T4) ----------------------------------------------------

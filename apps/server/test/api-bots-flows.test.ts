@@ -301,6 +301,118 @@ describe('flows API (P1-T8)', () => {
     expect(unknown.statusCode).toBe(400);
     expect(unknown.json().error).toBe('error_handler_not_same_bot');
   });
+
+  // ── P3-T7: import / export + starter template gallery ──────────────────────
+
+  it('export → import yields identical graph + settings (acceptance)', async () => {
+    // a flow with a non-default policy so we can prove settings survive too
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie,
+      payload: { botId, name: 'Source flow', graph: GRAPH },
+    })).json().flow;
+    await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'queue', errorHandlerFlowId: null } },
+    });
+
+    const exp = (await w.app.inject({
+      method: 'GET', url: `/api/flows/${flow.id}/export`, cookies: w.cookie,
+    })).json().export;
+    expect(exp.kind).toBe('ctb.flow');
+    expect(exp.name).toBe('Source flow');
+    expect(exp).not.toHaveProperty('id');
+    expect(exp).not.toHaveProperty('botId');
+    expect(exp.settings.executionPolicy).toBe('queue');
+
+    // re-import as a NEW flow (round-trip through JSON, as a download would)
+    const imp = await w.app.inject({
+      method: 'POST', url: '/api/flows/import', cookies: w.cookie,
+      payload: { botId, export: JSON.parse(JSON.stringify(exp)) },
+    });
+    expect(imp.statusCode).toBe(201);
+    const imported = imp.json().flow;
+
+    expect(imported.id).not.toBe(flow.id); // a brand-new flow
+    expect(imported.status).toBe('draft');
+    expect(imported.version).toBe(1);
+    expect(imported.graph).toEqual(GRAPH); // identical semantics
+    expect(imported.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: null });
+  });
+
+  it('export drops the un-portable errorHandlerFlowId (→ null)', async () => {
+    const handler = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'handler' },
+    })).json().flow;
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'main', graph: GRAPH },
+    })).json().flow;
+    await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'replace', errorHandlerFlowId: handler.id } },
+    });
+
+    const exp = (await w.app.inject({
+      method: 'GET', url: `/api/flows/${flow.id}/export`, cookies: w.cookie,
+    })).json().export;
+    expect(exp.settings.errorHandlerFlowId).toBeNull();
+  });
+
+  it('import rejects an unknown bot and a non-export body', async () => {
+    const exp = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'x', graph: GRAPH },
+    })).json().flow;
+    const envelope = (await w.app.inject({
+      method: 'GET', url: `/api/flows/${exp.id}/export`, cookies: w.cookie,
+    })).json().export;
+
+    const badBot = await w.app.inject({
+      method: 'POST', url: '/api/flows/import', cookies: w.cookie,
+      payload: { botId: 'nope', export: envelope },
+    });
+    expect(badBot.statusCode).toBe(400);
+    expect(badBot.json().error).toBe('unknown_bot');
+
+    const badEnv = await w.app.inject({
+      method: 'POST', url: '/api/flows/import', cookies: w.cookie,
+      payload: { botId, export: { hello: 'world' } },
+    });
+    expect(badEnv.statusCode).toBe(400);
+    expect(badEnv.json().error).toBe('invalid_export');
+  });
+
+  it('export of a missing flow is 404', async () => {
+    const res = await w.app.inject({ method: 'GET', url: '/api/flows/does-not-exist/export', cookies: w.cookie });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('lists generic starter templates and imports one as a new flow', async () => {
+    const list = await w.app.inject({ method: 'GET', url: '/api/flow-templates', cookies: w.cookie });
+    expect(list.statusCode).toBe(200);
+    const templates = list.json().templates as { id: string; name: string; nodeCount: number }[];
+    expect(templates.map((t) => t.id)).toEqual(['feedback', 'quiz', 'faq', 'reminder']);
+
+    const imp = await w.app.inject({
+      method: 'POST', url: '/api/flows/import-template', cookies: w.cookie,
+      payload: { botId, templateId: 'feedback', name: 'My feedback' },
+    });
+    expect(imp.statusCode).toBe(201);
+    const flow = imp.json().flow;
+    expect(flow.name).toBe('My feedback');
+    expect(flow.botId).toBe(botId);
+    expect(flow.status).toBe('draft');
+    expect(flow.graph.nodes.length).toBeGreaterThan(0);
+    // it persisted
+    expect(w.db.select().from(schema.flows).all().some((f) => f.id === flow.id)).toBe(true);
+  });
+
+  it('import-template rejects an unknown template id (404)', async () => {
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/flows/import-template', cookies: w.cookie,
+      payload: { botId, templateId: 'no-such-template' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('unknown_template');
+  });
 });
 
 describe('flow lifecycle: versions + rollback + activation problems (P2-T4)', () => {

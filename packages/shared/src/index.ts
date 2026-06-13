@@ -13,3 +13,5 @@ export * from './errors';
 export * from './api';
 export * from './credentials';
 export * from './flow-validate';
+export * from './flow-export';
+export * from './flow-templates';

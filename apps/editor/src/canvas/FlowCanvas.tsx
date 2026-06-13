@@ -17,7 +17,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useMemo, useRef, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
 import { effectiveOutputs, flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
@@ -90,9 +90,60 @@ function CanvasInner() {
     if (removed.length) useCanvas.getState().removeEdges(removed);
   }, []);
 
-  /** double-click opens the node detail view (n8n NDV, P2-T3.5). */
-  const onNodeDoubleClick = useCallback((_e: unknown, rfNode: CtbRfNode) => {
-    useNodeDetail.getState().open(rfNode.id);
+  /**
+   * Double-click opens the node detail view (n8n NDV, P2-T3.5).
+   *
+   * React Flow's own onNodeDoubleClick is unreliable here: it doesn't fire for
+   * a real user's sequential clicks, and by the time the native `dblclick`
+   * event fires the `.react-flow__pane` interaction layer is the event target —
+   * so neither composedPath nor an elementsFromPoint hit-test finds the node
+   * (verified via UI probe, including a genuine Chrome double-click over CDP).
+   *
+   * Instead we install CAPTURE-phase listeners on the canvas wrapper (which run
+   * before React Flow's handlers): we remember the node pressed on the gesture's
+   * first `mousedown` — when the node IS still the target — and open its NDV
+   * when the `dblclick` arrives within the OS double-click window.
+   */
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    // Resolve the node under an event's target chain, falling back to a
+    // point hit-test (covers React Flow's pane intercepting the target).
+    const nodeIdAt = (e: globalThis.MouseEvent): string | null => {
+      const path = (e.composedPath?.() ?? []) as HTMLElement[];
+      for (const p of path) {
+        const id = p?.getAttribute?.('data-id');
+        if (id && p.classList?.contains('react-flow__node')) return id;
+      }
+      for (const hit of document.elementsFromPoint(e.clientX, e.clientY)) {
+        const nodeEl = (hit as HTMLElement).closest?.('.react-flow__node[data-id]') as HTMLElement | null;
+        const id = nodeEl?.getAttribute('data-id');
+        if (id) return id;
+      }
+      return null;
+    };
+    // On a real double-click React Flow's interaction pane is the dblclick
+    // target, so by then the node is no longer under the pointer. We instead
+    // remember the node pressed on the FIRST mousedown of the gesture and open
+    // its NDV when the dblclick fires (within the OS double-click window).
+    let pressedId: string | null = null;
+    let pressedAt = 0;
+    const onDown = (e: globalThis.MouseEvent) => {
+      const id = nodeIdAt(e);
+      if (id) { pressedId = id; pressedAt = Date.now(); }
+    };
+    const onDbl = (e: globalThis.MouseEvent) => {
+      const direct = nodeIdAt(e);
+      const id = direct ?? (Date.now() - pressedAt <= 700 ? pressedId : null);
+      if (id) useNodeDetail.getState().open(id);
+    };
+    el.addEventListener('mousedown', onDown, true); // capture, before React Flow
+    el.addEventListener('dblclick', onDbl, true);
+    return () => {
+      el.removeEventListener('mousedown', onDown, true);
+      el.removeEventListener('dblclick', onDbl, true);
+    };
   }, []);
 
   const onConnect = useCallback((conn: Connection) => {
@@ -143,26 +194,27 @@ function CanvasInner() {
   );
 
   return (
-    <ReactFlow
-      nodes={rfNodes}
-      edges={rfEdges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDoubleClick={onNodeDoubleClick}
-      onConnect={onConnect}
-      isValidConnection={isValidConnection}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      deleteKeyCode={['Delete', 'Backspace']}
-      fitView
-      proOptions={{ hideAttribution: true }}
-      colorMode="dark"
-    >
-      <Background gap={20} />
-      <Controls position="bottom-right" />
-      <MiniMap pannable zoomable position="bottom-left" />
-    </ReactFlow>
+    <div ref={wrapRef} style={{ width: '100%', height: '100%' }}>
+      <ReactFlow
+        nodes={rfNodes}
+        edges={rfEdges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        deleteKeyCode={['Delete', 'Backspace']}
+        fitView
+        proOptions={{ hideAttribution: true }}
+        colorMode="dark"
+      >
+        <Background gap={20} />
+        <Controls position="bottom-right" />
+        <MiniMap pannable zoomable position="bottom-left" />
+      </ReactFlow>
+    </div>
   );
 }
 

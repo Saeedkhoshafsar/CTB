@@ -1,3 +1,5 @@
+// Regression probe: verifies the data.code node's NDV opens on double-click
+// AND the "اجرای آزمایشی" (Test-run) button runs the flow and refreshes data.
 import { chromium } from 'playwright';
 const BASE = 'http://localhost:5173', FLOW_ID = process.argv[2], PASS = 'demopass';
 const b = await chromium.launch();
@@ -17,29 +19,31 @@ await p.goto(`${BASE}/#/flows/${FLOW_ID}`, { waitUntil: 'load' });
 await p.waitForSelector('.react-flow__node', { timeout: 12000 });
 await p.waitForTimeout(1200);
 
+// ---- 1) NDV double-click (real browser dblclick via CDP) ----
 const node = p.locator('[data-id="code_1"]');
 const box = await node.boundingBox();
 const x = box.x + 40, y = box.y + 18;
-
-// Drive a REAL browser double-click via CDP Input domain — clickCount:1 then
-// clickCount:2 with the same coords produces a genuine `dblclick` exactly as
-// Chrome fires for a human's double-click.
 const cdp = await ctx.newCDPSession(p);
-async function down(cnt) { await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: cnt }); }
-async function up(cnt) { await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: cnt }); }
-await down(1); await up(1);
-await p.waitForTimeout(40);
-await down(2); await up(2);
+const md = (n) => cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: n });
+const mu = (n) => cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: n });
+await md(1); await mu(1); await p.waitForTimeout(40); await md(2); await mu(2);
 await p.waitForTimeout(600);
+console.log('1) NDV on double-click:', (await p.locator('.ndv-overlay').count()) ? 'OPENED ✅' : 'no modal ❌');
+await p.keyboard.press('Escape');
+await p.waitForTimeout(400);
 
-const overlay = await p.locator('.ndv-overlay').count();
-console.log('REAL browser dblclick (CDP) -> NDV:', overlay ? 'OPENED ✅' : 'no modal ❌');
-if (overlay) {
-  await p.screenshot({ path: '/tmp/ui-shots/09-code-ndv.png' });
-  console.log('  -> screenshot saved 09-code-ndv.png');
-  await p.keyboard.press('Escape');
-  await p.waitForTimeout(300);
-  console.log('after Escape -> overlay:', await p.locator('.ndv-overlay').count());
+// ---- 2) Test-run button ("اجرای آزمایشی") ----
+const runBtn = p.locator('button', { hasText: 'اجرای آزمایشی' });
+const runCount = await runBtn.count();
+console.log('2) Test-run button present:', runCount ? 'yes ✅' : 'NO ❌');
+if (runCount) {
+  await runBtn.first().click();
+  await p.waitForTimeout(2500); // let the run dispatch + run-data refresh
+  // After a run, the code node shows a per-node "n items" run badge.
+  const badge = await p.locator('.ctb-node-run').count();
+  console.log('   run badge on node(s):', badge);
+  await p.screenshot({ path: '/tmp/ui-shots/10-test-run.png' });
+  console.log('   -> screenshot saved 10-test-run.png');
 }
 console.log('errors:', errs.length ? errs : '(none)');
 await b.close();

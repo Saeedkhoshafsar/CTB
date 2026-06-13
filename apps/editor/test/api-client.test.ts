@@ -115,6 +115,57 @@ describe('ApiClient (P2-T1)', () => {
     expect(fetched.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: handler.id });
   });
 
+  it('export → import creates a new flow with identical graph + settings (P3-T7)', async () => {
+    const { client } = loggedInClient();
+    await client.login({ username: 'admin', password: 'pw' });
+    const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
+
+    const graph = {
+      nodes: [
+        { id: 'start', type: 'tg.trigger', params: { event: 'command', command: '/go' }, position: { x: 0, y: 0 }, disabled: false },
+        { id: 'msg', type: 'tg.sendMessage', params: { type: 'text', text: 'سلام' }, position: { x: 0, y: 100 }, disabled: false },
+      ],
+      edges: [{ id: 'e1', from: { node: 'start', port: 'main' }, to: { node: 'msg', port: 'main' } }],
+    };
+    const flow = await client.createFlow({ botId: bot.id, name: 'منبع', graph });
+    await client.updateFlow(flow.id, { settings: { executionPolicy: 'queue', errorHandlerFlowId: null } });
+
+    const exported = await client.exportFlow(flow.id);
+    expect(exported.kind).toBe('ctb.flow');
+    expect(exported).not.toHaveProperty('id');
+    expect(exported.settings.executionPolicy).toBe('queue');
+
+    const imported = await client.importFlow({ botId: bot.id, export: JSON.parse(JSON.stringify(exported)) });
+    expect(imported.id).not.toBe(flow.id);
+    expect(imported.status).toBe('draft');
+    expect(imported.graph).toEqual(flow.graph);
+    expect(imported.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: null });
+  });
+
+  it('importFlow rejects a non-export body (400 invalid_export)', async () => {
+    const { client } = loggedInClient();
+    await client.login({ username: 'admin', password: 'pw' });
+    const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
+    await expect(
+      client.importFlow({ botId: bot.id, export: { hello: 'world' } }),
+    ).rejects.toMatchObject({ status: 400, body: { error: 'invalid_export' } });
+  });
+
+  it('lists generic templates and imports one as a new flow (P3-T7)', async () => {
+    const { client } = loggedInClient();
+    await client.login({ username: 'admin', password: 'pw' });
+    const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
+
+    const templates = await client.listFlowTemplates();
+    expect(templates.map((tpl) => tpl.id)).toEqual(['feedback', 'quiz', 'faq', 'reminder']);
+
+    const flow = await client.importTemplate({ botId: bot.id, templateId: 'quiz', name: 'آزمون من' });
+    expect(flow.name).toBe('آزمون من');
+    expect(flow.status).toBe('draft');
+    expect(flow.graph.nodes.length).toBeGreaterThan(0);
+    expect(await client.listFlows(bot.id)).toHaveLength(1);
+  });
+
   it('unauthenticated API call → ApiError 401', async () => {
     const { client } = loggedInClient();
     await expect(client.listBots()).rejects.toMatchObject({ status: 401 });

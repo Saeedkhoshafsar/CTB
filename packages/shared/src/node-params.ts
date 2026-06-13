@@ -335,6 +335,26 @@ export const FlowManualTriggerParamsSchema = z.object({
 });
 export type FlowManualTriggerParams = z.infer<typeof FlowManualTriggerParamsSchema>;
 
+// ════════════════════════════════════════════════════════════════════════
+// P2-T7: data.code — the escape hatch (NODES.md §Data & code, ARCH §8).
+// ════════════════════════════════════════════════════════════════════════
+
+// ── data.code ──────────────────────────────────────────────────────────────────────
+
+export const DataCodeParamsSchema = z.object({
+  mode: z.enum(['run_once', 'per_item']).default('run_once'),
+  /**
+   * The user's JavaScript. NEVER expression-resolved (NodeDef.rawParamKeys,
+   * Decision Log #16) — `{{ }}` sequences are valid JS and must reach the
+   * sandbox verbatim. The editor renders this with the `code` widget
+   * (CodeMirror) via the `ctbWidget` schema annotation below.
+   */
+  code: z.string().min(1).meta({ ctbWidget: 'code' }),
+  /** Wall-clock budget per sandbox run; host caps at 10s (NODES.md limit). */
+  timeout: DurationStringSchema.optional(),
+});
+export type DataCodeParams = z.infer<typeof DataCodeParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

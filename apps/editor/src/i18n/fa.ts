@@ -60,6 +60,10 @@ export const fa = {
   'editor.save.saving': 'در حال ذخیره…',
   'editor.save.saved': 'ذخیره شد',
   'editor.save.error': 'خطا در ذخیره',
+  'editor.testRun.button': 'اجرای آزمایشی',
+  'editor.testRun.running': 'در حال اجرا…',
+  'editor.testRun.noTrigger': 'برای اجرای آزمایشی، یک نود «شروع دستی» (flow.manualTrigger) به جریان اضافه کنید.',
+  'editor.testRun.failed': 'اجرای آزمایشی با خطا مواجه شد: {error}',
   'editor.node.disabled': 'غیرفعال',
   'editor.node.unknownType': 'نوع ناشناخته',
   'editor.node.problems': '{n} مشکل',
@@ -91,6 +95,7 @@ export const fa = {
   'nodes.flow.wait.label': 'تأخیر / انتظار',
   'nodes.http.request.label': 'درخواست HTTP',
   'nodes.data.kv.label': 'حافظه (KV)',
+  'nodes.data.code.label': 'کد (JavaScript)',
   'nodes.flow.manualTrigger.label': 'شروع دستی (تست)',
 
   // ── node descriptions (param-panel header) ──
@@ -105,6 +110,7 @@ export const fa = {
   'nodeDesc.flow.wait': 'اجرای فلو را برای مدت مشخص (یا تا یک زمان معین) متوقف می‌کند. در دیتابیس ذخیره می‌شود و حتی با ری‌استارت سرور هم از بین نمی‌رود.',
   'nodeDesc.http.request': 'به یک آدرس اینترنتی درخواست می‌فرستد (GET/POST و…). پاسخ JSON به‌صورت خودکار وارد $json می‌شود.',
   'nodeDesc.data.kv': 'دادهٔ ماندگار برای هر کاربر/بات/فلو — مثل امتیاز یا وضعیت. بدون دیتابیس خارجی: خواندن، نوشتن، حذف و شمارنده.',
+  'nodeDesc.data.code': 'راه فرار: کد JavaScript دلخواه در یک محیط ایزوله اجرا می‌شود. به $items/$json/$vars و $http/$kv دسترسی دارید؛ console.log در لاگ اجرا ثبت می‌شود. خروجی (object/آرایه) مثل n8n خودکار نرمال می‌شود.',
   'nodeDesc.flow.manualTrigger': 'شروع‌کنندهٔ تستی — برای اجرای آزمایشی فلو از داخل ویرایشگر، با دادهٔ نمونهٔ دلخواه.',
 
   // ── form engine (P2-T3) ──
@@ -272,6 +278,7 @@ export const fa = {
   'paramDesc.scope': 'داده برای چه کسی نگه داشته شود؟ «کاربر» = هر کاربر جدا، «بات» = مشترک بین همه، «فلو» = مخصوص همین فلو.',
   'paramDesc.save_as': 'نام فیلدی در $json که نتیجه در آن می‌نشیند. خالی = value',
   'paramDesc.sample': 'دادهٔ JSON که هنگام اجرای آزمایشی به‌عنوان ورودی اول فلو استفاده می‌شود.',
+  'paramDesc.code': 'کد JavaScript شما. با return خروجی بسازید. دسترسی: $items، $json، $vars، و await $http.request/$kv.get/set. console.log در لاگ اجرا ثبت می‌شود. {{ }} اینجا کد است، نه متغیر فلو.',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',
@@ -332,6 +339,8 @@ export const fa = {
   'option.op.remove': 'حذف',
   'option.mode.duration': 'مدت مشخص',
   'option.mode.until': 'تا زمان معین',
+  'option.mode.run_once': 'یک‌بار (همهٔ آیتم‌ها → $items)',
+  'option.mode.per_item': 'برای هر آیتم (هر آیتم → $json)',
   'option.body_type.none': 'بدون بدنه',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'فرم (urlencoded)',

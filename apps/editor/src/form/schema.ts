@@ -42,7 +42,8 @@ export type WidgetKind =
   | 'rows' // array of objects → repeating rows
   | 'union' // anyOf → branch chooser + sub-widget
   | 'keyboard' // Telegram button-grid builder (structural detect)
-  | 'conditions'; // IF condition rows (structural detect)
+  | 'conditions' // IF condition rows (structural detect)
+  | 'code'; // CodeMirror JS editor (ctbWidget annotation, data.code P2-T7)
 
 export interface FieldSpec {
   /** property key inside the parent object ('' for the root / union branch). */
@@ -91,6 +92,10 @@ function isEmptySchema(s: JsonSchema): boolean {
 
 /** Resolve one JSON-Schema node to the widget that edits it. */
 export function resolveWidget(key: string, s: JsonSchema): WidgetKind {
+  // Explicit annotation wins (z.meta({ctbWidget}) survives z.toJSONSchema) —
+  // still structural in spirit: it's a property OF the schema, not a
+  // node-type lookup, so Collection fields can reuse it (Phase 3.5).
+  if (s.ctbWidget === 'code') return 'code';
   if (isKeyboardSchema(s)) return 'keyboard';
   if (isConditionsSchema(s)) return 'conditions';
   if (Array.isArray(s.enum)) return 'select';

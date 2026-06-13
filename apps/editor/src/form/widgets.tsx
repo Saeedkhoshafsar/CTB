@@ -6,7 +6,7 @@
  * node type they belong to — they are keyed by structural WidgetKind
  * (see schema.ts), so Phase 3.5 Collection forms reuse them as-is.
  */
-import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
 import {
@@ -227,6 +227,23 @@ export function ExpressionInput({
 }
 
 // ── primitive widgets ────────────────────────────────────────────────────────
+
+// ── code widget (CodeMirror, lazy — only data.code pays its bundle cost) ────
+
+const LazyCodeWidget = lazy(() =>
+  import('./CodeWidget').then((m) => ({ default: m.CodeWidget })),
+);
+
+function CodeFieldWidget({ value, onChange }: WidgetProps) {
+  return (
+    <Suspense fallback={<div className="code-widget-loading" data-testid="code-widget-loading" />}>
+      <LazyCodeWidget
+        value={value === undefined || value === null ? '' : String(value)}
+        onChange={(v) => onChange(v)}
+      />
+    </Suspense>
+  );
+}
 
 function TextWidget({ spec, value, onChange, multiline }: WidgetProps & { multiline?: boolean }) {
   const placeholder = usePlaceholder();
@@ -705,6 +722,8 @@ export function FieldRow({
 
 export function SchemaWidget(props: WidgetProps) {
   switch (props.spec.widget) {
+    case 'code':
+      return <CodeFieldWidget {...props} />;
     case 'boolean':
       return <BooleanWidget {...props} />;
     case 'number':

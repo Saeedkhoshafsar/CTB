@@ -8,7 +8,7 @@ import type { FlowPublic } from '@ctb/shared';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api/client';
+import { ApiError, api } from '../api/client';
 import { FlowCanvas } from '../canvas/FlowCanvas';
 import { NodeDetail } from '../canvas/NodeDetail';
 import { Palette } from '../canvas/Palette';
@@ -97,6 +97,42 @@ function ProblemsStrip() {
   );
 }
 
+/**
+ * Test-run button (P2-T7): save → POST /flows/:id/run (starts at the
+ * flow.manualTrigger) → reload run data so the NDV INPUT/OUTPUT panes and
+ * [code] console rows show this run. 422 no_manual_trigger → pointed alert.
+ */
+function TestRunButton({ flow }: { flow: FlowPublic }) {
+  const t = useI18n((s) => s.t);
+  const saveNow = useCanvas((s) => s.saveNow);
+  const [running, setRunning] = useState(false);
+  const onRun = async () => {
+    setRunning(true);
+    try {
+      await saveNow();
+      const res = await api.runFlow(flow.id);
+      await useRunData.getState().load(flow.id);
+      if (res.status === 'error') {
+        window.alert(t('editor.testRun.failed', { error: res.error ?? '?' }));
+      }
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { error?: string }) : null;
+      window.alert(
+        body?.error === 'no_manual_trigger'
+          ? t('editor.testRun.noTrigger')
+          : t('editor.testRun.failed', { error: err instanceof Error ? err.message : String(err) }),
+      );
+    } finally {
+      setRunning(false);
+    }
+  };
+  return (
+    <button className="btn" disabled={running} onClick={() => void onRun()} data-testid="test-run">
+      {running ? t('editor.testRun.running') : t('editor.testRun.button')}
+    </button>
+  );
+}
+
 function Toolbar({ flow }: { flow: FlowPublic }) {
   const t = useI18n((s) => s.t);
   const past = useCanvas((s) => s.past);
@@ -135,6 +171,7 @@ function Toolbar({ flow }: { flow: FlowPublic }) {
         <button className="btn" onClick={() => void saveNow()}>
           {t('editor.save')}
         </button>
+        <TestRunButton flow={flow} />
         <div className="versions-anchor">
           <button className="ghost" onClick={toggleVersions}>
             {t('editor.versions.button')}

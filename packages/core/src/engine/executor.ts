@@ -78,11 +78,26 @@ function capOutputs(
   return capped;
 }
 
+/**
+ * Sandboxed user-code runner factory (data.code, P2-T7). The host (server
+ * wire.ts) builds it over the @ctb/sandbox pool with $http/$kv capability
+ * proxies whose limits are enforced host-side (invariant I6). `core` only
+ * knows the contract — it never imports the sandbox for this (I3): the
+ * scope is assembled here, execution happens behind the injected function.
+ */
+export type CodeRunner = (
+  source: string,
+  scope: Record<string, unknown>,
+  opts: { botId: string; chatId: number | null; timeoutMs?: number },
+) => Promise<{ value: unknown; logs: string[] }>;
+
 /** Host-injected capabilities handed to nodes via NodeCtx (invariant I3/I6). */
 export interface ExecutorServices {
   /** KV factory — per-bot, because one executor serves many bots (DL #15). */
   kv: (botId: string) => NodeCtx['kv'];
   http: NodeCtx['http'];
+  /** Sandbox runner for data.code — optional: ctx.code.run throws without it. */
+  code?: CodeRunner;
   /**
    * Telegram sender factory — null when no sender applies. Receives the
    * execution's botId because ONE executor serves MANY bots (Decision Log #15):
@@ -344,9 +359,22 @@ export class Executor {
     const def = this.registry.get(node.type);
     const scope = this.buildNodeScope(exec, flow, inputItems, state);
 
-    // 1. resolve {{ }} expressions inside raw params, 2. validate via Zod
+    // 1. resolve {{ }} expressions inside raw params, 2. validate via Zod.
+    // Keys listed in def.rawParamKeys skip resolution (DL #16): data.code's
+    // `code` is a JS program where {{ }} is valid syntax, not a template.
+    const rawKeys = new Set(def.rawParamKeys ?? []);
     const warnings: string[] = [];
-    const resolved = await resolveParams(node.params, scope, this.services.evalOptions, warnings);
+    let resolved: unknown;
+    if (rawKeys.size > 0 && node.params !== null && typeof node.params === 'object' && !Array.isArray(node.params)) {
+      const entries = Object.entries(node.params as Record<string, unknown>);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of entries) {
+        out[k] = rawKeys.has(k) ? v : await resolveParams(v, scope, this.services.evalOptions, warnings);
+      }
+      resolved = out;
+    } else {
+      resolved = await resolveParams(node.params, scope, this.services.evalOptions, warnings);
+    }
     for (const w of warnings) this.log(exec.id, node.id, 'warn', w);
     const params = this.registry.parseParams(node.type, node.id, resolved);
 
@@ -407,6 +435,20 @@ export class Executor {
       tg: this.services.tg(exec.botId, exec.chatId),
       log: (level, message, data) => this.log(exec.id, node.id, level, message, data),
       now: () => this.clock(),
+      code: {
+        run: async (source, items, opts) => {
+          const runner = executor.services.code;
+          if (!runner) throw new Error('code runner is not configured on this instance');
+          // Same $ scope expressions see (ARCH §6/§8) — built from the items
+          // the node passes in, so per-item mode gets the right $json.
+          const scope = executor.buildNodeScope(exec, flow, items, state);
+          return runner(source, scope as unknown as Record<string, unknown>, {
+            botId: exec.botId,
+            chatId: exec.chatId,
+            ...(opts?.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+          });
+        },
+      },
     };
   }
 

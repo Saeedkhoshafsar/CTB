@@ -4,6 +4,7 @@
  * re-starts bots that were active before the last shutdown (I4: a restart
  * must never strand waiting conversations), then listens.
  */
+import { destroyDefaultSandboxPool } from '@ctb/sandbox';
 import { eq } from 'drizzle-orm';
 import { buildApp } from './app';
 import { openDb, schema } from './db/index';
@@ -22,6 +23,10 @@ async function main(): Promise<void> {
   const engine = wireEngine({
     db,
     ctbSecret: env.CTB_SECRET,
+    codeHttpAllowList: (env.CTB_CODE_HTTP_ALLOWLIST ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== ''),
     log: (level, message, data) => {
       // eslint-disable-next-line no-console
       if (level === 'error' || level === 'warn') console.error(`[engine:${level}]`, message, data ?? '');
@@ -61,6 +66,7 @@ async function main(): Promise<void> {
     engine.router.stopTimeoutScanner();
     await engine.gateway.stopAll();
     await app.close();
+    await destroyDefaultSandboxPool(); // Code-node workers
     sqlite.close();
     process.exit(0);
   };

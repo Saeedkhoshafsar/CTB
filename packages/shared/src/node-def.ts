@@ -71,6 +71,21 @@ export interface NodeCtx {
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;
   /** Current time — injected (executor clock) so nodes computing deadlines stay testable. */
   now(): Date;
+  /**
+   * Sandboxed user-code runner (data.code, ARCH §8 / P2-T7). Runs `source`
+   * inside the worker-pool sandbox with the standard `$` scope built from
+   * `items` ($items, $json = items[0].json, plus $vars/$execution/$flow/…
+   * assembled by the executor) and host-limited `$http`/`$kv` capability
+   * proxies (invariant I6 — the allow-list and caps are enforced host-side).
+   * Returns the script's `return` value plus captured console output.
+   */
+  code: {
+    run(
+      source: string,
+      items: FlowItem[],
+      opts?: { timeoutMs?: number },
+    ): Promise<{ value: unknown; logs: string[] }>;
+  };
 }
 
 export const NodeCategorySchema = z.enum(['trigger', 'telegram', 'flow', 'data', 'ai']);
@@ -91,6 +106,13 @@ export interface NodeDef<P = unknown> {
    * Editor and engine both call this; defaults to static ports.outputs.
    */
   dynamicOutputs?(params: P): PortName[];
+  /**
+   * Top-level param keys the executor must NOT expression-resolve before
+   * execute() (Decision Log #16). data.code lists `code` here: `{{ }}` is
+   * valid JavaScript and must reach the sandbox verbatim — resolving it
+   * would corrupt user programs.
+   */
+  rawParamKeys?: readonly string[];
   paramsSchema: ZodType<P>;
   execute(ctx: NodeCtx, params: P, items: FlowItem[]): Promise<NodeResult>;
 }

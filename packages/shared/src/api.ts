@@ -195,6 +195,21 @@ export interface ExecutionDetail extends ExecutionSummary {
 }
 
 // ---------------------------------------------------------------------------
+// manual test run (POST /api/flows/:id/run — P2-T7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of a manual test run started at a flow.manualTrigger node. The run
+ * executes synchronously up to the first WAIT / end / error; the editor then
+ * loads the execution detail (logs incl. Code-node console output) by id.
+ */
+export interface RunFlowResult {
+  executionId: string;
+  status: ExecutionStatus;
+  error: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // error envelope (shared shape of every non-2xx body)
 // ---------------------------------------------------------------------------
 

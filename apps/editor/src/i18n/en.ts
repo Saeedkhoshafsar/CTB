@@ -99,6 +99,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.data.kv.label': 'Storage (KV)',
   'nodes.data.code.label': 'Code (JavaScript)',
   'nodes.flow.manualTrigger.label': 'Manual Trigger (Test)',
+  'nodes.flow.executeSubFlow.label': 'Execute Sub-Flow',
+  'nodes.flow.return.label': 'Return',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -114,6 +116,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.data.kv': 'Persistent per-user/bot/flow data — like points or state. No external DB: get, set, delete and increment.',
   'nodeDesc.data.code': 'The escape hatch: run arbitrary JavaScript in an isolated sandbox. Access $items/$json/$vars and $http/$kv; console.log lands in the execution log. The returned object/array is auto-normalized like n8n.',
   'nodeDesc.flow.manualTrigger': 'Test entry point — run the flow from the editor with a sample payload of your choice.',
+  'nodeDesc.flow.executeSubFlow': 'Calls another flow of this bot, passing the current items; the sub-flow’s Return node sends items back. Use “wait” to get the result, or “fire & forget” to start it and continue.',
+  'nodeDesc.flow.return': 'Ends a sub-flow and hands its current items back to the Execute Sub-Flow node that called it.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -150,6 +154,8 @@ export const en: Record<keyof typeof fa, string> = {
   'form.cond.op.lte': 'less or equal',
   'form.cond.op.exists': 'exists',
   'form.cond.op.is_empty': 'is empty',
+  'form.flowRef.none': '— Select a flow —',
+  'form.flowRef.missing': '⚠ Selected flow no longer available',
 
   // ── param panel ──
   'panel.enabled': 'Enabled',
@@ -218,6 +224,7 @@ export const en: Record<keyof typeof fa, string> = {
   'param.scope': 'Scope',
   'param.save_as': 'Save into field',
   'param.sample': 'Sample payload (JSON)',
+  'param.flow_id': 'Sub-flow',
 
   // ── param help texts ──
   'paramDesc.event': 'What should start the flow? E.g. a command or any text message.',
@@ -343,6 +350,8 @@ export const en: Record<keyof typeof fa, string> = {
   'option.mode.until': 'Until datetime',
   'option.mode.run_once': 'Run once (all items → $items)',
   'option.mode.per_item': 'Per item (each item → $json)',
+  'option.mode.wait': 'Wait for result',
+  'option.mode.fire_and_forget': 'Fire & forget',
   'option.body_type.none': 'None',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'Form (urlencoded)',

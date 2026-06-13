@@ -104,6 +104,15 @@ export interface ExecutorServices {
    * the server resolves the right per-bot rate-limited sender from it.
    */
   tg: (botId: string, chatId: number | null) => NodeCtx['tg'];
+  /**
+   * Sub-flow runner for flow.executeSubFlow (P3-T1) — optional: ctx.subflow is
+   * null without it. Receives the calling execution's botId/depth so the host
+   * can enforce same-bot ownership and the recursion-depth cap (invariant I6):
+   * the executor never recurses into itself — the host owns the nested run.
+   */
+  subflow?: (parentBotId: string, depth: number) => {
+    run(flowId: string, items: FlowItem[]): Promise<{ items: FlowItem[] }>;
+  };
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -125,6 +134,13 @@ export interface StartInput {
   userId?: string | null;
   /** Where the run enters the graph (the trigger's target) + initial items. */
   entry: { nodeId: NodeId; items?: Record<PortName, FlowItem[]> };
+  /**
+   * Sub-flow nesting depth (flow.executeSubFlow, P3-T1). 0 for a top-level run;
+   * a child started by ctx.subflow.run is one deeper. Threaded into ctx.subflow
+   * so the host can enforce the recursion-depth cap. Not persisted — relevant
+   * only for the synchronous nested run that creates it.
+   */
+  depth?: number;
 }
 
 export interface ResumeInput {
@@ -160,6 +176,14 @@ export class Executor {
   private readonly clock: () => Date;
   private readonly maxSteps: number;
   private readonly checkpointEvery: number;
+  /**
+   * Sub-flow nesting depth of the run currently in buildCtx's scope (P3-T1).
+   * Set per run from StartInput.depth; threaded into ctx.subflow so the host
+   * caps recursion. One executor serves many bots but each run is synchronous
+   * within a single runLoop, so a per-instance field is sufficient and avoids
+   * persisting depth into ExecutionState.
+   */
+  private currentDepth = 0;
 
   constructor(
     private readonly registry: NodeRegistry,
@@ -173,6 +197,7 @@ export class Executor {
 
   /** Trigger fired: create the execution row and run until wait/end/error. */
   async start(input: StartInput): Promise<RunResult> {
+    this.currentDepth = input.depth ?? 0;
     const state: ExecutionState = {
       cursor: input.entry.nodeId,
       items: input.entry.items ?? { main: [{ json: {} }] },
@@ -449,6 +474,9 @@ export class Executor {
           });
         },
       },
+      subflow: executor.services.subflow
+        ? executor.services.subflow(exec.botId, executor.currentDepth)
+        : null,
     };
   }
 

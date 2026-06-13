@@ -355,6 +355,46 @@ export const DataCodeParamsSchema = z.object({
 });
 export type DataCodeParams = z.infer<typeof DataCodeParamsSchema>;
 
+// ════════════════════════════════════════════════════════════════════════
+// P3-T1: flow.executeSubFlow + flow.return — reusable sub-flows
+// (NODES.md §"Execute Sub-Flow", PLAN.md P3-T1, ARCHITECTURE.md §10).
+// ════════════════════════════════════════════════════════════════════════
+
+// ── flow.executeSubFlow ─────────────────────────────────────────────────────
+
+/**
+ * Call another flow OF THE SAME BOT, passing the current items. The child runs
+ * to completion; the items its `flow.return` node receives become this node's
+ * `main` output (in `wait` mode). Same-bot ownership and the recursion-depth cap
+ * are enforced host-side by the injected `ctx.subflow` capability — the node
+ * itself never runs an executor (invariant I6).
+ */
+export const FlowExecuteSubFlowParamsSchema = z.object({
+  /**
+   * The child flow to call. The editor renders this with the `flowRef` widget
+   * (a selector listing the bot's other flows) via the `ctbWidget` annotation.
+   */
+  flow_id: z.string().min(1).meta({ ctbWidget: 'flowRef' }),
+  /**
+   * `wait`: run the child synchronously and emit its returned items on `main`.
+   * `fire_and_forget`: start the child, then pass THIS node's input through
+   * unchanged on `main` without waiting for the child's result.
+   */
+  mode: z.enum(['wait', 'fire_and_forget']).default('wait'),
+});
+export type FlowExecuteSubFlowParams = z.infer<typeof FlowExecuteSubFlowParamsSchema>;
+
+// ── flow.return ──────────────────────────────────────────────────────────────
+
+/**
+ * Terminal node inside a sub-flow: the items it receives become the sub-flow's
+ * result, handed back to the parent's `flow.executeSubFlow` node. Has no params
+ * of its own (the returned items are simply its input). A flow run reaching
+ * `flow.return` ends like any other terminal node; the host captures the items.
+ */
+export const FlowReturnParamsSchema = z.object({});
+export type FlowReturnParams = z.infer<typeof FlowReturnParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

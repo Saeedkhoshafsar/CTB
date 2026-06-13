@@ -8,6 +8,8 @@
  */
 import { lazy, Suspense, useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
+import { useCanvas } from '../stores/canvas';
+import { useFlows } from '../stores/flows';
 import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
 import {
   convertBranchValue,
@@ -242,6 +244,46 @@ function CodeFieldWidget({ value, onChange }: WidgetProps) {
         onChange={(v) => onChange(v)}
       />
     </Suspense>
+  );
+}
+
+// ── flow reference widget (sibling-flow selector, flow.executeSubFlow P3-T1) ──
+//
+// Lists the other flows of the SAME bot (the current flow is excluded — a flow
+// calling itself directly is rejected by the node anyway). Structural in the
+// same sense as `code`: keyed by the schema's `ctbWidget` annotation, not by a
+// node-type lookup, so any future param can reuse it. Reads the editor stores
+// directly (like a structural widget that needs ambient context) — the value
+// it edits is still just the selected flow's id string.
+
+function FlowRefWidget({ spec, value, onChange }: WidgetProps) {
+  const t = useI18n((s) => s.t);
+  const currentFlowId = useCanvas((s) => s.flowId);
+  const flows = useFlows((s) => s.flows);
+  const current = typeof value === 'string' ? value : '';
+  // Sibling flows only; never offer the current flow as a target.
+  const options = flows.filter((f) => f.id !== currentFlowId);
+  // Selected id no longer in the list (deleted / different bot) → still show it
+  // so the user sees the dangling reference rather than a silent reset.
+  const orphaned = current !== '' && !options.some((f) => f.id === current);
+  return (
+    <select
+      className="flowref-widget"
+      value={current}
+      onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+    >
+      {!spec.required || current === '' ? (
+        <option value="">{t('form.flowRef.none')}</option>
+      ) : null}
+      {options.map((f) => (
+        <option key={f.id} value={f.id}>
+          {f.name}
+        </option>
+      ))}
+      {orphaned ? (
+        <option value={current}>{t('form.flowRef.missing')}</option>
+      ) : null}
+    </select>
   );
 }
 
@@ -724,6 +766,8 @@ export function SchemaWidget(props: WidgetProps) {
   switch (props.spec.widget) {
     case 'code':
       return <CodeFieldWidget {...props} />;
+    case 'flowRef':
+      return <FlowRefWidget {...props} />;
     case 'boolean':
       return <BooleanWidget {...props} />;
     case 'number':

@@ -15,8 +15,10 @@ import { dataCode } from './data/code';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
 import { httpRequest } from './data/http-request';
+import { flowExecuteSubFlow } from './flow/execute-subflow';
 import { flowIf } from './flow/if';
 import { flowManualTrigger } from './flow/manual-trigger';
+import { flowReturn } from './flow/return';
 import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
@@ -29,8 +31,10 @@ export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
 export { httpRequest } from './data/http-request';
+export { flowExecuteSubFlow } from './flow/execute-subflow';
 export { flowIf } from './flow/if';
 export { flowManualTrigger } from './flow/manual-trigger';
+export { flowReturn, SUBFLOW_RETURN_VAR } from './flow/return';
 export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
@@ -57,6 +61,8 @@ export const builtinNodes: NodeDef<never>[] = [
   dataCode,
   httpRequest,
   flowStopError,
+  flowExecuteSubFlow,
+  flowReturn,
 ] as NodeDef<never>[];
 
 /** Register every built-in node on a registry (server boot, tests). */

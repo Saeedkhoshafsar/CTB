@@ -51,6 +51,14 @@ export interface RouterDeps {
    * failures are logged, never block the resume (the click must still work).
    */
   answerCallback?(botId: string, callbackQueryId: string, text?: string): Promise<void>;
+  /**
+   * User upsert hook (P3-T5). Called once per inbound update that carries a
+   * `from` user, BEFORE matching, so the Users page sees everyone who ever
+   * messaged the bot and data.userProfile always has a record to read. Optional
+   * (older wiring/tests skip it); failures are logged, never block routing —
+   * dropping an update because a side-table write hiccuped would be wrong.
+   */
+  onUser?(event: TgEvent): Promise<void>;
   /** Execution id factory (injectable for deterministic tests). */
   newId?: () => string;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
@@ -133,6 +141,17 @@ export class UpdateRouter {
   }
 
   private async handleSerialized(event: TgEvent): Promise<void> {
+    // (0) upsert the sender into the users table (P3-T5) — best-effort, never
+    // blocks routing. Runs first so a brand-new user exists before any flow
+    // (or data.userProfile) reads it.
+    if (this.deps.onUser) {
+      try {
+        await this.deps.onUser(event);
+      } catch (err) {
+        this.log('warn', `onUser upsert failed for ${event.botId}:${event.user.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
     // `/cancel` cancels waiting conversations (NODES.md default) and still
     // falls through to trigger matching so a flow may react to /cancel itself.
     if (event.kind === 'command' && event.command === 'cancel') {

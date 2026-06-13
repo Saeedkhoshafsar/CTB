@@ -7,7 +7,8 @@ import { ApiClient } from '../src/api/client';
 import { createAuthStore } from '../src/stores/auth';
 import { createBotsStore } from '../src/stores/bots';
 import { createFlowsStore } from '../src/stores/flows';
-import { createFakeServer } from './fake-fetch';
+import { createUsersStore } from '../src/stores/users';
+import { createFakeServer, type FakeServer } from './fake-fetch';
 
 const VALID_TOKEN = '123456789:AAEabcdefghijklmnopqrstuvwxy-z12345';
 
@@ -145,5 +146,76 @@ describe('flows store', () => {
     });
     // row stays draft after failed activate
     expect(useFlows.getState().flows[0]!.status).toBe('draft');
+  });
+});
+
+function seedUser(srv: FakeServer, u: Partial<import('@ctb/shared').UserPublic> & { id: string; botId: string; tgUserId: number }) {
+  srv.users.set(u.id, {
+    profile: {},
+    tags: [],
+    firstSeen: '2026-01-01T00:00:00.000Z',
+    lastSeen: '2026-01-01T00:00:00.000Z',
+    displayName: `#${u.tgUserId}`,
+    ...u,
+  });
+}
+
+describe('users store', () => {
+  it('load() lists only the requested bot’s users, newest-seen first', async () => {
+    const { srv, client } = setup();
+    const useAuth = createAuthStore(client);
+    await useAuth.getState().login('admin', 'pw');
+
+    seedUser(srv, { id: 'u1', botId: 'botA', tgUserId: 11, lastSeen: '2026-01-01T10:00:00.000Z', displayName: 'Ada' });
+    seedUser(srv, { id: 'u2', botId: 'botA', tgUserId: 22, lastSeen: '2026-01-02T10:00:00.000Z', displayName: 'Bee' });
+    seedUser(srv, { id: 'u3', botId: 'botB', tgUserId: 33, lastSeen: '2026-01-03T10:00:00.000Z', displayName: 'Cy' });
+
+    const useUsers = createUsersStore(client);
+    await useUsers.getState().load('botA');
+
+    const got = useUsers.getState().users;
+    expect(got.map((u) => u.id)).toEqual(['u2', 'u1']); // newest-seen first, botB excluded
+    expect(useUsers.getState().botId).toBe('botA');
+    expect(useUsers.getState().error).toBeNull();
+  });
+
+  it('updateUser() replaces tags + profile and re-syncs the row from the server', async () => {
+    const { srv, client } = setup();
+    const useAuth = createAuthStore(client);
+    await useAuth.getState().login('admin', 'pw');
+
+    seedUser(srv, { id: 'u1', botId: 'botA', tgUserId: 11, tags: ['old'], profile: { a: 1 }, displayName: 'Ada' });
+    const useUsers = createUsersStore(client);
+    await useUsers.getState().load('botA');
+
+    const updated = await useUsers.getState().updateUser('u1', {
+      tags: ['vip', 'contacted'],
+      profile: { city: 'Tehran' },
+    });
+    expect(updated.tags).toEqual(['vip', 'contacted']);
+    expect(updated.profile).toEqual({ city: 'Tehran' });
+
+    // store row re-synced from the response, and the server holds the new state
+    expect(useUsers.getState().users[0]!.tags).toEqual(['vip', 'contacted']);
+    expect(srv.users.get('u1')!.profile).toEqual({ city: 'Tehran' });
+  });
+
+  it('updateUser() with an empty body is rejected (≥1 field required)', async () => {
+    const { srv, client } = setup();
+    const useAuth = createAuthStore(client);
+    await useAuth.getState().login('admin', 'pw');
+    seedUser(srv, { id: 'u1', botId: 'botA', tgUserId: 11 });
+    const useUsers = createUsersStore(client);
+    await useUsers.getState().load('botA');
+
+    await expect(useUsers.getState().updateUser('u1', {})).rejects.toBeTruthy();
+  });
+
+  it('load failure (not logged in) stores an error instead of throwing', async () => {
+    const { client } = setup(); // no login → 401
+    const useUsers = createUsersStore(client);
+    await useUsers.getState().load('botA');
+    expect(useUsers.getState().error).toContain('401');
+    expect(useUsers.getState().loading).toBe(false);
   });
 });

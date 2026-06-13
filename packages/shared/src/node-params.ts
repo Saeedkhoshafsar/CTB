@@ -532,6 +532,60 @@ export const TgChatActionParamsSchema = z.object({
 });
 export type TgChatActionParams = z.infer<typeof TgChatActionParamsSchema>;
 
+// ── data.userProfile (P3-T5) ─────────────────────────────────────────────────
+
+/** One "field = value" mapping row (value is an expression, resolved by the executor). */
+export const ProfileFieldRowSchema = z.object({
+  /** Profile field name — a dotted path is allowed (e.g. "address.city"). */
+  field: z.string().min(1),
+  /** Value expression — `{{ }}` resolved like every other param before the node runs. */
+  value: z.string().default(''),
+});
+export type ProfileFieldRow = z.infer<typeof ProfileFieldRowSchema>;
+
+/**
+ * data.userProfile — read/update the CTB user record (NODES.md §User Profile).
+ * A GENERIC CRM-ish primitive: it only ever touches `profile` (a free-form bag
+ * the flow author defines) and `tags` (string labels) — it never knows any
+ * domain field (invariant I2). Operates on the execution's own user by default;
+ * an explicit `user` (tg user id, expression) targets a different one.
+ *
+ * Ops:
+ *  - get          → reads the record; merged into $json.<save_as> (default "user")
+ *  - set_profile  → writes the `fields` rows into profile (merge|replace); read-back merged
+ *  - add_tags     → adds `tags` (de-duplicated); read-back merged
+ *  - remove_tags  → removes `tags`; read-back merged
+ */
+export const UserProfileParamsSchema = z
+  .object({
+    op: z.enum(['get', 'set_profile', 'add_tags', 'remove_tags']).default('get'),
+    /** Target user (tg user id) — expression; empty ⇒ the execution's own user. */
+    user: z.string().optional(),
+    /** op=set_profile: field rows written into the profile bag. */
+    fields: z.array(ProfileFieldRowSchema).optional(),
+    /**
+     * op=set_profile: `merge` keeps untouched profile keys (default),
+     * `replace` swaps the whole profile bag for just these fields.
+     */
+    mode: z.enum(['merge', 'replace']).default('merge'),
+    /** op=add_tags|remove_tags: tag labels (comma-separated string OR rows). */
+    tags: z.array(z.string().min(1)).optional(),
+    /** Result record lands in $json.<save_as> (default "user"). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+      .optional(),
+  })
+  .superRefine((p, ctx) => {
+    if (p.op === 'set_profile' && (!p.fields || p.fields.length === 0)) {
+      ctx.addIssue({ code: 'custom', message: 'op "set_profile" requires at least one field', path: ['fields'] });
+    }
+    if ((p.op === 'add_tags' || p.op === 'remove_tags') && (!p.tags || p.tags.length === 0)) {
+      ctx.addIssue({ code: 'custom', message: `op "${p.op}" requires at least one tag`, path: ['tags'] });
+    }
+  });
+export type UserProfileParams = z.infer<typeof UserProfileParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

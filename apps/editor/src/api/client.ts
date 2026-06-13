@@ -34,6 +34,9 @@ import {
   UpdateCredentialBodySchema,
   type UpdateFlowBody,
   UpdateFlowBodySchema,
+  type UpdateUserBody,
+  UpdateUserBodySchema,
+  type UserPublic,
 } from '@ctb/shared';
 import type { z } from 'zod';
 
@@ -228,6 +231,24 @@ export class ApiClient {
 
   async deleteCredential(id: string): Promise<void> {
     await this.request<{ ok: true }>('DELETE', `/api/credentials/${id}`);
+  }
+
+  // -- users (Users page, P3-T5) ----------------------------------------------
+
+  async listUsers(botId: string, opts: { limit?: number; offset?: number } = {}): Promise<UserPublic[]> {
+    const params = new URLSearchParams({ botId });
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    return (await this.request<{ users: UserPublic[] }>('GET', `/api/users?${params.toString()}`)).users;
+  }
+
+  async getUser(id: string): Promise<UserPublic> {
+    return (await this.request<{ user: UserPublic }>('GET', `/api/users/${id}`)).user;
+  }
+
+  async updateUser(id: string, body: UpdateUserBody): Promise<UserPublic> {
+    const valid = this.validate(UpdateUserBodySchema, body);
+    return (await this.request<{ user: UserPublic }>('PATCH', `/api/users/${id}`, valid)).user;
   }
 
   // -- node types (canvas palette, P2-T2) -------------------------------------

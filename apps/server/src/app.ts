@@ -17,6 +17,7 @@ import { registerCredentialsApi } from './api/credentials';
 import { registerExecutionsApi } from './api/executions';
 import { registerFlowsApi } from './api/flows';
 import { registerNodeTypesApi } from './api/node-types';
+import { registerUsersApi } from './api/users';
 import type { Db } from './db/index';
 import type { Engine } from './engine/wire';
 import type { Env } from './lib/env';
@@ -139,6 +140,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     });
     registerExecutionsApi(app, { db: opts.db });
     registerCredentialsApi(app, { db: opts.db, key });
+    registerUsersApi(app, { userStore: opts.engine.userStore });
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);
   }

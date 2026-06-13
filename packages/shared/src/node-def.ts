@@ -5,6 +5,21 @@ import type { NodeId, PortName } from './flow';
 import type { WaitSpec } from './execution';
 
 /**
+ * CtbUser — the persisted per-bot end-user record (the `users` table, P3-T5).
+ * GENERIC by construction (invariant I2): `profile` is a free-form bag the flow
+ * author defines, `tags` are plain string labels — CTB never bakes in a domain
+ * field. Telegram identity is mirrored into `profile` (first_name/username/…)
+ * by the host on upsert, never as dedicated columns.
+ */
+export interface CtbUser {
+  tgUserId: number;
+  profile: Record<string, unknown>;
+  tags: string[];
+  firstSeen: string;
+  lastSeen: string;
+}
+
+/**
  * NodeResult — what a node's execute() returns to the executor (ARCHITECTURE §7).
  * Discriminated union so the executor switch is exhaustive.
  */
@@ -138,6 +153,27 @@ export interface NodeCtx {
    */
   subflow: {
     run(flowId: string, items: FlowItem[]): Promise<{ items: FlowItem[] }>;
+  } | null;
+  /**
+   * User-profile store (data.userProfile, P3-T5). Reads/updates the per-bot
+   * end-user record (the `users` table) — a GENERIC CRM-ish primitive (tags +
+   * a free-form profile bag, never domain fields, invariant I2). All ops are
+   * scoped to the execution's bot by the host; `tgUserId` defaults to the
+   * execution's own user when omitted. Null when no user store is wired (unit
+   * tests) — the node then fails with a clear error.
+   */
+  users: {
+    /** Read a user record; null if that user has never been seen. */
+    get(tgUserId?: number): Promise<CtbUser | null>;
+    /** Merge (or replace) profile fields; returns the updated record. */
+    setProfile(
+      fields: Record<string, unknown>,
+      opts?: { mode?: 'merge' | 'replace'; tgUserId?: number },
+    ): Promise<CtbUser>;
+    /** Add tags (de-duplicated); returns the updated record. */
+    addTags(tags: string[], tgUserId?: number): Promise<CtbUser>;
+    /** Remove tags; returns the updated record. */
+    removeTags(tags: string[], tgUserId?: number): Promise<CtbUser>;
   } | null;
 }
 

@@ -25,6 +25,7 @@ import { ExecutionsPage } from './pages/ExecutionsPage';
 import { FlowEditorPage } from './pages/FlowEditorPage';
 import { FlowsPage } from './pages/FlowsPage';
 import { LoginPage } from './pages/LoginPage';
+import { UsersPage } from './pages/UsersPage';
 import { useAuth } from './stores/auth';
 
 function RequireAuth() {
@@ -97,6 +98,7 @@ export function App() {
           <Route element={<Shell />}>
             <Route path="/bots" element={<BotsPage />} />
             <Route path="/bots/:botId/flows" element={<FlowsPage />} />
+            <Route path="/bots/:botId/users" element={<UsersPage />} />
             <Route path="/flows/:flowId" element={<FlowEditorPage />} />
             <Route path="/executions" element={<ExecutionsPage />} />
             <Route path="/credentials" element={<CredentialsPage />} />

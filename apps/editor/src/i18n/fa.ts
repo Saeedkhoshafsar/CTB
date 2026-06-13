@@ -32,6 +32,7 @@ export const fa = {
   'bots.action.stop': 'خاموش',
   'bots.action.delete': 'حذف',
   'bots.action.flows': 'فلوها',
+  'bots.action.users': 'کاربران',
   'bots.delete.confirm': 'بات «{name}» و همهٔ فلوهایش حذف شود؟',
   'bots.create': 'ساخت بات',
   'bots.creating': 'در حال ساخت…',
@@ -72,6 +73,20 @@ export const fa = {
   'flows.action.deactivate': 'غیرفعال‌سازی',
   'flows.action.delete': 'حذف',
   'flows.delete.confirm': 'فلوی «{name}» حذف شود؟',
+
+  // ── users (P3-T5) — generic CRM: tags + free-form profile only ──
+  'users.title': 'کاربران',
+  'users.back': 'بازگشت به بات‌ها',
+  'users.empty': 'هنوز کاربری دیده نشده — کاربران با گفت‌وگو با بات ساخته می‌شوند.',
+  'users.action.edit': 'ویرایش',
+  'users.tags': 'برچسب‌ها',
+  'users.tags.hint': 'برچسب‌ها را با ویرگول جدا کنید؛ مثلاً: vip, تماس‌گرفته',
+  'users.profile': 'پروفایل (JSON)',
+  'users.profile.hint': 'کیسهٔ آزاد داده برای این کاربر. باید JSON معتبر باشد.',
+  'users.profile.invalid': 'JSON نامعتبر است — لطفاً ساختار را اصلاح کنید.',
+  'users.lastSeen': 'آخرین بازدید: {when}',
+  'users.save': 'ذخیره',
+  'users.saving': 'در حال ذخیره…',
 
   'editor.title': 'ویرایش فلو: {name}',
   'editor.undo': 'واگرد',
@@ -122,6 +137,7 @@ export const fa = {
   'nodes.http.request.label': 'درخواست HTTP',
   'nodes.data.kv.label': 'حافظه (KV)',
   'nodes.data.code.label': 'کد (JavaScript)',
+  'nodes.data.userProfile.label': 'پروفایل کاربر',
   'nodes.flow.manualTrigger.label': 'شروع دستی (تست)',
   'nodes.flow.executeSubFlow.label': 'اجرای زیرفلو',
   'nodes.flow.return.label': 'بازگشت',
@@ -150,6 +166,7 @@ export const fa = {
   'nodeDesc.tg.deleteMessage': 'یک پیام را با شناسه حذف می‌کند (پیش‌فرض: همان پیام تازه‌فرستاده یا کلیک‌شده). آیتم‌ها عبور می‌کنند تا فلو ادامه یابد.',
   'nodeDesc.tg.answerCallback': 'کلیک روی دکمه را تأیید می‌کند — چرخش بارگذاری را متوقف می‌کند و در صورت تمایل یک پیام کوتاه یا هشدار نشان می‌دهد. به‌صورت پیش‌فرض از شناسهٔ کلیک فعلی استفاده می‌کند.',
   'nodeDesc.tg.chatAction': 'برای چند ثانیه نشانگر «در حال تایپ…» / «در حال بارگذاری…» را در چت نشان می‌دهد. آیتم‌ها بدون تغییر عبور می‌کنند.',
+  'nodeDesc.data.userProfile': 'پروفایل و برچسب‌های کاربر را می‌خواند یا تغییر می‌دهد — یک CRM سبک و عمومی. به‌صورت پیش‌فرض روی کاربرِ همین اجرا کار می‌کند؛ با مشخص‌کردن شناسهٔ کاربر می‌توان کاربر دیگری را هدف گرفت.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
@@ -339,6 +356,13 @@ export const fa = {
   'paramDesc.save_as': 'نام فیلدی در $json که نتیجه در آن می‌نشیند. خالی = value',
   'paramDesc.sample': 'دادهٔ JSON که هنگام اجرای آزمایشی به‌عنوان ورودی اول فلو استفاده می‌شود.',
   'paramDesc.code': 'کد JavaScript شما. با return خروجی بسازید. دسترسی: $items، $json، $vars، و await $http.request/$kv.get/set. console.log در لاگ اجرا ثبت می‌شود. {{ }} اینجا کد است، نه متغیر فلو.',
+  // data.userProfile params (P3-T5)
+  'paramDesc.data.userProfile.op': 'چه کاری روی کاربر انجام شود: خواندن، تنظیم فیلدهای پروفایل، یا افزودن/حذف برچسب.',
+  'paramDesc.data.userProfile.user': 'خالی بگذارید تا روی کاربرِ همین گفتگو کار شود؛ یا یک tg user id بدهید تا کاربر دیگری هدف گرفته شود.',
+  'paramDesc.data.userProfile.fields': 'فیلدهای پروفایل که نوشته می‌شوند. نام می‌تواند تودرتو باشد (با نقطه): address.city',
+  'paramDesc.data.userProfile.mode': '«ادغام» فقط فیلدهای داده‌شده را به‌روزرسانی می‌کند؛ «جایگزینی» کل پروفایل را با همین فیلدها بازنویسی می‌کند.',
+  'paramDesc.data.userProfile.tags': 'برچسب‌هایی که افزوده یا حذف می‌شوند (برچسب‌های تکراری خودکار حذف می‌شوند).',
+  'paramDesc.data.userProfile.save_as': 'نام فیلدی در $json که رکورد کاربر در آن می‌نشیند. خالی = user',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',
@@ -430,6 +454,13 @@ export const fa = {
   'option.scope.user': 'کاربر',
   'option.scope.bot': 'بات (مشترک)',
   'option.scope.flow': 'فلو',
+  // data.userProfile op/mode options (P3-T5)
+  'option.data.userProfile.op.get': 'خواندن پروفایل',
+  'option.data.userProfile.op.set_profile': 'تنظیم فیلدهای پروفایل',
+  'option.data.userProfile.op.add_tags': 'افزودن برچسب',
+  'option.data.userProfile.op.remove_tags': 'حذف برچسب',
+  'option.data.userProfile.mode.merge': 'ادغام (فقط فیلدهای داده‌شده)',
+  'option.data.userProfile.mode.replace': 'جایگزینی کامل پروفایل',
 
   'executions.title': 'اجراها',
 

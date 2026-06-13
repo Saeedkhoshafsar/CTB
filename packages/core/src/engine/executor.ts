@@ -119,6 +119,13 @@ export interface ExecutorServices {
   subflow?: (parentBotId: string, depth: number) => {
     run(flowId: string, items: FlowItem[]): Promise<{ items: FlowItem[] }>;
   };
+  /**
+   * User-profile store for data.userProfile (P3-T5) — optional: ctx.users is
+   * null without it. A per-bot factory (one executor serves many bots, DL #15);
+   * it also receives the execution's own tg user id so the node can default to
+   * "the current user" without learning the chat→user mapping itself.
+   */
+  users?: (botId: string, defaultTgUserId: number | null) => NonNullable<NodeCtx['users']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -491,6 +498,9 @@ export class Executor {
       subflow: executor.services.subflow
         ? executor.services.subflow(exec.botId, executor.currentDepth)
         : null,
+      users: executor.services.users
+        ? executor.services.users(exec.botId, parseTgUserId(exec.userId))
+        : null,
     };
   }
 
@@ -528,6 +538,17 @@ export class Executor {
 }
 
 // ── routing helpers (pure) ───────────────────────────────────────────────────
+
+/**
+ * The execution stores `userId` as a string (the tg user id stringified by the
+ * router). data.userProfile needs the numeric tg id to default to "the current
+ * user" — parse it back, null if absent/non-numeric (e.g. sub-flow runs).
+ */
+function parseTgUserId(userId: string | null): number | null {
+  if (userId === null) return null;
+  const n = Number(userId);
+  return Number.isInteger(n) ? n : null;
+}
 
 type EdgeIndex = Map<string, { node: NodeId; port: PortName }[]>;
 

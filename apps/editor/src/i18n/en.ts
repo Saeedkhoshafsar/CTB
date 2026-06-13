@@ -34,6 +34,7 @@ export const en: Record<keyof typeof fa, string> = {
   'bots.action.stop': 'Stop',
   'bots.action.delete': 'Delete',
   'bots.action.flows': 'Flows',
+  'bots.action.users': 'Users',
   'bots.delete.confirm': 'Delete bot “{name}” and all its flows?',
   'bots.create': 'Create bot',
   'bots.creating': 'Creating…',
@@ -75,6 +76,20 @@ export const en: Record<keyof typeof fa, string> = {
   'flows.action.deactivate': 'Deactivate',
   'flows.action.delete': 'Delete',
   'flows.delete.confirm': 'Delete flow “{name}”?',
+
+  // ── users (P3-T5) — generic CRM: tags + free-form profile only ──
+  'users.title': 'Users',
+  'users.back': 'Back to bots',
+  'users.empty': 'No users seen yet — users are created by talking to the bot.',
+  'users.action.edit': 'Edit',
+  'users.tags': 'Tags',
+  'users.tags.hint': 'Separate tags with commas, e.g.: vip, contacted',
+  'users.profile': 'Profile (JSON)',
+  'users.profile.hint': 'Free-form data bag for this user. Must be valid JSON.',
+  'users.profile.invalid': 'Invalid JSON — please fix the structure.',
+  'users.lastSeen': 'Last seen: {when}',
+  'users.save': 'Save',
+  'users.saving': 'Saving…',
 
   'editor.title': 'Editing flow: {name}',
   'editor.undo': 'Undo',
@@ -125,6 +140,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.http.request.label': 'HTTP Request',
   'nodes.data.kv.label': 'Storage (KV)',
   'nodes.data.code.label': 'Code (JavaScript)',
+  'nodes.data.userProfile.label': 'User Profile',
   'nodes.flow.manualTrigger.label': 'Manual Trigger (Test)',
   'nodes.flow.executeSubFlow.label': 'Execute Sub-Flow',
   'nodes.flow.return.label': 'Return',
@@ -153,6 +169,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.tg.deleteMessage': 'Deletes a message by id (defaults to the one just sent or clicked). Items pass through so the flow continues.',
   'nodeDesc.tg.answerCallback': 'Acknowledges a button click — stops the loading spinner and optionally shows a toast or alert. Uses the current click’s id by default.',
   'nodeDesc.tg.chatAction': 'Shows a “typing…” / “uploading…” indicator in the chat for a few seconds. Items pass through unchanged.',
+  'nodeDesc.data.userProfile': 'Reads or updates a user’s profile and tags — a lightweight, generic CRM. Targets the current execution’s user by default; give a user id to address someone else.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -342,6 +359,13 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.save_as': 'Field name in $json the result lands in. Empty = value',
   'paramDesc.sample': 'JSON payload used as the flow\u2019s first input on a test run.',
   'paramDesc.code': 'Your JavaScript. Produce output with return. Scope: $items, $json, $vars, and await $http.request/$kv.get/set. console.log is captured into the execution log. {{ }} here is code, not a flow expression.',
+  // data.userProfile params (P3-T5)
+  'paramDesc.data.userProfile.op': 'What to do to the user: read, set profile fields, or add/remove tags.',
+  'paramDesc.data.userProfile.user': 'Leave empty to act on the current conversation’s user; or pass a tg user id to target someone else.',
+  'paramDesc.data.userProfile.fields': 'Profile fields to write. Names can be nested with dots: address.city',
+  'paramDesc.data.userProfile.mode': '“Merge” updates only the given fields; “Replace” overwrites the whole profile with just these fields.',
+  'paramDesc.data.userProfile.tags': 'Tags to add or remove (duplicates are removed automatically).',
+  'paramDesc.data.userProfile.save_as': 'Field in $json where the user record lands. Empty = user',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -433,6 +457,13 @@ export const en: Record<keyof typeof fa, string> = {
   'option.scope.user': 'User',
   'option.scope.bot': 'Bot (shared)',
   'option.scope.flow': 'Flow',
+  // data.userProfile op/mode options (P3-T5)
+  'option.data.userProfile.op.get': 'Get profile',
+  'option.data.userProfile.op.set_profile': 'Set profile fields',
+  'option.data.userProfile.op.add_tags': 'Add tags',
+  'option.data.userProfile.op.remove_tags': 'Remove tags',
+  'option.data.userProfile.mode.merge': 'Merge (only given fields)',
+  'option.data.userProfile.mode.replace': 'Replace whole profile',
 
   'executions.title': 'Executions',
 

@@ -17,13 +17,16 @@ import {
   TgSendMessageParamsSchema,
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
+  UpdateUserBodySchema,
   problemStrings,
+  userDisplayName,
   validateFlowForActivation,
   type BotPublic,
   type ExecutionDetail,
   type FlowGraph,
   type FlowPublic,
   type NodeTypeInfo,
+  type UserPublic,
 } from '@ctb/shared';
 import { z, type ZodType } from 'zod';
 import type { FetchLike } from '../src/api/client';
@@ -96,6 +99,8 @@ export interface FakeServer {
   flowVersions: Map<string, FlowVersionRow[]>;
   /** Seed executions here (newest first is the caller's job — fake sorts by startedAt desc). */
   executions: Map<string, ExecutionDetail>;
+  /** Seed users here (Users page, P3-T5). */
+  users: Map<string, UserPublic>;
   loggedIn: boolean;
   calls: { method: string; path: string; body?: unknown }[];
 }
@@ -116,6 +121,7 @@ export function createFakeServer(): FakeServer {
     flows: new Map(),
     flowVersions: new Map(),
     executions: new Map(),
+    users: new Map(),
     loggedIn: false,
     calls: [],
     fetch: async (input, init) => {
@@ -330,6 +336,33 @@ export function createFakeServer(): FakeServer {
         if (method === 'DELETE') {
           srv.flows.delete(flow.id);
           return json(200, { ok: true });
+        }
+      }
+
+      // ---- users (Users page, P3-T5) ----
+      if (path === '/api/users' && method === 'GET') {
+        const botId = url.searchParams.get('botId');
+        if (!botId) return json(400, { error: 'botId_required' });
+        const users = [...srv.users.values()]
+          .filter((u) => u.botId === botId)
+          .sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+        return json(200, { users });
+      }
+      {
+        const m = /^\/api\/users\/([^/]+)$/.exec(path);
+        if (m) {
+          const id = decodeURIComponent(m[1]!);
+          const user = srv.users.get(id);
+          if (!user) return json(404, { error: 'not_found' });
+          if (method === 'GET') return json(200, { user });
+          if (method === 'PATCH') {
+            const parsed = UpdateUserBodySchema.safeParse(body);
+            if (!parsed.success) return json(400, { error: 'invalid_body', issues: parsed.error.issues });
+            if (parsed.data.profile !== undefined) user.profile = parsed.data.profile;
+            if (parsed.data.tags !== undefined) user.tags = parsed.data.tags;
+            user.displayName = userDisplayName(user);
+            return json(200, { user });
+          }
         }
       }
 

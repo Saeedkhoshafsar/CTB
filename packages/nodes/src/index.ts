@@ -14,6 +14,7 @@ import type { NodeDef } from '@ctb/shared';
 import { dataCode } from './data/code';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
+import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
 import { flowIf } from './flow/if';
@@ -36,6 +37,7 @@ import { tgWaitForReply } from './tg/wait-for-reply';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
+export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
 export { flowIf } from './flow/if';
@@ -75,6 +77,7 @@ export const builtinNodes: NodeDef<never>[] = [
   dataSetFields,
   dataKv,
   dataCode,
+  dataUserProfile,
   httpRequest,
   flowLoop,
   flowMerge,

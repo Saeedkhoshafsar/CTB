@@ -403,7 +403,7 @@ export class Executor {
     for (const w of warnings) this.log(exec.id, node.id, 'warn', w);
     const params = this.registry.parseParams(node.type, node.id, resolved);
 
-    const ctx = this.buildCtx(exec, flow, node, state);
+    const ctx = this.buildCtx(exec, flow, node, state, state.items);
     return def.execute(ctx, params, inputItems);
   }
 
@@ -429,6 +429,7 @@ export class Executor {
     flow: FlowRef,
     node: FlowNode,
     state: ExecutionState,
+    inputsByPort: Record<PortName, FlowItem[]>,
   ): NodeCtx {
     const executor = this;
     return {
@@ -436,6 +437,12 @@ export class Executor {
       flowId: flow.id,
       botId: exec.botId,
       chatId: exec.chatId,
+      nodeId: node.id,
+      // Per-port inputs for branch-aware nodes (flow.merge). Drop empty ports so
+      // a node sees only the ports that actually delivered items this step.
+      inputsByPort: Object.fromEntries(
+        Object.entries(inputsByPort).filter(([, items]) => items.length > 0),
+      ),
       async eval(template: string, itemJson: Record<string, unknown>): Promise<string> {
         const scope = buildScope({
           json: itemJson,

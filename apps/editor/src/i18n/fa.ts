@@ -99,6 +99,8 @@ export const fa = {
   'nodes.flow.manualTrigger.label': 'شروع دستی (تست)',
   'nodes.flow.executeSubFlow.label': 'اجرای زیرفلو',
   'nodes.flow.return.label': 'بازگشت',
+  'nodes.flow.loop.label': 'حلقه روی آیتم‌ها',
+  'nodes.flow.merge.label': 'ادغام',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -116,6 +118,8 @@ export const fa = {
   'nodeDesc.flow.manualTrigger': 'شروع‌کنندهٔ تستی — برای اجرای آزمایشی فلو از داخل ویرایشگر، با دادهٔ نمونهٔ دلخواه.',
   'nodeDesc.flow.executeSubFlow': 'فلوی دیگری از همین بات را صدا می‌زند و آیتم‌های فعلی را به آن می‌دهد؛ نود «بازگشت» آن زیرفلو آیتم‌ها را پس می‌فرستد. برای گرفتن نتیجه «منتظر بمان» را انتخاب کنید، یا «بفرست و رها کن» تا اجرا شود و ادامه دهید.',
   'nodeDesc.flow.return': 'یک زیرفلو را پایان می‌دهد و آیتم‌های فعلی‌اش را به نود «اجرای زیرفلو»یی که آن را صدا زده برمی‌گرداند.',
+  'nodeDesc.flow.loop': 'آیتم‌ها را به دسته‌ها تقسیم می‌کند (سبک splitInBatches در n8n): خروجی loop هر بار یک دسته می‌فرستد — کار هر دسته را به همین نود برگردانید — و خروجی done پس از پایان، یک‌بار با همهٔ آیتم‌ها فعال می‌شود.',
+  'nodeDesc.flow.merge': 'دو شاخهٔ ورودی را ترکیب می‌کند: «افزودن» هر شاخه را به‌محض رسیدن عبور می‌دهد، «منتظر هر دو» تا رسیدن هر دو شاخه نگه می‌دارد و سپس با هم می‌فرستد، «اولین شاخه» اولین شاخه را نگه می‌دارد و دیگری را نادیده می‌گیرد.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
@@ -209,6 +213,8 @@ export const fa = {
   'param.match': 'مقدار مقایسه',
   'param.operator': 'نوع مقایسه',
   'param.mode': 'حالت',
+  'param.batch_size': 'اندازهٔ دسته',
+  'param.reset': 'بازنشانی',
   'param.duration': 'مدت',
   'param.until': 'تا زمان',
   'param.method': 'متد',
@@ -350,6 +356,9 @@ export const fa = {
   'option.mode.per_item': 'برای هر آیتم (هر آیتم → $json)',
   'option.mode.wait': 'منتظر نتیجه بمان',
   'option.mode.fire_and_forget': 'بفرست و رها کن',
+  'option.mode.append': 'افزودن (عبور هر شاخه)',
+  'option.mode.wait_both': 'منتظر هر دو شاخه',
+  'option.mode.choose_first': 'اولین شاخه',
   'option.body_type.none': 'بدون بدنه',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'فرم (urlencoded)',

@@ -154,7 +154,10 @@ describe('registry + helpers', () => {
     ]) {
       expect(reg.has(t)).toBe(true);
     }
-    expect(builtinNodes).toHaveLength(13);
+    // Exact count grows per phase; the authoritative count assertion lives in
+    // the newest phase's test (P3-T2 → 17). Here we only require the wave-1/2/P2-T7
+    // base set is present and the registry is at least that large.
+    expect(builtinNodes.length).toBeGreaterThanOrEqual(13);
   });
 
   it('parseDuration handles every documented unit and rejects garbage', () => {

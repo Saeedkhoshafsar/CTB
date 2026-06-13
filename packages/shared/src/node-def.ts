@@ -37,6 +37,20 @@ export interface NodeCtx {
   readonly flowId: string;
   readonly botId: string;
   readonly chatId: number | null;
+  /**
+   * The graph id of the node currently executing (P3-T2). Lets a stateful node
+   * scope its own $vars bucket so two instances of the same type never collide
+   * (flow.loop keeps its batch cursor under a per-node key). Nodes don't learn
+   * their id any other way — the executor stamps it here.
+   */
+  readonly nodeId: string;
+  /**
+   * Items grouped by the INPUT PORT they arrived on (P3-T2). `execute()` still
+   * receives the flattened merge of all ports for the common case; a node that
+   * must distinguish branches (flow.merge: which side fired?) reads this instead.
+   * Empty ports are omitted (the router never routes empty arrays).
+   */
+  readonly inputsByPort: Record<string, FlowItem[]>;
   /** Evaluate a {{ }} expression template against an item + $vars. */
   eval(template: string, itemJson: Record<string, unknown>): Promise<string>;
   /** Execution-scoped variables ($vars). */

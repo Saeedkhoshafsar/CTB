@@ -101,6 +101,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.flow.manualTrigger.label': 'Manual Trigger (Test)',
   'nodes.flow.executeSubFlow.label': 'Execute Sub-Flow',
   'nodes.flow.return.label': 'Return',
+  'nodes.flow.loop.label': 'Loop Over Items',
+  'nodes.flow.merge.label': 'Merge',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -118,6 +120,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.flow.manualTrigger': 'Test entry point — run the flow from the editor with a sample payload of your choice.',
   'nodeDesc.flow.executeSubFlow': 'Calls another flow of this bot, passing the current items; the sub-flow’s Return node sends items back. Use “wait” to get the result, or “fire & forget” to start it and continue.',
   'nodeDesc.flow.return': 'Ends a sub-flow and hands its current items back to the Execute Sub-Flow node that called it.',
+  'nodeDesc.flow.loop': 'Splits items into batches (n8n splitInBatches): the loop output emits one batch at a time — wire your per-batch work back into this node — and the done output fires once with all items when finished.',
+  'nodeDesc.flow.merge': 'Combines two input branches: append passes each branch through as it arrives, wait-both holds until both sides arrive then emits together, choose-first keeps the first branch and ignores the other.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -211,6 +215,8 @@ export const en: Record<keyof typeof fa, string> = {
   'param.match': 'Match value',
   'param.operator': 'Operator',
   'param.mode': 'Mode',
+  'param.batch_size': 'Batch size',
+  'param.reset': 'Reset',
   'param.duration': 'Duration',
   'param.until': 'Until',
   'param.method': 'Method',
@@ -352,6 +358,9 @@ export const en: Record<keyof typeof fa, string> = {
   'option.mode.per_item': 'Per item (each item → $json)',
   'option.mode.wait': 'Wait for result',
   'option.mode.fire_and_forget': 'Fire & forget',
+  'option.mode.append': 'Append (pass each branch through)',
+  'option.mode.wait_both': 'Wait for both branches',
+  'option.mode.choose_first': 'Choose first branch',
   'option.body_type.none': 'None',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'Form (urlencoded)',

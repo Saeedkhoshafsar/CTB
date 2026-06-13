@@ -17,7 +17,9 @@ import { dataSetFields } from './data/set-fields';
 import { httpRequest } from './data/http-request';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
 import { flowIf } from './flow/if';
+import { flowLoop } from './flow/loop';
 import { flowManualTrigger } from './flow/manual-trigger';
+import { flowMerge } from './flow/merge';
 import { flowReturn } from './flow/return';
 import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
@@ -33,7 +35,9 @@ export { dataSetFields } from './data/set-fields';
 export { httpRequest } from './data/http-request';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
 export { flowIf } from './flow/if';
+export { flowLoop, LOOP_STATE_PREFIX } from './flow/loop';
 export { flowManualTrigger } from './flow/manual-trigger';
+export { flowMerge, MERGE_STATE_PREFIX } from './flow/merge';
 export { flowReturn, SUBFLOW_RETURN_VAR } from './flow/return';
 export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
@@ -60,6 +64,8 @@ export const builtinNodes: NodeDef<never>[] = [
   dataKv,
   dataCode,
   httpRequest,
+  flowLoop,
+  flowMerge,
   flowStopError,
   flowExecuteSubFlow,
   flowReturn,

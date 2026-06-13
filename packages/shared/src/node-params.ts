@@ -395,6 +395,42 @@ export type FlowExecuteSubFlowParams = z.infer<typeof FlowExecuteSubFlowParamsSc
 export const FlowReturnParamsSchema = z.object({});
 export type FlowReturnParams = z.infer<typeof FlowReturnParamsSchema>;
 
+// ── flow.loop ────────────────────────────────────────────────────────────────
+
+/**
+ * Split items into batches, n8n `splitInBatches` style (P3-T2). The node has
+ * two output ports: `loop` (the current batch — wire your per-batch work here,
+ * then loop the work's output back into this node's input) and `done` (fires
+ * once, with ALL the original items, after the last batch).
+ *
+ * State is kept per-node in $vars under a reserved key; the node tells a fresh
+ * entry from a loop-back by whether that state exists. `reset` forces a fresh
+ * start even if a previous (e.g. abandoned) loop left state behind.
+ */
+export const FlowLoopParamsSchema = z.object({
+  /** Items per batch on the `loop` port. 1 = one item at a time (n8n default). */
+  batch_size: z.coerce.number().int().min(1).default(1),
+  /** Discard any leftover loop state on entry and start a brand-new loop. */
+  reset: z.boolean().default(false),
+});
+export type FlowLoopParams = z.infer<typeof FlowLoopParamsSchema>;
+
+// ── flow.merge ───────────────────────────────────────────────────────────────
+
+/**
+ * Combine the two input branches `input1` + `input2` (P3-T2):
+ *  • `append`       — emit items from whichever branch arrives, in arrival order
+ *                     (no waiting; each activation passes its items straight on).
+ *  • `wait_both`    — hold the first branch's items until the OTHER branch also
+ *                     arrives, then emit both together (input1 first). If only
+ *                     one branch ever fires, nothing is emitted.
+ *  • `choose_first` — emit the first branch to arrive; ignore the later one.
+ */
+export const FlowMergeParamsSchema = z.object({
+  mode: z.enum(['append', 'wait_both', 'choose_first']).default('append'),
+});
+export type FlowMergeParams = z.infer<typeof FlowMergeParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

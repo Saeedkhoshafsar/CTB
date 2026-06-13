@@ -6,7 +6,18 @@
  * node type they belong to — they are keyed by structural WidgetKind
  * (see schema.ts), so Phase 3.5 Collection forms reuse them as-is.
  */
-import { lazy, Suspense, useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
 import { useFlows } from '../stores/flows';
@@ -31,34 +42,59 @@ function humanize(key: string): string {
   return key.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
-/** Param label: i18n `param.<key>` when present, humanized key otherwise. */
+/**
+ * Optional namespace for i18n key resolution. Param key names (`mode`,
+ * `target`, …) are reused across node types with DIFFERENT meanings, so a
+ * bare `paramDesc.mode` collides (flow.wait vs flow.merge vs data.code …).
+ * The node panel sets this to the node type so resolvers try the namespaced
+ * key (`paramDesc.<ns>.<key>`) first and fall back to the bare key. Generic
+ * consumers (Collection forms) leave it empty → identical legacy behaviour.
+ */
+const NsContext = createContext<string>('');
+export const FormNamespace = NsContext.Provider;
+function useNs(): string {
+  return useContext(NsContext);
+}
+
+/**
+ * Resolve an i18n key with optional namespace fallback:
+ * `<base>.<ns>.<key>` → `<base>.<key>` → undefined (when neither exists).
+ */
+function resolveNs(
+  t: (key: MessageKey) => string,
+  base: string,
+  ns: string,
+  key: string,
+): string | undefined {
+  if (ns) {
+    const nsKey = `${base}.${ns}.${key}`;
+    const nsMsg = t(nsKey as MessageKey);
+    if (nsMsg !== nsKey) return nsMsg;
+  }
+  const k = `${base}.${key}`;
+  const msg = t(k as MessageKey);
+  return msg === k ? undefined : msg;
+}
+
+/** Param label: i18n `param.<ns>.<key>` → `param.<key>`, humanized otherwise. */
 export function useLabel(): (key: string) => string {
   const t = useI18n((s) => s.t);
-  return (key: string) => {
-    const k = `param.${key}`;
-    const msg = t(k as MessageKey);
-    return msg === k ? humanize(key) : msg;
-  };
+  const ns = useNs();
+  return (key: string) => resolveNs(t, 'param', ns, key) ?? humanize(key);
 }
 
-/** Param help text: i18n `paramDesc.<key>` when present, nothing otherwise. */
+/** Param help text: i18n `paramDesc.<ns>.<key>` → `paramDesc.<key>`, nothing otherwise. */
 export function useDesc(): (key: string) => string | undefined {
   const t = useI18n((s) => s.t);
-  return (key: string) => {
-    const k = `paramDesc.${key}`;
-    const msg = t(k as MessageKey);
-    return msg === k ? undefined : msg;
-  };
+  const ns = useNs();
+  return (key: string) => resolveNs(t, 'paramDesc', ns, key);
 }
 
-/** Example placeholder: i18n `ph.<key>` when present. */
+/** Example placeholder: i18n `ph.<ns>.<key>` → `ph.<key>` when present. */
 function usePlaceholder(): (key: string) => string | undefined {
   const t = useI18n((s) => s.t);
-  return (key: string) => {
-    const k = `ph.${key}`;
-    const msg = t(k as MessageKey);
-    return msg === k ? undefined : msg;
-  };
+  const ns = useNs();
+  return (key: string) => resolveNs(t, 'ph', ns, key);
 }
 
 // ── expression-aware text input ──────────────────────────────────────────────
@@ -328,18 +364,16 @@ function BooleanWidget({ value, onChange }: WidgetProps) {
 
 function SelectWidget({ spec, value, onChange }: WidgetProps) {
   const t = useI18n((s) => s.t);
+  const ns = useNs();
   const options = spec.schema.enum ?? [];
   // Unset + schema default → SHOW the default (n8n behaviour: the user sees
   // what the engine will actually do). The value itself stays unset — Zod
   // applies the same default server-side.
   const effective = value === undefined ? spec.schema.default : value;
   const current = effective === undefined ? '' : String(effective);
-  /** Translated option label (`option.<param>.<value>`) — raw value otherwise. */
-  const optionLabel = (o: string | number): string => {
-    const k = `option.${spec.key}.${String(o)}`;
-    const msg = t(k as MessageKey);
-    return msg === k ? String(o) : msg;
-  };
+  /** Translated option label (`option.<ns>.<param>.<value>` → `option.<param>.<value>`). */
+  const optionLabel = (o: string | number): string =>
+    resolveNs(t, 'option', ns, `${spec.key}.${String(o)}`) ?? String(o);
   return (
     <select
       value={current}

@@ -24,6 +24,7 @@ import {
   UpdateCollectionBodySchema,
   UpdateRecordBodySchema,
   UpdateUserBodySchema,
+  QueryRecordsBodySchema,
   RecordValidationError,
   defaultFlowSettings,
   findFlowTemplate,
@@ -36,9 +37,11 @@ import {
   type BotPublic,
   type CollectionPublic,
   type ExecutionDetail,
+  type FilePublic,
   type FlowGraph,
   type FlowPublic,
   type NodeTypeInfo,
+  type RecordFilter,
   type RecordPublic,
   type UserPublic,
 } from '@ctb/shared';
@@ -118,6 +121,8 @@ export interface FakeServer {
   /** Collections + records (Data section, P3.5-T3). */
   collections: Map<string, CollectionPublic>;
   records: Map<string, RecordPublic>;
+  /** Uploaded files (image/file fields, P3.5-T4). */
+  files: Map<string, FilePublic & { bytes: string }>;
   loggedIn: boolean;
   calls: { method: string; path: string; body?: unknown }[];
 }
@@ -132,6 +137,50 @@ function json(status: number, body: unknown): Response {
 let seq = 0;
 const uid = (p: string) => `${p}-${++seq}`;
 
+/**
+ * A small in-memory mirror of the store's RecordFilter compiler — enough to let
+ * the panel's where/sort/limit/offset behaviour be tested end-to-end without a
+ * real SQLite store.
+ */
+function applyRecordFilter(records: RecordPublic[], filter: RecordFilter): RecordPublic[] {
+  let out = records.filter((rec) =>
+    filter.where.every((w) => {
+      const v = rec.data[w.field];
+      switch (w.op) {
+        case 'eq':
+          return v === w.value;
+        case 'ne':
+          return v !== w.value;
+        case 'gt':
+          return typeof v === 'number' && typeof w.value === 'number' && v > w.value;
+        case 'gte':
+          return typeof v === 'number' && typeof w.value === 'number' && v >= w.value;
+        case 'lt':
+          return typeof v === 'number' && typeof w.value === 'number' && v < w.value;
+        case 'lte':
+          return typeof v === 'number' && typeof w.value === 'number' && v <= w.value;
+        case 'contains':
+          return typeof v === 'string' && typeof w.value === 'string' && v.includes(w.value);
+        case 'in':
+          return Array.isArray(w.value) && (w.value as unknown[]).includes(v);
+        case 'exists':
+          return w.value === false ? v === undefined || v === null : v !== undefined && v !== null;
+        default:
+          return true;
+      }
+    }),
+  );
+  for (const s of [...filter.sort].reverse()) {
+    out = [...out].sort((a, b) => {
+      const av = a.data[s.field];
+      const bv = b.data[s.field];
+      const cmp = av === bv ? 0 : (av as number) > (bv as number) ? 1 : -1;
+      return s.dir === 'desc' ? -cmp : cmp;
+    });
+  }
+  return out;
+}
+
 export function createFakeServer(): FakeServer {
   const srv: FakeServer = {
     bots: new Map(),
@@ -141,6 +190,7 @@ export function createFakeServer(): FakeServer {
     users: new Map(),
     collections: new Map(),
     records: new Map(),
+    files: new Map(),
     loggedIn: false,
     calls: [],
     fetch: async (input, init) => {
@@ -517,8 +567,14 @@ export function createFakeServer(): FakeServer {
         if (m && method === 'POST') {
           const cid = decodeURIComponent(m[1]!);
           if (!srv.collections.has(cid)) return json(404, { error: 'unknown_collection' });
+          const parsed = QueryRecordsBodySchema.safeParse(body ?? {});
+          if (!parsed.success) return json(400, { error: 'invalid_filter', issues: parsed.error.issues });
           const all = [...srv.records.values()].filter((r) => r.collectionId === cid);
-          return json(200, { records: all, total: all.length });
+          const matched = applyRecordFilter(all, parsed.data);
+          const offset = parsed.data.offset ?? 0;
+          const limit = parsed.data.limit ?? matched.length;
+          const pageRows = matched.slice(offset, offset + limit);
+          return json(200, { records: pageRows, total: matched.length });
         }
       }
       {
@@ -591,6 +647,45 @@ export function createFakeServer(): FakeServer {
               throw e;
             }
           }
+        }
+      }
+
+      // ---- files (image/file uploads, P3.5-T4) ----
+      if (path === '/api/files' && method === 'POST') {
+        const botId = url.searchParams.get('botId');
+        if (!botId) return json(400, { error: 'botId_required' });
+        if (typeof body?.data !== 'string' || body.data === '') {
+          return json(400, { error: 'invalid_body' });
+        }
+        const id = uid('file');
+        const file: FilePublic & { bytes: string } = {
+          id,
+          botId,
+          kind: 'local',
+          mime: typeof body.mime === 'string' ? body.mime : null,
+          size: body.data.length,
+          createdAt: new Date().toISOString(),
+          url: `/api/files/${id}`,
+          bytes: body.data,
+        };
+        srv.files.set(id, file);
+        const { bytes: _bytes, ...pub } = file;
+        return json(201, { file: pub });
+      }
+      {
+        const m = /^\/api\/files\/([^/]+)\/meta$/.exec(path);
+        if (m && method === 'GET') {
+          const f = srv.files.get(decodeURIComponent(m[1]!));
+          if (!f) return json(404, { error: 'not_found' });
+          const { bytes: _bytes, ...pub } = f;
+          return json(200, { file: pub });
+        }
+      }
+      {
+        const m = /^\/api\/files\/([^/]+)$/.exec(path);
+        if (m && method === 'DELETE') {
+          if (!srv.files.delete(decodeURIComponent(m[1]!))) return json(404, { error: 'not_found' });
+          return json(200, { ok: true });
         }
       }
 

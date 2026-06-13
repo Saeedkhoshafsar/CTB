@@ -25,6 +25,7 @@ import {
   type CredentialPublic,
   type ExecutionDetail,
   type ExecutionSummary,
+  type FilePublic,
   type FlowExport,
   type FlowTemplateInfo,
   type ImportFlowBody,
@@ -386,6 +387,28 @@ export class ApiClient {
 
   async deleteRecord(collectionId: string, id: string): Promise<void> {
     await this.request<{ ok: true }>('DELETE', `/api/records/${collectionId}/${id}`);
+  }
+
+  // -- files (image/file field uploads, P3.5-T4) ------------------------------
+
+  /**
+   * Upload bytes for an `image`/`file` field. The server takes a small
+   * JSON+base64 body (no multipart dep) scoped to a bot and returns the file id
+   * (stored in the record) + a download URL the panel renders.
+   */
+  async uploadFile(botId: string, data: string, mime?: string | null): Promise<FilePublic> {
+    const qs = `?botId=${encodeURIComponent(botId)}`;
+    return (
+      await this.request<{ file: FilePublic }>('POST', `/api/files${qs}`, {
+        data,
+        ...(mime ? { mime } : {}),
+      })
+    ).file;
+  }
+
+  /** Convenience: read the absolute download URL for a stored file id. */
+  fileUrl(id: string): string {
+    return `${this.base}/api/files/${encodeURIComponent(id)}`;
   }
 
   // -- node types (canvas palette, P2-T2) -------------------------------------

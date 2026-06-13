@@ -931,3 +931,44 @@ button.danger { color: var(--danger); }
   border-radius: 6px;
   background: var(--bg);
 }
+
+/* ── records CRUD panel (P3.5-T4) ── */
+.records-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+.records-toolbar { display: flex; gap: 0.5rem; align-items: center; }
+.records-search { flex: 1; max-width: 320px; }
+
+.filter-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.filter-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.filter-row select, .filter-row input { min-width: 120px; }
+
+.records-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.records-table th, .records-table td {
+  text-align: start; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border);
+  max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.records-table th { color: var(--text-dim); font-weight: 600; }
+.records-table .actions-col { text-align: end; white-space: nowrap; }
+.records-table .actions-col button { margin-inline-start: 0.3rem; }
+.sort-header { padding: 0; font: inherit; color: var(--text-dim); }
+.sort-header:hover:not(:disabled) { color: var(--text); }
+
+.pager { display: flex; gap: 0.75rem; align-items: center; justify-content: center; margin-top: 0.5rem; }
+
+/* form widgets */
+.record-form .form-grid { display: flex; flex-direction: column; gap: 0.85rem; }
+.chip-set { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip {
+  padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 12.5px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text-dim);
+}
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.toggle input { width: 1.1rem; height: 1.1rem; }
+textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+
+.file-widget { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; }
+.file-actions { display: flex; gap: 0.5rem; align-items: center; }
+.file-preview { max-width: 160px; max-height: 120px; border-radius: 6px; border: 1px solid var(--border); }
+
+.group-widget { display: flex; flex-direction: column; gap: 0.6rem; }
+.group-row { padding: 0.6rem; }
+.group-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }

@@ -4,12 +4,14 @@
  * flow.if, data.setFields, flow.stopError.
  * Wave 2 (P2-T6): tg.menu, flow.switch, flow.wait, http.request,
  * data.kv, flow.manualTrigger.
+ * P2-T7: data.code (sandboxed JavaScript — the escape hatch).
  *
  * Param schemas live in @ctb/shared (invariant I5); implementations here only
  * consume injected capabilities via NodeCtx (invariants I3/I6).
  */
 import type { NodeRegistry } from '@ctb/core';
 import type { NodeDef } from '@ctb/shared';
+import { dataCode } from './data/code';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
 import { httpRequest } from './data/http-request';
@@ -23,6 +25,7 @@ import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
 
+export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
 export { httpRequest } from './data/http-request';
@@ -51,6 +54,7 @@ export const builtinNodes: NodeDef<never>[] = [
   flowWait,
   dataSetFields,
   dataKv,
+  dataCode,
   httpRequest,
   flowStopError,
 ] as NodeDef<never>[];

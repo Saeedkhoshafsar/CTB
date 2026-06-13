@@ -905,3 +905,29 @@ button.danger { color: var(--danger); }
   background: var(--bg);
 }
 .log-io .data-panel { min-height: 120px; max-height: 320px; }
+
+/* ── code widget (data.code, P2-T7) — CodeMirror host ── */
+.code-widget {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.code-widget .cm-editor {
+  max-height: 360px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+.code-widget .cm-editor.cm-focused { outline: none; }
+.code-widget .cm-scroller { overflow: auto; }
+.code-widget .cm-gutters {
+  background: var(--bg-elev, var(--bg));
+  border-inline-end: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.code-widget-loading {
+  height: 120px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}

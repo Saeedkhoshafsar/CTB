@@ -9,8 +9,9 @@
  * `core` stays free of Telegram/Fastify/DB (invariant I3) — every side effect
  * is injected from here, the composition root at the server edge.
  */
-import { Executor, NodeRegistry, type ExecutorServices, type StepLogEntry } from '@ctb/core';
+import { Executor, NodeRegistry, type CodeRunner, type ExecutorServices, type StepLogEntry } from '@ctb/core';
 import { registerBuiltinNodes } from '@ctb/nodes';
+import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import type { NodeCtx } from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
@@ -27,6 +28,14 @@ export interface WireOptions {
   clock?: () => Date;
   /** Outbound HTTP cap for nodes — injectable for tests. */
   fetchImpl?: typeof fetch;
+  /** Sandbox pool override (tests share/destroy their own). */
+  sandboxPool?: SandboxPool;
+  /**
+   * $http allow-list for the Code node (ARCH §11): when non-empty, only URLs
+   * whose host matches an entry (exact or `.suffix` subdomain) are allowed.
+   * Empty/undefined ⇒ unrestricted (single-admin v1 default).
+   */
+  codeHttpAllowList?: string[];
 }
 
 export interface Engine {
@@ -67,6 +76,72 @@ function makeKv(db: Db, botId: string, clock: () => Date): NodeCtx['kv'] {
     async delete(scope, key) {
       db.delete(kvStore).where(where(scope, key)).run();
     },
+  };
+}
+
+/** Host matches an allow-list entry (exact, or dot-prefixed suffix). */
+export function hostAllowed(url: string, allowList: string[]): boolean {
+  if (allowList.length === 0) return true;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return allowList.some((entry) => {
+    const e = entry.toLowerCase();
+    return e.startsWith('.') ? host === e.slice(1) || host.endsWith(e) : host === e;
+  });
+}
+
+/**
+ * Sandbox-backed runner for data.code (P2-T7, ARCH §8). Capabilities are
+ * host-side proxies over the worker MessagePort — every limit (HTTP
+ * allow-list, timeout/size caps, kv scoping) is enforced HERE, the realm
+ * only sees method stubs (invariant I6).
+ */
+function makeCodeRunner(opts: {
+  pool: SandboxPool;
+  http: NodeCtx['http'];
+  kv: (botId: string) => NodeCtx['kv'];
+  allowList: string[];
+}): CodeRunner {
+  return async (source, scope, runOpts) => {
+    const kv = opts.kv(runOpts.botId);
+    const capabilities = {
+      $http: {
+        request: async (...args: unknown[]) => {
+          const req = (args[0] ?? {}) as {
+            method?: string; url?: string; headers?: Record<string, string>;
+            body?: string | Record<string, unknown>; timeoutMs?: number;
+          };
+          if (typeof req.url !== 'string' || req.url === '') throw new Error('$http.request: url is required');
+          if (!hostAllowed(req.url, opts.allowList)) {
+            throw new Error(`$http: host of "${req.url}" is not in the allow-list`);
+          }
+          return opts.http.request({ method: req.method ?? 'GET', ...req, url: req.url });
+        },
+        get: async (...args: unknown[]) => {
+          const url = args[0];
+          if (typeof url !== 'string' || url === '') throw new Error('$http.get: url is required');
+          if (!hostAllowed(url, opts.allowList)) {
+            throw new Error(`$http: host of "${url}" is not in the allow-list`);
+          }
+          const extra = (args[1] ?? {}) as Record<string, unknown>;
+          return opts.http.request({ method: 'GET', url, ...extra });
+        },
+      },
+      $kv: {
+        get: async (...args: unknown[]) => kv.get('user', String(args[0])),
+        set: async (...args: unknown[]) => kv.set('user', String(args[0]), args[1]),
+        delete: async (...args: unknown[]) => kv.delete('user', String(args[0])),
+      },
+    };
+    return opts.pool.run(source, scope, {
+      mode: 'script',
+      capabilities,
+      ...(runOpts.timeoutMs !== undefined ? { timeoutMs: runOpts.timeoutMs } : {}),
+    });
   };
 }
 
@@ -147,6 +222,19 @@ export function wireEngine(opts: WireOptions): Engine {
       return kv;
     },
     http: makeHttp(opts.fetchImpl ?? fetch),
+    code: makeCodeRunner({
+      pool: opts.sandboxPool ?? getDefaultSandboxPool(),
+      http: makeHttp(opts.fetchImpl ?? fetch),
+      kv: (botId) => {
+        let kv = kvCache.get(botId);
+        if (!kv) {
+          kv = makeKv(opts.db, botId, clock);
+          kvCache.set(botId, kv);
+        }
+        return kv;
+      },
+      allowList: opts.codeHttpAllowList ?? [],
+    }),
     tg: (botId, _chatId) => {
       const handle = gateway.get(botId);
       if (!handle) return null;

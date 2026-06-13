@@ -62,6 +62,10 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.save.saving': 'Saving…',
   'editor.save.saved': 'Saved',
   'editor.save.error': 'Save failed',
+  'editor.testRun.button': 'Test run',
+  'editor.testRun.running': 'Running…',
+  'editor.testRun.noTrigger': 'Add a Manual Trigger node (flow.manualTrigger) to test-run this flow.',
+  'editor.testRun.failed': 'Test run failed: {error}',
   'editor.node.disabled': 'Disabled',
   'editor.node.unknownType': 'Unknown type',
   'editor.node.problems': '{n} problem(s)',
@@ -93,6 +97,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.flow.wait.label': 'Wait / Delay',
   'nodes.http.request.label': 'HTTP Request',
   'nodes.data.kv.label': 'Storage (KV)',
+  'nodes.data.code.label': 'Code (JavaScript)',
   'nodes.flow.manualTrigger.label': 'Manual Trigger (Test)',
 
   // ── node descriptions (param-panel header) ──
@@ -107,6 +112,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.flow.wait': 'Pauses the flow for a fixed duration (or until a datetime). Persisted to the database — survives server restarts.',
   'nodeDesc.http.request': 'Calls a web address (GET/POST…). JSON responses are parsed automatically into $json.',
   'nodeDesc.data.kv': 'Persistent per-user/bot/flow data — like points or state. No external DB: get, set, delete and increment.',
+  'nodeDesc.data.code': 'The escape hatch: run arbitrary JavaScript in an isolated sandbox. Access $items/$json/$vars and $http/$kv; console.log lands in the execution log. The returned object/array is auto-normalized like n8n.',
   'nodeDesc.flow.manualTrigger': 'Test entry point — run the flow from the editor with a sample payload of your choice.',
 
   // ── form engine (P2-T3) ──
@@ -274,6 +280,7 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.scope': 'Who is the data kept for? “User” = per user, “bot” = shared, “flow” = this flow only.',
   'paramDesc.save_as': 'Field name in $json the result lands in. Empty = value',
   'paramDesc.sample': 'JSON payload used as the flow\u2019s first input on a test run.',
+  'paramDesc.code': 'Your JavaScript. Produce output with return. Scope: $items, $json, $vars, and await $http.request/$kv.get/set. console.log is captured into the execution log. {{ }} here is code, not a flow expression.',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -334,6 +341,8 @@ export const en: Record<keyof typeof fa, string> = {
   'option.op.remove': 'Remove',
   'option.mode.duration': 'Fixed duration',
   'option.mode.until': 'Until datetime',
+  'option.mode.run_once': 'Run once (all items → $items)',
+  'option.mode.per_item': 'Per item (each item → $json)',
   'option.body_type.none': 'None',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'Form (urlencoded)',

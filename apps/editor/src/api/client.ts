@@ -17,6 +17,7 @@ import {
   CreateFlowBodySchema,
   type ExecutionDetail,
   type ExecutionSummary,
+  type RunFlowResult,
   type FlowPublic,
   type FlowVersionInfo,
   RollbackFlowBodySchema,
@@ -215,6 +216,14 @@ export class ApiClient {
 
   async getExecution(id: string): Promise<ExecutionDetail> {
     return (await this.request<{ execution: ExecutionDetail }>('GET', `/api/executions/${id}`)).execution;
+  }
+
+  /**
+   * Manual test run (P2-T7): starts at the flow's flow.manualTrigger and runs
+   * synchronously to the first WAIT / end / error. 422 when no manual trigger.
+   */
+  async runFlow(id: string): Promise<RunFlowResult> {
+    return this.request<RunFlowResult>('POST', `/api/flows/${id}/run`);
   }
 
   /** Cancel a waiting/running execution (P2-T5). 409 ApiError when already finished. */

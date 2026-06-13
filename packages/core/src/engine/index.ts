@@ -2,6 +2,7 @@ export {
   DEFAULT_CHECKPOINT_EVERY,
   DEFAULT_MAX_STEPS,
   Executor,
+  type CodeRunner,
   type ExecutorServices,
   type FlowRef,
   type ResumeInput,

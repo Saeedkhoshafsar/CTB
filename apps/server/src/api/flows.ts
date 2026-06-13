@@ -15,7 +15,7 @@
  * All routes live under /api/ and are covered by the app-level auth guard.
  */
 import { randomUUID } from 'node:crypto';
-import type { NodeRegistry } from '@ctb/core';
+import type { Executor, NodeRegistry } from '@ctb/core';
 import {
   CreateFlowBodySchema,
   FlowGraphSchema,
@@ -52,6 +52,8 @@ export interface FlowsApiDeps {
   db: Db;
   /** Engine registry — source of the param schemas activation validates with. */
   registry?: NodeRegistry;
+  /** Engine executor — powers POST /:id/run (manual test runs, P2-T7). */
+  executor?: Executor;
   clock?: () => Date;
 }
 
@@ -212,6 +214,45 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       .run();
     const updated = db.select().from(flows).where(eq(flows.id, id)).get()!;
     return { flow: toPublic(updated) };
+  });
+
+  // ---- manual test run (P2-T7) --------------------------------------------
+  //
+  // Starts an execution at the flow's flow.manualTrigger node and runs it
+  // synchronously to the first WAIT / end / error. Works on drafts (testing
+  // is exactly what you do BEFORE activating); the saved graph is used — the
+  // editor calls saveNow() first. Chat-less context: tg capability is null,
+  // so flows whose first steps send Telegram messages fail with a pointed
+  // node error in the log — honest behavior for a test run without a chat.
+  app.post('/api/flows/:id/run', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!deps.executor) return reply.code(503).send({ error: 'engine_not_configured' });
+    const row = db.select().from(flows).where(eq(flows.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+
+    const graph = FlowGraphSchema.safeParse(row.graph);
+    if (!graph.success) {
+      return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+    }
+    const trigger = graph.data.nodes.find((n) => n.type === 'flow.manualTrigger' && !n.disabled);
+    if (!trigger) {
+      return reply.code(422).send({
+        error: 'no_manual_trigger',
+        problems: ['flow has no enabled flow.manualTrigger node — add one to test-run'],
+      });
+    }
+
+    const executionId = randomUUID();
+    const result = await deps.executor.start({
+      executionId,
+      flow: { id: row.id, name: row.name },
+      graph: graph.data,
+      botId: row.botId,
+      chatId: null,
+      userId: null,
+      entry: { nodeId: trigger.id, items: { main: [] } },
+    });
+    return { executionId, status: result.status, error: result.error };
   });
 
   app.post('/api/flows/:id/deactivate', async (req, reply) => {

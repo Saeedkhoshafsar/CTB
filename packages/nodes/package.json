@@ -11,5 +11,8 @@
   "dependencies": {
     "@ctb/shared": "*",
     "@ctb/core": "*"
+  },
+  "devDependencies": {
+    "@ctb/sandbox": "*"
   }
 }

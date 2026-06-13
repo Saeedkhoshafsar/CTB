@@ -10,6 +10,12 @@ const EnvSchema = z.object({
   CTB_ADMIN_PASS: z.string().optional(),
   /** Public base URL (https://bot.example.com) — required only for webhook-mode bots. */
   CTB_PUBLIC_URL: z.string().url().optional(),
+  /**
+   * Comma-separated host allow-list for the Code node's $http (ARCH §11),
+   * e.g. "api.example.com,.trusted.io" (dot-prefix = any subdomain).
+   * Unset/empty ⇒ unrestricted (single-admin v1 default).
+   */
+  CTB_CODE_HTTP_ALLOWLIST: z.string().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 export type Env = z.infer<typeof EnvSchema>;

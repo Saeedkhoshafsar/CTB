@@ -4,6 +4,7 @@
  * routes raw params through the node's own Zod schema (exactly what the
  * registry does at runtime — so tests validate the schema too).
  */
+import { runInSandbox } from '@ctb/sandbox';
 import type { FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
 
 export interface SentMessage {
@@ -102,6 +103,40 @@ export function makeCtx(
           },
     log: (level, message) => logs.push({ level, message }),
     now: () => now,
+    // data.code (P2-T7): REAL sandbox pool + harness-backed capability proxies,
+    // so contract tests exercise true isolation, timeouts and console capture.
+    code: {
+      run: async (source, items, opts) => {
+        const scope: Record<string, unknown> = {
+          $items: items,
+          $json: items[0]?.json ?? {},
+          $vars: { ...varsBag },
+        };
+        return runInSandbox(source, scope, {
+          mode: 'script',
+          ...(opts?.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+          capabilities: {
+            $http: {
+              request: async (...args: unknown[]) => {
+                const req = (args[0] ?? {}) as { method?: string; url?: string };
+                return ctx.http.request({ method: req.method ?? 'GET', url: req.url ?? '', ...(args[0] as object) });
+              },
+              get: async (...args: unknown[]) =>
+                ctx.http.request({ method: 'GET', url: String(args[0]) }),
+            },
+            $kv: {
+              get: async (...args: unknown[]) => kvBag.get(`user:${String(args[0])}`),
+              set: async (...args: unknown[]) => {
+                kvBag.set(`user:${String(args[0])}`, args[1]);
+              },
+              delete: async (...args: unknown[]) => {
+                kvBag.delete(`user:${String(args[0])}`);
+              },
+            },
+          },
+        });
+      },
+    },
   };
   return ctx;
 }

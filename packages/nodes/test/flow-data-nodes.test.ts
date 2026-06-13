@@ -145,15 +145,16 @@ describe('flow.stopError', () => {
 });
 
 describe('registry + helpers', () => {
-  it('registerBuiltinNodes registers all wave-1 + wave-2 types', () => {
+  it('registerBuiltinNodes registers all wave-1 + wave-2 + P2-T7 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     for (const t of [
       'tg.trigger', 'tg.sendMessage', 'tg.waitForReply', 'flow.if', 'data.setFields', 'flow.stopError',
       'tg.menu', 'flow.switch', 'flow.wait', 'http.request', 'data.kv', 'flow.manualTrigger',
+      'data.code',
     ]) {
       expect(reg.has(t)).toBe(true);
     }
-    expect(builtinNodes).toHaveLength(12);
+    expect(builtinNodes).toHaveLength(13);
   });
 
   it('parseDuration handles every documented unit and rejects garbage', () => {

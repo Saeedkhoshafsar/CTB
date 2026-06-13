@@ -178,10 +178,13 @@ describe('tg.chatAction', () => {
 });
 
 describe('registry', () => {
-  it('registers all P3-T3 nodes (count 21, includes the new types)', () => {
+  it('registers the P3-T3 node types (exact count owned by the newest task test)', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     const types = reg.list().map((d) => d.type);
-    expect(builtinNodes).toHaveLength(21);
+    // The exact registry count belongs to the LATEST task's test (P3-T5's
+    // user-profile-node.test.ts asserts 22); this P3-T3 test only pins that
+    // its four node types are present, so adding nodes later never breaks it.
+    expect(builtinNodes.length).toBeGreaterThanOrEqual(21);
     for (const t of ['tg.editMessage', 'tg.deleteMessage', 'tg.answerCallback', 'tg.chatAction']) {
       expect(types).toContain(t);
     }

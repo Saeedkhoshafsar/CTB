@@ -5,7 +5,7 @@ import { runMigrations } from '../src/db/migrate';
 
 const EXPECTED_TABLES = [
   'bots', 'collections', 'credentials', 'exec_logs', 'executions',
-  'files', 'flow_versions', 'flows', 'kv_store', 'records', 'users',
+  'files', 'flow_versions', 'flows', 'kv_store', 'pending_triggers', 'records', 'users',
 ];
 
 function freshDb() {

@@ -332,6 +332,7 @@ export function createFakeServer(): FakeServer {
             flow.version += 1;
           }
           if (body.name !== undefined) flow.name = body.name;
+          if (body.settings !== undefined) flow.settings = body.settings;
           flow.updatedAt = new Date().toISOString();
           return json(200, { flow });
         }

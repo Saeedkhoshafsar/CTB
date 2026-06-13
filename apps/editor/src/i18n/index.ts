@@ -11,6 +11,8 @@ import { fa } from './fa';
 
 export type Locale = 'fa' | 'en';
 export type MessageKey = keyof typeof fa;
+/** The translate function signature — reusable by components that take `t` as a prop. */
+export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 const catalogs: Record<Locale, Record<MessageKey, string>> = { fa, en };
 
@@ -32,7 +34,7 @@ interface I18nState {
   locale: Locale;
   dir: 'rtl' | 'ltr';
   setLocale: (locale: Locale) => void;
-  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
+  t: Translate;
 }
 
 export const useI18n = create<I18nState>((set, get) => ({

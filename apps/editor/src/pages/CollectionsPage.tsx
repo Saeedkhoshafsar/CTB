@@ -15,9 +15,14 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useI18n } from '../i18n';
 import { useCollections } from '../stores/collections';
+import { RecordsPanel } from './collections/RecordsPanel';
 import { SchemaBuilder } from './collections/SchemaBuilder';
 
-type Mode = { kind: 'list' } | { kind: 'new' } | { kind: 'edit'; collection: CollectionPublic };
+type Mode =
+  | { kind: 'list' }
+  | { kind: 'new' }
+  | { kind: 'edit'; collection: CollectionPublic }
+  | { kind: 'records'; collection: CollectionPublic };
 
 export function CollectionsPage() {
   const t = useI18n((s) => s.t);
@@ -38,6 +43,20 @@ export function CollectionsPage() {
   const relationTargets = collections
     .map((c) => c.slug)
     .filter((s) => mode.kind !== 'edit' || s !== mode.collection.slug);
+
+  // The records panel takes over the whole page (no collections chrome).
+  if (mode.kind === 'records') {
+    return (
+      <div className="page">
+        <RecordsPanel
+          collection={mode.collection}
+          collections={collections}
+          onBack={() => setMode({ kind: 'list' })}
+          t={t}
+        />
+      </div>
+    );
+  }
 
   const handleSave = async (body: CreateCollectionBody, kind: 'create' | 'update') => {
     if (kind === 'create') {
@@ -120,6 +139,9 @@ export function CollectionsPage() {
                     ))}
                   </div>
                 </div>
+                <button className="primary" onClick={() => setMode({ kind: 'records', collection: c })}>
+                  {t('collections.action.records')}
+                </button>
                 <button onClick={() => setMode({ kind: 'edit', collection: c })}>
                   {t('collections.action.edit')}
                 </button>

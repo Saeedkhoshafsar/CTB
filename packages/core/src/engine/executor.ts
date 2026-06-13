@@ -96,6 +96,12 @@ export interface ExecutorServices {
   /** KV factory — per-bot, because one executor serves many bots (DL #15). */
   kv: (botId: string) => NodeCtx['kv'];
   http: NodeCtx['http'];
+  /**
+   * Stored-credential resolver (P3-T4) — optional: ctx.credentials is null
+   * without it. Resolves a credentialId to the auth HEADERS it injects; the
+   * host owns decryption so the secret never reaches node code (invariant I7).
+   */
+  credentials?: NonNullable<NodeCtx['credentials']>;
   /** Sandbox runner for data.code — optional: ctx.code.run throws without it. */
   code?: CodeRunner;
   /**
@@ -464,6 +470,7 @@ export class Executor {
       },
       kv: this.services.kv(exec.botId),
       http: this.services.http,
+      credentials: this.services.credentials ?? null,
       tg: this.services.tg(exec.botId, exec.chatId),
       log: (level, message, data) => this.log(exec.id, node.id, level, message, data),
       now: () => this.clock(),

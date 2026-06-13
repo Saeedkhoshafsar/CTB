@@ -13,8 +13,11 @@ import {
   type BotPublic,
   type CreateBotBody,
   CreateBotBodySchema,
+  type CreateCredentialBody,
+  CreateCredentialBodySchema,
   type CreateFlowBody,
   CreateFlowBodySchema,
+  type CredentialPublic,
   type ExecutionDetail,
   type ExecutionSummary,
   type RunFlowResult,
@@ -27,6 +30,8 @@ import {
   type SessionUser,
   type UpdateBotBody,
   UpdateBotBodySchema,
+  type UpdateCredentialBody,
+  UpdateCredentialBodySchema,
   type UpdateFlowBody,
   UpdateFlowBodySchema,
 } from '@ctb/shared';
@@ -194,6 +199,35 @@ export class ApiClient {
     return (
       await this.request<{ flow: FlowPublic }>('POST', `/api/flows/${id}/rollback`, valid)
     ).flow;
+  }
+
+  // -- credentials (P3-T4) ----------------------------------------------------
+
+  async listCredentials(): Promise<CredentialPublic[]> {
+    return (await this.request<{ credentials: CredentialPublic[] }>('GET', '/api/credentials'))
+      .credentials;
+  }
+
+  async createCredential(body: CreateCredentialBody): Promise<CredentialPublic> {
+    const valid = this.validate(CreateCredentialBodySchema, body);
+    return (
+      await this.request<{ credential: CredentialPublic }>('POST', '/api/credentials', valid)
+    ).credential;
+  }
+
+  async updateCredential(id: string, body: UpdateCredentialBody): Promise<CredentialPublic> {
+    const valid = this.validate(UpdateCredentialBodySchema, body);
+    return (
+      await this.request<{ credential: CredentialPublic }>(
+        'PATCH',
+        `/api/credentials/${id}`,
+        valid,
+      )
+    ).credential;
+  }
+
+  async deleteCredential(id: string): Promise<void> {
+    await this.request<{ ok: true }>('DELETE', `/api/credentials/${id}`);
   }
 
   // -- node types (canvas palette, P2-T2) -------------------------------------

@@ -86,6 +86,16 @@ describe('schema resolver (against real /api/node-types output)', () => {
     expect(widgetsOf('flow.stopError')).toEqual({ message: 'multiline', notify_user: 'boolean' });
   });
 
+  it('http.request: credentialId resolves to the credentialRef selector (P3-T4)', () => {
+    // The ctbWidget annotation must survive z.toJSONSchema all the way to the
+    // form engine, so the param renders as the stored-credential picker.
+    expect(widgetsOf('http.request')).toMatchObject({
+      url: 'text',
+      credentialId: 'credentialRef',
+      method: 'select',
+    });
+  });
+
   it('structural detectors are not fooled by lookalikes', () => {
     expect(isKeyboardSchema({ anyOf: [{ type: 'string' }, { type: 'number' }] })).toBe(false);
     expect(

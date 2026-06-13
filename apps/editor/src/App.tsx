@@ -20,6 +20,7 @@ import {
 } from 'react-router-dom';
 import { useI18n } from './i18n';
 import { BotsPage } from './pages/BotsPage';
+import { CredentialsPage } from './pages/CredentialsPage';
 import { ExecutionsPage } from './pages/ExecutionsPage';
 import { FlowEditorPage } from './pages/FlowEditorPage';
 import { FlowsPage } from './pages/FlowsPage';
@@ -54,6 +55,9 @@ function Shell() {
           </NavLink>
           <NavLink to="/executions" className={({ isActive }) => (isActive ? 'active' : '')}>
             {t('nav.executions')}
+          </NavLink>
+          <NavLink to="/credentials" className={({ isActive }) => (isActive ? 'active' : '')}>
+            {t('nav.credentials')}
           </NavLink>
         </nav>
         <span className="spacer" />
@@ -95,6 +99,7 @@ export function App() {
             <Route path="/bots/:botId/flows" element={<FlowsPage />} />
             <Route path="/flows/:flowId" element={<FlowEditorPage />} />
             <Route path="/executions" element={<ExecutionsPage />} />
+            <Route path="/credentials" element={<CredentialsPage />} />
             <Route path="*" element={<Navigate to="/bots" replace />} />
           </Route>
         </Route>

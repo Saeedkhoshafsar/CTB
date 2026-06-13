@@ -11,7 +11,10 @@
  * statusCode instead of failing the execution. Transport errors (DNS, abort)
  * still fail — there is no response to inspect.
  *
- * Credential selector arrives in P3-T4; until then auth rides plain header rows.
+ * Credentials (P3-T4): when `credentialId` is set, the host resolves it to auth
+ * HEADERS via `ctx.credentials.authHeaders()` and they form the base header set
+ * — explicit header rows still override per-key. The decrypted secret never
+ * reaches this node (invariant I7); it only ever sees ready-made headers.
  */
 import {
   fail,
@@ -35,7 +38,25 @@ export const httpRequest: NodeDef<HttpRequestParams> = {
 
     const url = buildUrl(params);
     if (url instanceof Error) return fail(`http.request: ${url.message}`);
+
+    // Credential auth headers form the base set (P3-T4); explicit header rows
+    // layer on top so a user can still override a single key intentionally.
     const headers: Record<string, string> = {};
+    if (params.credentialId) {
+      if (!ctx.credentials) {
+        return fail('http.request: credentials are not available in this context');
+      }
+      let authHeaders: Record<string, string> | null;
+      try {
+        authHeaders = await ctx.credentials.authHeaders(params.credentialId);
+      } catch (err) {
+        return fail(`http.request: credential lookup failed: ${err instanceof Error ? err.message : err}`);
+      }
+      if (!authHeaders) {
+        return fail(`http.request: credential "${params.credentialId}" not found`);
+      }
+      Object.assign(headers, authHeaders);
+    }
     for (const row of params.headers ?? []) headers[row.name] = row.value;
 
     let body: string | undefined;

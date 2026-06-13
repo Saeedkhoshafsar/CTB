@@ -290,6 +290,14 @@ export const HttpRequestParamsSchema = z
   .object({
     method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']).default('GET'),
     url: z.string().min(1),
+    /**
+     * Optional stored credential (P3-T4). When set, the host resolves the
+     * credential and injects its auth (header / Bearer / Basic) before the
+     * request — the secret never reaches the node or the flow JSON. The editor
+     * renders this with the `credentialRef` widget (a selector listing saved
+     * credentials) via the `ctbWidget` annotation.
+     */
+    credentialId: z.string().optional().meta({ ctbWidget: 'credentialRef' }),
     query: z.array(HttpKeyValueRowSchema).optional(),
     headers: z.array(HttpKeyValueRowSchema).optional(),
     body_type: z.enum(['none', 'json', 'form', 'raw']).default('none'),

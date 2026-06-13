@@ -4,6 +4,8 @@
  * closely enough to exercise the typed client and stores without a server.
  */
 import {
+  CreateCollectionBodySchema,
+  CreateRecordBodySchema,
   DataKvParamsSchema,
   DataSetFieldsParamsSchema,
   FLOW_TEMPLATES,
@@ -19,7 +21,10 @@ import {
   TgSendMessageParamsSchema,
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
+  UpdateCollectionBodySchema,
+  UpdateRecordBodySchema,
   UpdateUserBodySchema,
+  RecordValidationError,
   defaultFlowSettings,
   findFlowTemplate,
   flowTemplateInfo,
@@ -27,11 +32,14 @@ import {
   toFlowExport,
   userDisplayName,
   validateFlowForActivation,
+  validateRecord,
   type BotPublic,
+  type CollectionPublic,
   type ExecutionDetail,
   type FlowGraph,
   type FlowPublic,
   type NodeTypeInfo,
+  type RecordPublic,
   type UserPublic,
 } from '@ctb/shared';
 import { z, type ZodType } from 'zod';
@@ -107,6 +115,9 @@ export interface FakeServer {
   executions: Map<string, ExecutionDetail>;
   /** Seed users here (Users page, P3-T5). */
   users: Map<string, UserPublic>;
+  /** Collections + records (Data section, P3.5-T3). */
+  collections: Map<string, CollectionPublic>;
+  records: Map<string, RecordPublic>;
   loggedIn: boolean;
   calls: { method: string; path: string; body?: unknown }[];
 }
@@ -128,6 +139,8 @@ export function createFakeServer(): FakeServer {
     flowVersions: new Map(),
     executions: new Map(),
     users: new Map(),
+    collections: new Map(),
+    records: new Map(),
     loggedIn: false,
     calls: [],
     fetch: async (input, init) => {
@@ -422,6 +435,161 @@ export function createFakeServer(): FakeServer {
             if (parsed.data.tags !== undefined) user.tags = parsed.data.tags;
             user.displayName = userDisplayName(user);
             return json(200, { user });
+          }
+        }
+      }
+
+      // ---- collections (Data section, P3.5-T3) ----
+      if (path === '/api/collections' && method === 'GET') {
+        const botId = url.searchParams.get('botId');
+        if (!botId) return json(400, { error: 'botId_required' });
+        const collections = [...srv.collections.values()].filter((c) => c.botId === botId);
+        return json(200, { collections });
+      }
+      if (path === '/api/collections' && method === 'POST') {
+        const botId = url.searchParams.get('botId');
+        if (!botId) return json(400, { error: 'botId_required' });
+        if (!srv.bots.has(botId)) return json(400, { error: 'unknown_bot' });
+        const parsed = CreateCollectionBodySchema.safeParse(body);
+        if (!parsed.success) return json(400, { error: 'invalid_body', issues: parsed.error.issues });
+        // slug unique per bot (mirrors store.define)
+        const taken = [...srv.collections.values()].some(
+          (c) => c.botId === botId && c.slug === parsed.data.slug,
+        );
+        if (taken) return json(409, { error: 'slug_taken' });
+        const id = uid('col');
+        const ts = new Date().toISOString();
+        const col: CollectionPublic = {
+          id,
+          botId,
+          slug: parsed.data.slug,
+          name: parsed.data.name,
+          icon: parsed.data.icon ?? null,
+          schema: parsed.data.schema,
+          display: parsed.data.display ?? {},
+          version: 1,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        srv.collections.set(id, col);
+        return json(201, { collection: col });
+      }
+      {
+        const m = /^\/api\/collections\/([^/]+)$/.exec(path);
+        if (m) {
+          const id = decodeURIComponent(m[1]!);
+          const col = srv.collections.get(id);
+          if (!col) return json(404, { error: 'not_found' });
+          if (method === 'GET') return json(200, { collection: col });
+          if (method === 'PATCH') {
+            const parsed = UpdateCollectionBodySchema.safeParse(body);
+            if (!parsed.success) return json(400, { error: 'invalid_body', issues: parsed.error.issues });
+            if (parsed.data.name !== undefined) col.name = parsed.data.name;
+            if (parsed.data.icon !== undefined) col.icon = parsed.data.icon;
+            if (parsed.data.schema !== undefined) col.schema = parsed.data.schema;
+            if (parsed.data.display !== undefined) col.display = parsed.data.display;
+            col.version += 1;
+            col.updatedAt = new Date().toISOString();
+            return json(200, { collection: col });
+          }
+          if (method === 'DELETE') {
+            srv.collections.delete(id);
+            for (const [rid, r] of srv.records) if (r.collectionId === id) srv.records.delete(rid);
+            return json(200, { ok: true });
+          }
+        }
+      }
+
+      // ---- records (P3.5-T3) ----
+      {
+        // /api/records/:collectionId/count
+        const m = /^\/api\/records\/([^/]+)\/count$/.exec(path);
+        if (m && method === 'GET') {
+          const cid = decodeURIComponent(m[1]!);
+          if (!srv.collections.has(cid)) return json(404, { error: 'unknown_collection' });
+          const count = [...srv.records.values()].filter((r) => r.collectionId === cid).length;
+          return json(200, { count });
+        }
+      }
+      {
+        // /api/records/:collectionId/query (POST)
+        const m = /^\/api\/records\/([^/]+)\/query$/.exec(path);
+        if (m && method === 'POST') {
+          const cid = decodeURIComponent(m[1]!);
+          if (!srv.collections.has(cid)) return json(404, { error: 'unknown_collection' });
+          const all = [...srv.records.values()].filter((r) => r.collectionId === cid);
+          return json(200, { records: all, total: all.length });
+        }
+      }
+      {
+        // /api/records/:collectionId/:id
+        const m = /^\/api\/records\/([^/]+)\/([^/]+)$/.exec(path);
+        if (m) {
+          const cid = decodeURIComponent(m[1]!);
+          const rid = decodeURIComponent(m[2]!);
+          const col = srv.collections.get(cid);
+          if (!col) return json(404, { error: 'unknown_collection' });
+          const rec = srv.records.get(rid);
+          if (!rec || rec.collectionId !== cid) return json(404, { error: 'not_found' });
+          if (method === 'GET') return json(200, { record: rec });
+          if (method === 'PATCH') {
+            const parsed = UpdateRecordBodySchema.safeParse(body);
+            if (!parsed.success) return json(400, { error: 'invalid_body', issues: parsed.error.issues });
+            try {
+              const merged =
+                parsed.data.mode === 'replace'
+                  ? parsed.data.data
+                  : { ...rec.data, ...parsed.data.data };
+              rec.data = validateRecord(col.schema, merged, { partial: parsed.data.mode === 'merge' });
+              rec.updatedAt = new Date().toISOString();
+              return json(200, { record: rec });
+            } catch (e) {
+              if (e instanceof RecordValidationError) {
+                return json(422, { error: 'validation_failed', fields: e.errors });
+              }
+              throw e;
+            }
+          }
+          if (method === 'DELETE') {
+            srv.records.delete(rid);
+            return json(200, { ok: true });
+          }
+        }
+      }
+      {
+        // /api/records/:collectionId  (GET list / POST create)
+        const m = /^\/api\/records\/([^/]+)$/.exec(path);
+        if (m) {
+          const cid = decodeURIComponent(m[1]!);
+          const col = srv.collections.get(cid);
+          if (!col) return json(404, { error: 'unknown_collection' });
+          if (method === 'GET') {
+            const all = [...srv.records.values()].filter((r) => r.collectionId === cid);
+            return json(200, { records: all, total: all.length });
+          }
+          if (method === 'POST') {
+            const parsed = CreateRecordBodySchema.safeParse(body);
+            if (!parsed.success) return json(400, { error: 'invalid_body', issues: parsed.error.issues });
+            try {
+              const data = validateRecord(col.schema, parsed.data.data);
+              const id = uid('rec');
+              const ts = new Date().toISOString();
+              const rec: RecordPublic = {
+                id,
+                collectionId: cid,
+                data,
+                createdAt: ts,
+                updatedAt: ts,
+                createdBy: 'admin',
+              };
+              srv.records.set(id, rec);
+              return json(201, { record: rec });
+            } catch (e) {
+              if (e instanceof RecordValidationError) {
+                return json(422, { error: 'validation_failed', fields: e.errors });
+              }
+              throw e;
+            }
           }
         }
       }

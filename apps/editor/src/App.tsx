@@ -20,6 +20,7 @@ import {
 } from 'react-router-dom';
 import { useI18n } from './i18n';
 import { BotsPage } from './pages/BotsPage';
+import { CollectionsPage } from './pages/CollectionsPage';
 import { CredentialsPage } from './pages/CredentialsPage';
 import { ExecutionsPage } from './pages/ExecutionsPage';
 import { FlowEditorPage } from './pages/FlowEditorPage';
@@ -99,6 +100,7 @@ export function App() {
             <Route path="/bots" element={<BotsPage />} />
             <Route path="/bots/:botId/flows" element={<FlowsPage />} />
             <Route path="/bots/:botId/users" element={<UsersPage />} />
+            <Route path="/bots/:botId/collections" element={<CollectionsPage />} />
             <Route path="/flows/:flowId" element={<FlowEditorPage />} />
             <Route path="/executions" element={<ExecutionsPage />} />
             <Route path="/credentials" element={<CredentialsPage />} />

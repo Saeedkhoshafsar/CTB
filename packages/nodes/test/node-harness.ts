@@ -28,6 +28,8 @@ export interface FakeCtx extends NodeCtx {
   kvBag: Map<string, unknown>;
   httpCalls: HttpCall[];
   logs: { level: string; message: string }[];
+  /** flow.executeSubFlow (P3-T1): recorded sub-flow calls. */
+  subflowCalls: { flowId: string; items: FlowItem[] }[];
 }
 
 export function makeCtx(
@@ -37,6 +39,12 @@ export function makeCtx(
     now?: Date;
     /** Scripted http responses, consumed in order (last one repeats). */
     httpResponses?: { status: number; headers?: Record<string, string>; body: unknown }[];
+    /**
+     * flow.executeSubFlow (P3-T1): the injected sub-flow runner. Pass `null`
+     * to simulate an instance with no sub-flow support (ctx.subflow === null);
+     * omit to get a default that echoes the input items back.
+     */
+    subflowRun?: ((flowId: string, items: FlowItem[]) => Promise<{ items: FlowItem[] }>) | null;
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -45,6 +53,7 @@ export function makeCtx(
   const kvBag = new Map<string, unknown>();
   const httpCalls: HttpCall[] = [];
   const logs: { level: string; message: string }[] = [];
+  const subflowCalls: { flowId: string; items: FlowItem[] }[] = [];
   let nextMessageId = 100;
   let httpIdx = 0;
   const now = overrides.now ?? new Date('2026-06-11T10:00:00.000Z');
@@ -60,6 +69,7 @@ export function makeCtx(
     kvBag,
     httpCalls,
     logs,
+    subflowCalls,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -137,6 +147,19 @@ export function makeCtx(
         });
       },
     },
+    // flow.executeSubFlow (P3-T1): records calls; `subflowRun: null` simulates
+    // an instance without sub-flow support; default echoes input items back.
+    subflow:
+      overrides.subflowRun === null
+        ? null
+        : {
+            run: async (flowId, items) => {
+              subflowCalls.push({ flowId, items });
+              return overrides.subflowRun
+                ? overrides.subflowRun(flowId, items)
+                : { items };
+            },
+          },
   };
   return ctx;
 }

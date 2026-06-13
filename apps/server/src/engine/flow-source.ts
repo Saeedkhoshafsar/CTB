@@ -18,6 +18,9 @@ import type { FlowSource } from './router';
 
 type LoadedFlow = FlowRef & { graph: FlowGraph };
 
+/** A flow loaded for sub-flow execution — carries its owning bot for the same-bot guard (P3-T1). */
+export type LoadedSubFlow = LoadedFlow & { botId: string };
+
 export class SqliteFlowSource implements FlowSource {
   constructor(
     private readonly db: Db,
@@ -51,5 +54,22 @@ export class SqliteFlowSource implements FlowSource {
       return null;
     }
     return { id: row.id, name: row.name, graph: graph.data };
+  }
+
+  /**
+   * Load a flow for sub-flow execution (flow.executeSubFlow, P3-T1). Like
+   * getFlow but ALSO returns the owning botId so the host can enforce the
+   * same-bot guard. Status-agnostic: a sub-flow library flow is typically a
+   * draft (never activated on its own) — it exists only to be called.
+   */
+  async loadSubFlow(flowId: string): Promise<LoadedSubFlow | null> {
+    const row = this.db.select().from(flows).where(eq(flows.id, flowId)).get();
+    if (!row) return null;
+    const graph = FlowGraphSchema.safeParse(row.graph);
+    if (!graph.success) {
+      this.log?.('warn', `sub-flow ${row.id} has an invalid graph — cannot execute`);
+      return null;
+    }
+    return { id: row.id, name: row.name, graph: graph.data, botId: row.botId };
   }
 }

@@ -43,7 +43,8 @@ export type WidgetKind =
   | 'union' // anyOf → branch chooser + sub-widget
   | 'keyboard' // Telegram button-grid builder (structural detect)
   | 'conditions' // IF condition rows (structural detect)
-  | 'code'; // CodeMirror JS editor (ctbWidget annotation, data.code P2-T7)
+  | 'code' // CodeMirror JS editor (ctbWidget annotation, data.code P2-T7)
+  | 'flowRef'; // sibling-flow selector (ctbWidget annotation, flow.executeSubFlow P3-T1)
 
 export interface FieldSpec {
   /** property key inside the parent object ('' for the root / union branch). */
@@ -96,6 +97,7 @@ export function resolveWidget(key: string, s: JsonSchema): WidgetKind {
   // still structural in spirit: it's a property OF the schema, not a
   // node-type lookup, so Collection fields can reuse it (Phase 3.5).
   if (s.ctbWidget === 'code') return 'code';
+  if (s.ctbWidget === 'flowRef') return 'flowRef';
   if (isKeyboardSchema(s)) return 'keyboard';
   if (isConditionsSchema(s)) return 'conditions';
   if (Array.isArray(s.enum)) return 'select';

@@ -86,6 +86,17 @@ export interface NodeCtx {
       opts?: { timeoutMs?: number },
     ): Promise<{ value: unknown; logs: string[] }>;
   };
+  /**
+   * Sub-flow runner (flow.executeSubFlow, P3-T1). Runs another flow OF THE SAME
+   * BOT to completion with `items` as its entry payload, and resolves with the
+   * items its `flow.return` node received (empty array if it has none). The host
+   * enforces same-bot ownership and the recursion-depth cap (invariant I6 — the
+   * node never instantiates an executor itself). Null when sub-flow execution is
+   * not available on this instance (e.g. unit tests with no flow source).
+   */
+  subflow: {
+    run(flowId: string, items: FlowItem[]): Promise<{ items: FlowItem[] }>;
+  } | null;
 }
 
 export const NodeCategorySchema = z.enum(['trigger', 'telegram', 'flow', 'data', 'ai']);

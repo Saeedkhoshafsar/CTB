@@ -10,9 +10,10 @@
  * is injected from here, the composition root at the server edge.
  */
 import { Executor, NodeRegistry, type CodeRunner, type ExecutorServices, type StepLogEntry } from '@ctb/core';
-import { registerBuiltinNodes } from '@ctb/nodes';
+import { registerBuiltinNodes, SUBFLOW_RETURN_VAR } from '@ctb/nodes';
 import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
-import type { NodeCtx } from '@ctb/shared';
+import { randomUUID } from 'node:crypto';
+import type { FlowItem, NodeCtx } from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
 import { execLogs, kvStore } from '../db/schema';
@@ -36,7 +37,16 @@ export interface WireOptions {
    * Empty/undefined ⇒ unrestricted (single-admin v1 default).
    */
   codeHttpAllowList?: string[];
+  /**
+   * Recursion-depth cap for flow.executeSubFlow (P3-T1). A top-level run is
+   * depth 0; each nested sub-flow is one deeper. A child started at this depth
+   * is refused — a guard against runaway mutual recursion (A calls B calls A…).
+   */
+  maxSubFlowDepth?: number;
 }
+
+/** Default sub-flow recursion-depth cap (PLAN.md P3-T1 "recursion depth cap"). */
+const DEFAULT_MAX_SUBFLOW_DEPTH = 8;
 
 export interface Engine {
   gateway: TelegramGateway;
@@ -212,6 +222,11 @@ export function wireEngine(opts: WireOptions): Engine {
 
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
+  // Forward refs: the subflow capability needs executor + flowSource, but those
+  // are built FROM `services` — so the closure reads them lazily after wiring.
+  let executorRef: Executor | null = null;
+  let flowSourceRef: SqliteFlowSource | null = null;
+  const maxSubFlowDepth = opts.maxSubFlowDepth ?? DEFAULT_MAX_SUBFLOW_DEPTH;
   const services: ExecutorServices = {
     kv: (botId) => {
       let kv = kvCache.get(botId);
@@ -247,12 +262,71 @@ export function wireEngine(opts: WireOptions): Engine {
         },
       };
     },
+    // Sub-flow runner (flow.executeSubFlow, P3-T1). Loads the child flow, runs a
+    // nested executor synchronously to completion, and returns the items its
+    // flow.return node parked in $vars. Enforces same-bot ownership and the
+    // recursion-depth cap here (invariant I6 — the node never recurses itself).
+    subflow: (parentBotId, depth) => ({
+      run: async (flowId: string, items: FlowItem[]): Promise<{ items: FlowItem[] }> => {
+        if (depth + 1 > maxSubFlowDepth) {
+          throw new Error(`sub-flow recursion depth cap reached (${maxSubFlowDepth})`);
+        }
+        const src = flowSourceRef;
+        const exec = executorRef;
+        if (!src || !exec) throw new Error('sub-flow execution not wired');
+
+        const child = await src.loadSubFlow(flowId);
+        if (!child) throw new Error(`sub-flow "${flowId}" not found or has an invalid graph`);
+        if (child.botId !== parentBotId) {
+          throw new Error('sub-flow belongs to a different bot — cross-bot calls are not allowed');
+        }
+
+        // Entry = the child's trigger node (manual or tg.trigger); a trigger
+        // passes the parent's items straight through on `main`.
+        const entry = child.graph.nodes.find(
+          (n) => !n.disabled && registry.get(n.type).category === 'trigger',
+        );
+        if (!entry) {
+          throw new Error(`sub-flow "${child.name}" has no enabled trigger node to enter at`);
+        }
+
+        const childExecId = randomUUID();
+        const result = await exec.start({
+          executionId: childExecId,
+          flow: { id: child.id, name: child.name },
+          graph: child.graph,
+          botId: child.botId,
+          chatId: null,
+          userId: null,
+          entry: { nodeId: entry.id, items: { main: items } },
+          depth: depth + 1,
+        });
+
+        if (result.status === 'error') {
+          throw new Error(`sub-flow "${child.name}" failed: ${result.error ?? 'unknown error'}`);
+        }
+        if (result.status === 'waiting') {
+          // wait-mode sub-flows must run straight through; a child that parks on
+          // a wait (e.g. waitForReply) can't synchronously return items in v1.
+          throw new Error(`sub-flow "${child.name}" paused on a wait — wait-mode sub-flows must run to completion without waiting`);
+        }
+
+        // Collect what flow.return parked; absent ⇒ child returned nothing.
+        const finished = await store.load(childExecId);
+        const returned = finished?.state.vars[SUBFLOW_RETURN_VAR];
+        const out = Array.isArray(returned) ? (returned as FlowItem[]) : [];
+        return { items: out };
+      },
+    }),
     log: stepLogger,
     clock,
   };
 
   const executor = new Executor(registry, store, services);
   const flowSource = new SqliteFlowSource(opts.db, (lvl, msg) => log(lvl, msg));
+  // Resolve the forward refs the subflow capability closes over.
+  executorRef = executor;
+  flowSourceRef = flowSource;
 
   const router = new UpdateRouter({
     store,

@@ -97,6 +97,8 @@ export const fa = {
   'nodes.data.kv.label': 'حافظه (KV)',
   'nodes.data.code.label': 'کد (JavaScript)',
   'nodes.flow.manualTrigger.label': 'شروع دستی (تست)',
+  'nodes.flow.executeSubFlow.label': 'اجرای زیرفلو',
+  'nodes.flow.return.label': 'بازگشت',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -112,6 +114,8 @@ export const fa = {
   'nodeDesc.data.kv': 'دادهٔ ماندگار برای هر کاربر/بات/فلو — مثل امتیاز یا وضعیت. بدون دیتابیس خارجی: خواندن، نوشتن، حذف و شمارنده.',
   'nodeDesc.data.code': 'راه فرار: کد JavaScript دلخواه در یک محیط ایزوله اجرا می‌شود. به $items/$json/$vars و $http/$kv دسترسی دارید؛ console.log در لاگ اجرا ثبت می‌شود. خروجی (object/آرایه) مثل n8n خودکار نرمال می‌شود.',
   'nodeDesc.flow.manualTrigger': 'شروع‌کنندهٔ تستی — برای اجرای آزمایشی فلو از داخل ویرایشگر، با دادهٔ نمونهٔ دلخواه.',
+  'nodeDesc.flow.executeSubFlow': 'فلوی دیگری از همین بات را صدا می‌زند و آیتم‌های فعلی را به آن می‌دهد؛ نود «بازگشت» آن زیرفلو آیتم‌ها را پس می‌فرستد. برای گرفتن نتیجه «منتظر بمان» را انتخاب کنید، یا «بفرست و رها کن» تا اجرا شود و ادامه دهید.',
+  'nodeDesc.flow.return': 'یک زیرفلو را پایان می‌دهد و آیتم‌های فعلی‌اش را به نود «اجرای زیرفلو»یی که آن را صدا زده برمی‌گرداند.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
@@ -148,6 +152,8 @@ export const fa = {
   'form.cond.op.lte': 'کوچک‌تر یا مساوی',
   'form.cond.op.exists': 'وجود دارد',
   'form.cond.op.is_empty': 'خالی است',
+  'form.flowRef.none': '— یک فلو انتخاب کنید —',
+  'form.flowRef.missing': '⚠ فلوی انتخاب‌شده دیگر در دسترس نیست',
 
   // ── param panel ──
   'panel.enabled': 'فعال',
@@ -216,6 +222,7 @@ export const fa = {
   'param.scope': 'محدوده',
   'param.save_as': 'ذخیره در فیلد',
   'param.sample': 'دادهٔ نمونه (JSON)',
+  'param.flow_id': 'زیرفلو',
 
   // ── param help texts (n8n-style, under each label) ──
   'paramDesc.event': 'چه اتفاقی فلو را شروع کند؟ مثلاً دریافت یک دستور یا هر پیام متنی.',
@@ -341,6 +348,8 @@ export const fa = {
   'option.mode.until': 'تا زمان معین',
   'option.mode.run_once': 'یک‌بار (همهٔ آیتم‌ها → $items)',
   'option.mode.per_item': 'برای هر آیتم (هر آیتم → $json)',
+  'option.mode.wait': 'منتظر نتیجه بمان',
+  'option.mode.fire_and_forget': 'بفرست و رها کن',
   'option.body_type.none': 'بدون بدنه',
   'option.body_type.json': 'JSON',
   'option.body_type.form': 'فرم (urlencoded)',

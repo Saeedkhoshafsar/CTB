@@ -236,6 +236,45 @@ describe('http.request', () => {
 
     expect(() => params(httpRequest, { url: 'https://e.com', body_type: 'json' })).toThrow(/invalid params/);
   });
+
+  it('credentialId → host-resolved auth headers form the base; rows still override (P3-T4)', async () => {
+    const ctx = makeCtx({
+      httpResponses: [{ status: 200, body: { ok: true } }],
+      credentialHeaders: { cred1: { authorization: 'Bearer secret-from-store' } },
+    });
+    const p = params(httpRequest, {
+      url: 'https://api.example.com/me',
+      credentialId: 'cred1',
+      // explicit row overrides a different header but leaves auth alone
+      headers: [{ name: 'X-Trace', value: 'abc' }],
+    });
+    const res = await httpRequest.execute(ctx, p, [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+    expect(ctx.httpCalls[0]!.headers).toMatchObject({
+      authorization: 'Bearer secret-from-store',
+      'X-Trace': 'abc',
+    });
+  });
+
+  it('credentialId not found → clear error (P3-T4)', async () => {
+    const ctx = makeCtx({ credentialHeaders: {} }); // resolver present, returns null
+    const res = await httpRequest.execute(
+      ctx,
+      params(httpRequest, { url: 'https://e.com', credentialId: 'missing' }),
+      [item({})],
+    );
+    expect(res).toMatchObject({ kind: 'error', message: expect.stringContaining('not found') });
+  });
+
+  it('credentialId with no credential store in context → clear error (P3-T4)', async () => {
+    const ctx = makeCtx({ credentialHeaders: null }); // ctx.credentials === null
+    const res = await httpRequest.execute(
+      ctx,
+      params(httpRequest, { url: 'https://e.com', credentialId: 'cred1' }),
+      [item({})],
+    );
+    expect(res).toMatchObject({ kind: 'error', message: expect.stringContaining('not available') });
+  });
 });
 
 describe('data.kv', () => {

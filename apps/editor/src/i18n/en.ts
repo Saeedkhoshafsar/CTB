@@ -7,6 +7,7 @@ export const en: Record<keyof typeof fa, string> = {
 
   'nav.bots': 'Bots',
   'nav.executions': 'Executions',
+  'nav.credentials': 'Credentials',
   'nav.logout': 'Log out',
 
   'login.title': 'Sign in to CTB',
@@ -36,6 +37,28 @@ export const en: Record<keyof typeof fa, string> = {
   'bots.delete.confirm': 'Delete bot “{name}” and all its flows?',
   'bots.create': 'Create bot',
   'bots.creating': 'Creating…',
+
+  'credentials.title': 'Credentials',
+  'credentials.empty': 'No credentials yet. Add one to authenticate HTTP Request calls.',
+  'credentials.add': 'Add credential',
+  'credentials.name': 'Name',
+  'credentials.type': 'Type',
+  'credentials.type.httpHeaderAuth': 'HTTP Header (API key)',
+  'credentials.type.httpBearerAuth': 'Bearer token',
+  'credentials.type.httpBasicAuth': 'Basic auth',
+  'credentials.field.headerName': 'Header name',
+  'credentials.field.headerValue': 'Header value',
+  'credentials.field.token': 'Token',
+  'credentials.field.username': 'Username',
+  'credentials.field.password': 'Password',
+  'credentials.secret.hint':
+    'The secret value is sent once and stored encrypted; it is never shown again. To change it, delete and recreate.',
+  'credentials.create': 'Create credential',
+  'credentials.creating': 'Creating…',
+  'credentials.action.delete': 'Delete',
+  'credentials.delete.confirm':
+    'Delete credential “{name}”? Nodes that use it will be left without auth.',
+  'credentials.none': '— No credential —',
 
   'flows.title': 'Flows of {bot}',
   'flows.empty': 'This bot has no flows yet.',
@@ -168,6 +191,7 @@ export const en: Record<keyof typeof fa, string> = {
   'form.cond.op.is_empty': 'is empty',
   'form.flowRef.none': '— Select a flow —',
   'form.flowRef.missing': '⚠ Selected flow no longer available',
+  'form.credentialRef.missing': '⚠ Selected credential no longer available',
 
   // ── param panel ──
   'panel.enabled': 'Enabled',
@@ -233,6 +257,7 @@ export const en: Record<keyof typeof fa, string> = {
   'param.until': 'Until',
   'param.method': 'Method',
   'param.url': 'URL',
+  'param.credentialId': 'Credential',
   'param.query': 'Query parameters',
   'param.headers': 'Headers',
   'param.body_type': 'Body type',
@@ -305,6 +330,8 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.until': 'Wake-up datetime (ISO) — usually an expression like {{ $vars.deadline }}.',
   'paramDesc.method': 'HTTP method: GET to read, POST/PUT/PATCH to send data.',
   'paramDesc.url': 'Full address with https:// — expressions work: https://api.example.com/users/{{ $json.id }}',
+  'paramDesc.credentialId':
+    'A stored credential whose auth (header / Bearer / Basic) is injected before the request. The secret never enters the flow. Manage credentials on the Credentials page.',
   'paramDesc.query': 'Parameters appended to the URL (?name=value).',
   'paramDesc.headers': 'Request headers — e.g. Authorization or Content-Type.',
   'paramDesc.body_type': 'Request body kind: none, JSON, form or raw text.',

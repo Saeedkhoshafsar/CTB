@@ -18,8 +18,10 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
+import { CREDENTIAL_TYPE_LABELS } from '@ctb/shared';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
+import { useCredentials } from '../stores/credentials';
 import { useFlows } from '../stores/flows';
 import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
 import {
@@ -319,6 +321,44 @@ function FlowRefWidget({ spec, value, onChange }: WidgetProps) {
       {orphaned ? (
         <option value={current}>{t('form.flowRef.missing')}</option>
       ) : null}
+    </select>
+  );
+}
+
+// ── credential reference widget (stored-credential selector, http.request P3-T4) ──
+//
+// Lists the saved credentials so a node can bind one by id. Structural like
+// `flowRef`/`code` — keyed by the schema's `ctbWidget` annotation, never by node
+// type, so any future param needing an auth credential reuses it. The value it
+// edits is just the selected credential's id string; the secret never reaches
+// here (invariant I7). Lazily loads the store the first time it mounts.
+
+function CredentialRefWidget({ spec, value, onChange }: WidgetProps) {
+  const t = useI18n((s) => s.t);
+  const creds = useCredentials((s) => s.credentials);
+  const loadCreds = useCredentials((s) => s.load);
+  useEffect(() => {
+    if (creds.length === 0) void loadCreds();
+    // load is stable; we only want a single fetch on first mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const current = typeof value === 'string' ? value : '';
+  // Selected id no longer present (deleted) → still show it so the user sees the
+  // dangling reference rather than a silent reset.
+  const orphaned = current !== '' && !creds.some((c) => c.id === current);
+  return (
+    <select
+      className="credref-widget"
+      value={current}
+      onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+    >
+      <option value="">{t('credentials.none')}</option>
+      {creds.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name} · {CREDENTIAL_TYPE_LABELS[c.type]}
+        </option>
+      ))}
+      {orphaned ? <option value={current}>{t('form.credentialRef.missing')}</option> : null}
     </select>
   );
 }
@@ -802,6 +842,8 @@ export function SchemaWidget(props: WidgetProps) {
       return <CodeFieldWidget {...props} />;
     case 'flowRef':
       return <FlowRefWidget {...props} />;
+    case 'credentialRef':
+      return <CredentialRefWidget {...props} />;
     case 'boolean':
       return <BooleanWidget {...props} />;
     case 'number':

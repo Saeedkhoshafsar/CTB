@@ -5,6 +5,7 @@ export const fa = {
 
   'nav.bots': 'بات‌ها',
   'nav.executions': 'اجراها',
+  'nav.credentials': 'اعتبارنامه‌ها',
   'nav.logout': 'خروج',
 
   'login.title': 'ورود به CTB',
@@ -34,6 +35,27 @@ export const fa = {
   'bots.delete.confirm': 'بات «{name}» و همهٔ فلوهایش حذف شود؟',
   'bots.create': 'ساخت بات',
   'bots.creating': 'در حال ساخت…',
+
+  'credentials.title': 'اعتبارنامه‌ها',
+  'credentials.empty': 'هنوز اعتبارنامه‌ای ساخته نشده. برای احراز هویت درخواست‌های HTTP یکی اضافه کنید.',
+  'credentials.add': 'افزودن اعتبارنامه',
+  'credentials.name': 'نام',
+  'credentials.type': 'نوع',
+  'credentials.type.httpHeaderAuth': 'هدر HTTP (کلید API)',
+  'credentials.type.httpBearerAuth': 'توکن Bearer',
+  'credentials.type.httpBasicAuth': 'احراز هویت Basic',
+  'credentials.field.headerName': 'نام هدر',
+  'credentials.field.headerValue': 'مقدار هدر',
+  'credentials.field.token': 'توکن',
+  'credentials.field.username': 'نام کاربری',
+  'credentials.field.password': 'رمز عبور',
+  'credentials.secret.hint':
+    'مقدار محرمانه فقط یک‌بار ارسال و رمزنگاری‌شده ذخیره می‌شود؛ هرگز دوباره نمایش داده نمی‌شود. برای تغییر، حذف و دوباره بسازید.',
+  'credentials.create': 'ساخت اعتبارنامه',
+  'credentials.creating': 'در حال ساخت…',
+  'credentials.action.delete': 'حذف',
+  'credentials.delete.confirm': 'اعتبارنامهٔ «{name}» حذف شود؟ نودهایی که از آن استفاده می‌کنند بدون احراز هویت می‌مانند.',
+  'credentials.none': '— بدون اعتبارنامه —',
 
   'flows.title': 'فلوهای {bot}',
   'flows.empty': 'این بات هنوز فلویی ندارد.',
@@ -166,6 +188,7 @@ export const fa = {
   'form.cond.op.is_empty': 'خالی است',
   'form.flowRef.none': '— یک فلو انتخاب کنید —',
   'form.flowRef.missing': '⚠ فلوی انتخاب‌شده دیگر در دسترس نیست',
+  'form.credentialRef.missing': '⚠ اعتبارنامهٔ انتخاب‌شده دیگر در دسترس نیست',
 
   // ── param panel ──
   'panel.enabled': 'فعال',
@@ -231,6 +254,7 @@ export const fa = {
   'param.until': 'تا زمان',
   'param.method': 'متد',
   'param.url': 'آدرس (URL)',
+  'param.credentialId': 'اعتبارنامه',
   'param.query': 'پارامترهای query',
   'param.headers': 'هدرها',
   'param.body_type': 'نوع بدنه',
@@ -303,6 +327,8 @@ export const fa = {
   'paramDesc.until': 'زمان بیدار شدن (ISO) — معمولاً یک عبارت مثل {{ $vars.deadline }}.',
   'paramDesc.method': 'متد HTTP: GET برای خواندن، POST/PUT/PATCH برای ارسال داده.',
   'paramDesc.url': 'آدرس کامل با https:// — متغیر هم می‌شود: https://api.example.com/users/{{ $json.id }}',
+  'paramDesc.credentialId':
+    'اعتبارنامهٔ ذخیره‌شده‌ای که احراز هویت آن (هدر/Bearer/Basic) پیش از درخواست تزریق می‌شود. مقدار محرمانه هرگز وارد فلو نمی‌شود. اعتبارنامه‌ها در صفحهٔ «اعتبارنامه‌ها» ساخته می‌شوند.',
   'paramDesc.query': 'پارامترهایی که به انتهای آدرس اضافه می‌شوند (?name=value).',
   'paramDesc.headers': 'هدرهای درخواست — مثلاً Authorization یا Content-Type.',
   'paramDesc.body_type': 'نوع بدنهٔ درخواست: بدون بدنه، JSON، فرم یا متن خام.',

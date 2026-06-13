@@ -13,10 +13,11 @@ import { Executor, NodeRegistry, type CodeRunner, type ExecutorServices, type St
 import { registerBuiltinNodes, SUBFLOW_RETURN_VAR } from '@ctb/nodes';
 import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import { randomUUID } from 'node:crypto';
-import type { FlowItem, NodeCtx } from '@ctb/shared';
+import { credentialAuthHeaders, type CredentialData, type FlowItem, type NodeCtx } from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
-import { execLogs, kvStore } from '../db/schema';
+import { credentials as credentialsTable, execLogs, kvStore } from '../db/schema';
+import { decrypt, deriveKey } from '../lib/crypto';
 import { TelegramGateway } from '../telegram/gateway';
 import { SqliteFlowSource } from './flow-source';
 import { UpdateRouter } from './router';
@@ -85,6 +86,31 @@ function makeKv(db: Db, botId: string, clock: () => Date): NodeCtx['kv'] {
     },
     async delete(scope, key) {
       db.delete(kvStore).where(where(scope, key)).run();
+    },
+  };
+}
+
+/**
+ * Stored-credential resolver (P3-T4). Reads the encrypted row, decrypts it
+ * HERE (the host owns the key), and returns ONLY the auth headers it injects —
+ * the secret never crosses into node code (invariant I7). Returns null when the
+ * credential is missing or undecryptable, so the node fails with a clear error.
+ */
+function makeCredentials(db: Db, key: Buffer): NonNullable<NodeCtx['credentials']> {
+  return {
+    async authHeaders(credentialId) {
+      const row = db
+        .select()
+        .from(credentialsTable)
+        .where(eq(credentialsTable.id, credentialId))
+        .get();
+      if (!row) return null;
+      try {
+        const data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
+        return credentialAuthHeaders(data);
+      } catch {
+        return null;
+      }
     },
   };
 }
@@ -195,6 +221,8 @@ export function wireEngine(opts: WireOptions): Engine {
   const registry = registerBuiltinNodes(new NodeRegistry());
   const store = new SqliteExecutionStore(opts.db, clock);
   const gateway = new TelegramGateway({ ctbSecret: opts.ctbSecret });
+  // Same key the credentials API uses — derived once, reused for every resolve.
+  const credentialKey = deriveKey(opts.ctbSecret);
 
   // exec_logs sink — structured per-step logging (ARCH §4).
   const stepLogger = (entry: StepLogEntry): void => {
@@ -237,6 +265,7 @@ export function wireEngine(opts: WireOptions): Engine {
       return kv;
     },
     http: makeHttp(opts.fetchImpl ?? fetch),
+    credentials: makeCredentials(opts.db, credentialKey),
     code: makeCodeRunner({
       pool: opts.sandboxPool ?? getDefaultSandboxPool(),
       http: makeHttp(opts.fetchImpl ?? fetch),

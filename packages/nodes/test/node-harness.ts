@@ -58,6 +58,13 @@ export function makeCtx(
      * this to tell its two branches apart). Empty by default.
      */
     inputsByPort?: Record<string, FlowItem[]>;
+    /**
+     * P3-T4: scripted credential resolver. A map of credentialId → auth headers
+     * (or null = "not found"). Pass `null` to simulate ctx.credentials === null
+     * (no credential store, e.g. a bare unit context). Omit → resolver present
+     * but every lookup returns null.
+     */
+    credentialHeaders?: Record<string, Record<string, string> | null> | null;
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -118,6 +125,14 @@ export function makeCtx(
         return { status: r.status, headers: r.headers ?? {}, body: r.body };
       },
     },
+    credentials:
+      overrides.credentialHeaders === null
+        ? null
+        : {
+            async authHeaders(credentialId) {
+              return overrides.credentialHeaders?.[credentialId] ?? null;
+            },
+          },
     editedCaption,
     editedReplyMarkup,
     deleted,

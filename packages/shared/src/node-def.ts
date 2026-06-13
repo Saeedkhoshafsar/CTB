@@ -65,6 +65,15 @@ export interface NodeCtx {
     set(scope: 'user' | 'bot' | 'flow', key: string, value: unknown): Promise<void>;
     delete(scope: 'user' | 'bot' | 'flow', key: string): Promise<void>;
   };
+  /**
+   * Stored-credential resolver (P3-T4). A node passes a `credentialId` and gets
+   * back the auth HEADERS that credential injects — the decrypted secret never
+   * crosses into node code (invariant I7). Resolves null when the credential is
+   * missing/undecryptable or when the host has no credential store (unit tests).
+   */
+  credentials: {
+    authHeaders(credentialId: string): Promise<Record<string, string> | null>;
+  } | null;
   /** Outbound HTTP (host-limited). */
   http: {
     request(opts: {

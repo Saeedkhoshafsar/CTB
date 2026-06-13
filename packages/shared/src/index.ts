@@ -11,4 +11,5 @@ export * from './node-def';
 export * from './node-params';
 export * from './errors';
 export * from './api';
+export * from './credentials';
 export * from './flow-validate';

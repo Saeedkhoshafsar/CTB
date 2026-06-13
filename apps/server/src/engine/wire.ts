@@ -22,6 +22,7 @@ import { TelegramGateway } from '../telegram/gateway';
 import { SqliteFlowSource } from './flow-source';
 import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
+import { SqliteUserStore } from './user-store';
 
 export interface WireOptions {
   db: Db;
@@ -56,6 +57,8 @@ export interface Engine {
   store: SqliteExecutionStore;
   registry: NodeRegistry;
   flowSource: SqliteFlowSource;
+  /** Per-bot end-user store (P3-T5) — also backs the Users REST API. */
+  userStore: SqliteUserStore;
 }
 
 /** DB-backed kv capability. Scope ids: user→tg user (set per-ctx later), flow→flowId, bot→''. */
@@ -220,6 +223,7 @@ export function wireEngine(opts: WireOptions): Engine {
 
   const registry = registerBuiltinNodes(new NodeRegistry());
   const store = new SqliteExecutionStore(opts.db, clock);
+  const userStore = new SqliteUserStore(opts.db, clock);
   const gateway = new TelegramGateway({ ctbSecret: opts.ctbSecret });
   // Same key the credentials API uses — derived once, reused for every resolve.
   const credentialKey = deriveKey(opts.ctbSecret);
@@ -363,6 +367,32 @@ export function wireEngine(opts: WireOptions): Engine {
         return { items: out };
       },
     }),
+    // data.userProfile (P3-T5). Per-bot factory (DL #15); the executor passes
+    // the run's own tg user id so the node can default to "the current user".
+    // The host owns the table (invariant I6) — the node only sees this facade.
+    users: (botId, defaultTgUserId) => {
+      const resolve = (tgUserId?: number): number => {
+        const id = tgUserId ?? defaultTgUserId;
+        if (id === null || id === undefined) {
+          throw new Error('no target user (this run has no chat user — pass an explicit `user`)');
+        }
+        return id;
+      };
+      return {
+        async get(tgUserId) {
+          return userStore.get(botId, resolve(tgUserId));
+        },
+        async setProfile(fields, o) {
+          return userStore.setProfile(botId, resolve(o?.tgUserId), fields, o?.mode ?? 'merge');
+        },
+        async addTags(tags, tgUserId) {
+          return userStore.addTags(botId, resolve(tgUserId), tags);
+        },
+        async removeTags(tags, tgUserId) {
+          return userStore.removeTags(botId, resolve(tgUserId), tags);
+        },
+      };
+    },
     log: stepLogger,
     clock,
   };
@@ -391,11 +421,20 @@ export function wireEngine(opts: WireOptions): Engine {
         ...(text !== undefined ? { text } : {}),
       });
     },
+    // Upsert the sender into the users table on every update (P3-T5).
+    onUser: async (event) => {
+      userStore.touch(event.botId, event.user.id, {
+        ...(event.user.firstName !== undefined ? { firstName: event.user.firstName } : {}),
+        ...(event.user.lastName !== undefined ? { lastName: event.user.lastName } : {}),
+        ...(event.user.username !== undefined ? { username: event.user.username } : {}),
+        ...(event.user.lang !== undefined ? { lang: event.user.lang } : {}),
+      });
+    },
     log,
     clock,
   });
 
   gateway.setHandler((event) => router.handle(event));
 
-  return { gateway, router, executor, store, registry, flowSource };
+  return { gateway, router, executor, store, registry, flowSource, userStore };
 }

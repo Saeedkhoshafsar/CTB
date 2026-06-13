@@ -210,6 +210,58 @@ export interface RunFlowResult {
 }
 
 // ---------------------------------------------------------------------------
+// users (Users page — P3-T5)
+// ---------------------------------------------------------------------------
+
+/**
+ * UserPublic — a per-bot end-user record as the API returns it. GENERIC by
+ * construction (invariant I2): `profile` is a free-form bag, `tags` are plain
+ * labels — no domain field is ever baked in. `displayName` is a best-effort
+ * convenience derived from the mirrored Telegram profile (first_name/username),
+ * computed server-side so the editor needn't know the mirror keys.
+ */
+export interface UserPublic {
+  id: string;
+  botId: string;
+  tgUserId: number;
+  profile: Record<string, unknown>;
+  tags: string[];
+  firstSeen: string;
+  lastSeen: string;
+  /** Best-effort label from profile (first_name + last_name, else @username, else the id). */
+  displayName: string;
+}
+
+/**
+ * Best-effort display label for a user, from the mirrored Telegram identity in
+ * the profile bag: "first_name last_name", else "@username", else "#<tgUserId>".
+ * Shared so server and editor render the same label (invariant I5).
+ */
+export function userDisplayName(u: {
+  tgUserId: number;
+  profile: Record<string, unknown>;
+}): string {
+  const first = typeof u.profile.first_name === 'string' ? u.profile.first_name.trim() : '';
+  const last = typeof u.profile.last_name === 'string' ? u.profile.last_name.trim() : '';
+  const full = `${first} ${last}`.trim();
+  if (full !== '') return full;
+  const uname = typeof u.profile.username === 'string' ? u.profile.username.trim() : '';
+  if (uname !== '') return `@${uname}`;
+  return `#${u.tgUserId}`;
+}
+
+/** PATCH /api/users/:id — operator edits to tags / profile (both optional, ≥1 required). */
+export const UpdateUserBodySchema = z
+  .object({
+    tags: z.array(z.string().min(1)).optional(),
+    profile: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((b) => b.tags !== undefined || b.profile !== undefined, {
+    message: 'nothing to update — provide tags and/or profile',
+  });
+export type UpdateUserBody = z.infer<typeof UpdateUserBodySchema>;
+
+// ---------------------------------------------------------------------------
 // error envelope (shared shape of every non-2xx body)
 // ---------------------------------------------------------------------------
 

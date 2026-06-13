@@ -5,7 +5,7 @@
  * registry does at runtime — so tests validate the schema too).
  */
 import { runInSandbox } from '@ctb/sandbox';
-import type { FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
+import type { CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
 
 export interface SentMessage {
   opts: Record<string, unknown>;
@@ -36,6 +36,8 @@ export interface FakeCtx extends NodeCtx {
   deleted: Record<string, unknown>[];
   answeredCallbacks: Record<string, unknown>[];
   chatActions: Record<string, unknown>[];
+  /** data.userProfile (P3-T5): in-memory user store keyed by tgUserId. */
+  usersBag: Map<number, CtbUser>;
 }
 
 export function makeCtx(
@@ -65,6 +67,16 @@ export function makeCtx(
      * but every lookup returns null.
      */
     credentialHeaders?: Record<string, Record<string, string> | null> | null;
+    /**
+     * P3-T5: the execution's own tg user id (data.userProfile defaults to it).
+     * Defaults to the chatId when it's a positive id; pass `null` to simulate a
+     * run with no user (e.g. a sub-flow). Pass `users: null` to drop ctx.users.
+     */
+    selfUserId?: number | null;
+    /** Pass `null` to simulate an instance with no user store (ctx.users === null). */
+    users?: null;
+    /** Seed the in-memory user store before the run. */
+    seedUsers?: CtbUser[];
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -79,9 +91,33 @@ export function makeCtx(
   const httpCalls: HttpCall[] = [];
   const logs: { level: string; message: string }[] = [];
   const subflowCalls: { flowId: string; items: FlowItem[] }[] = [];
+  const usersBag = new Map<number, CtbUser>();
   let nextMessageId = 100;
   let httpIdx = 0;
   const now = overrides.now ?? new Date('2026-06-11T10:00:00.000Z');
+  const nowIso = now.toISOString();
+  for (const u of overrides.seedUsers ?? []) usersBag.set(u.tgUserId, { ...u });
+  const selfUserId =
+    overrides.selfUserId !== undefined
+      ? overrides.selfUserId
+      : typeof (overrides.chatId === undefined ? 777 : overrides.chatId) === 'number' &&
+          (overrides.chatId === undefined ? 777 : overrides.chatId)! > 0
+        ? (overrides.chatId === undefined ? 777 : (overrides.chatId as number))
+        : null;
+  /** Resolve target id (explicit arg → fallback to the execution's own user). */
+  const resolveUid = (uid?: number): number => {
+    const id = uid ?? selfUserId;
+    if (id === null || id === undefined) throw new Error('data.userProfile: no target user');
+    return id;
+  };
+  const upsertUser = (uid: number): CtbUser => {
+    let u = usersBag.get(uid);
+    if (!u) {
+      u = { tgUserId: uid, profile: {}, tags: [], firstSeen: nowIso, lastSeen: nowIso };
+      usersBag.set(uid, u);
+    }
+    return u;
+  };
 
   const ctx: FakeCtx = {
     executionId: 'exec1',
@@ -97,6 +133,7 @@ export function makeCtx(
     httpCalls,
     logs,
     subflowCalls,
+    usersBag,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -213,6 +250,35 @@ export function makeCtx(
               return overrides.subflowRun
                 ? overrides.subflowRun(flowId, items)
                 : { items };
+            },
+          },
+    // data.userProfile (P3-T5): in-memory user store; `users: null` drops it.
+    users:
+      overrides.users === null
+        ? null
+        : {
+            async get(tgUserId) {
+              const u = usersBag.get(resolveUid(tgUserId));
+              return u ? { ...u } : null;
+            },
+            async setProfile(fields, opts) {
+              const u = upsertUser(resolveUid(opts?.tgUserId));
+              u.profile = opts?.mode === 'replace' ? { ...fields } : { ...u.profile, ...fields };
+              u.lastSeen = nowIso;
+              return { ...u };
+            },
+            async addTags(tags, tgUserId) {
+              const u = upsertUser(resolveUid(tgUserId));
+              u.tags = [...new Set([...u.tags, ...tags])];
+              u.lastSeen = nowIso;
+              return { ...u };
+            },
+            async removeTags(tags, tgUserId) {
+              const u = upsertUser(resolveUid(tgUserId));
+              const drop = new Set(tags);
+              u.tags = u.tags.filter((t) => !drop.has(t));
+              u.lastSeen = nowIso;
+              return { ...u };
             },
           },
   };

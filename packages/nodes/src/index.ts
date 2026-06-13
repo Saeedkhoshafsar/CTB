@@ -24,6 +24,10 @@ import { flowReturn } from './flow/return';
 import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
+import { tgAnswerCallback } from './tg/answer-callback';
+import { tgChatAction } from './tg/chat-action';
+import { tgDeleteMessage } from './tg/delete-message';
+import { tgEditMessage } from './tg/edit-message';
 import { tgMenu } from './tg/menu';
 import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
@@ -42,6 +46,10 @@ export { flowReturn, SUBFLOW_RETURN_VAR } from './flow/return';
 export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
+export { tgAnswerCallback } from './tg/answer-callback';
+export { tgChatAction } from './tg/chat-action';
+export { tgDeleteMessage } from './tg/delete-message';
+export { tgEditMessage } from './tg/edit-message';
 export { tgMenu } from './tg/menu';
 export { tgSendMessage } from './tg/send-message';
 export { tgTrigger } from './tg/trigger';
@@ -57,6 +65,10 @@ export const builtinNodes: NodeDef<never>[] = [
   tgSendMessage,
   tgWaitForReply,
   tgMenu,
+  tgEditMessage,
+  tgDeleteMessage,
+  tgAnswerCallback,
+  tgChatAction,
   flowIf,
   flowSwitch,
   flowWait,

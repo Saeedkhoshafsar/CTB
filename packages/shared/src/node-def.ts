@@ -78,8 +78,27 @@ export interface NodeCtx {
   /** Telegram sender (centralized, rate-limited). Null when flow has no chat context. */
   tg: {
     sendMessage(opts: Record<string, unknown>): Promise<{ messageId: number }>;
-    /** editMessageText — optional capability (tg.menu edit_in_place, P2-T6). */
+    /** editMessageText — optional capability (tg.menu edit_in_place, P2-T6; tg.editMessage, P3-T3). */
     editMessageText?(opts: Record<string, unknown>): Promise<void>;
+    /**
+     * editMessageCaption — edit the caption of a media message (P3-T3). Optional;
+     * tg.editMessage falls back to a clear error when the host doesn't inject it.
+     */
+    editMessageCaption?(opts: Record<string, unknown>): Promise<void>;
+    /**
+     * editMessageReplyMarkup — replace just a message's inline keyboard (P3-T3).
+     * Lets tg.editMessage swap buttons without touching text/caption.
+     */
+    editMessageReplyMarkup?(opts: Record<string, unknown>): Promise<void>;
+    /** deleteMessage — remove a message by id (tg.deleteMessage, P3-T3). */
+    deleteMessage?(opts: Record<string, unknown>): Promise<void>;
+    /**
+     * answerCallbackQuery — toast/alert acknowledging a button click when
+     * handling raw callbacks outside Menu (tg.answerCallback, P3-T3).
+     */
+    answerCallbackQuery?(opts: Record<string, unknown>): Promise<void>;
+    /** sendChatAction — typing / upload_photo / … indicator (tg.chatAction, P3-T3). */
+    sendChatAction?(opts: Record<string, unknown>): Promise<void>;
   } | null;
   /** Structured logging into exec_logs. */
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;

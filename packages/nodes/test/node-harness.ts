@@ -30,6 +30,12 @@ export interface FakeCtx extends NodeCtx {
   logs: { level: string; message: string }[];
   /** flow.executeSubFlow (P3-T1): recorded sub-flow calls. */
   subflowCalls: { flowId: string; items: FlowItem[] }[];
+  /** P3-T3 tg capabilities: recorded payloads by Bot-API method. */
+  editedCaption: Record<string, unknown>[];
+  editedReplyMarkup: Record<string, unknown>[];
+  deleted: Record<string, unknown>[];
+  answeredCallbacks: Record<string, unknown>[];
+  chatActions: Record<string, unknown>[];
 }
 
 export function makeCtx(
@@ -56,6 +62,11 @@ export function makeCtx(
 ): FakeCtx {
   const sent: SentMessage[] = [];
   const edited: Record<string, unknown>[] = [];
+  const editedCaption: Record<string, unknown>[] = [];
+  const editedReplyMarkup: Record<string, unknown>[] = [];
+  const deleted: Record<string, unknown>[] = [];
+  const answeredCallbacks: Record<string, unknown>[] = [];
+  const chatActions: Record<string, unknown>[] = [];
   const varsBag: Record<string, unknown> = {};
   const kvBag = new Map<string, unknown>();
   const httpCalls: HttpCall[] = [];
@@ -107,6 +118,11 @@ export function makeCtx(
         return { status: r.status, headers: r.headers ?? {}, body: r.body };
       },
     },
+    editedCaption,
+    editedReplyMarkup,
+    deleted,
+    answeredCallbacks,
+    chatActions,
     tg:
       overrides.tg === null
         ? null
@@ -118,6 +134,21 @@ export function makeCtx(
             },
             async editMessageText(opts) {
               edited.push(opts);
+            },
+            async editMessageCaption(opts) {
+              editedCaption.push(opts);
+            },
+            async editMessageReplyMarkup(opts) {
+              editedReplyMarkup.push(opts);
+            },
+            async deleteMessage(opts) {
+              deleted.push(opts);
+            },
+            async answerCallbackQuery(opts) {
+              answeredCallbacks.push(opts);
+            },
+            async sendChatAction(opts) {
+              chatActions.push(opts);
             },
           },
     log: (level, message) => logs.push({ level, message }),

@@ -256,9 +256,25 @@ export function wireEngine(opts: WireOptions): Engine {
       return {
         sendMessage: (o) =>
           handle.sender.sendMessage(o as Parameters<typeof handle.sender.sendMessage>[0]),
-        // tg.menu edit_in_place (P2-T6) — rides the same rate-limited sender.
+        // tg.menu edit_in_place (P2-T6) + tg.editMessage (P3-T3) — all ride the
+        // same rate-limited sender so node I/O never touches a raw token (I6).
         editMessageText: async (o) => {
           await handle.sender.call('editMessageText', o);
+        },
+        editMessageCaption: async (o) => {
+          await handle.sender.call('editMessageCaption', o);
+        },
+        editMessageReplyMarkup: async (o) => {
+          await handle.sender.call('editMessageReplyMarkup', o);
+        },
+        deleteMessage: async (o) => {
+          await handle.sender.call('deleteMessage', o);
+        },
+        answerCallbackQuery: async (o) => {
+          await handle.sender.call('answerCallbackQuery', o);
+        },
+        sendChatAction: async (o) => {
+          await handle.sender.call('sendChatAction', o);
         },
       };
     },

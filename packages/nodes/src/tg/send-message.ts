@@ -15,6 +15,7 @@ import {
   type TgSendMessageParams,
 } from '@ctb/shared';
 import { buildSendPayload } from '../lib/telegram';
+import { coerceChatId } from './helpers';
 
 export const tgSendMessage: NodeDef<TgSendMessageParams> = {
   type: 'tg.sendMessage',
@@ -57,9 +58,3 @@ export const tgSendMessage: NodeDef<TgSendMessageParams> = {
     return out({ main: outputs });
   },
 };
-
-function coerceChatId(chat: number | string): number | undefined {
-  if (typeof chat === 'number') return Number.isInteger(chat) ? chat : undefined;
-  const n = Number(chat.trim());
-  return Number.isInteger(n) && chat.trim() !== '' ? n : undefined;
-}

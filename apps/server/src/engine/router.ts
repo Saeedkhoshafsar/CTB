@@ -18,7 +18,14 @@
  * overdue waits via the `timeout` port (`main` for durable delays).
  */
 import type { Executor, ExecutionStore, FlowRef } from '@ctb/core';
-import type { Execution, FlowGraph, FlowItem, FlowNode, WaitSpec } from '@ctb/shared';
+import type {
+  Execution,
+  FlowGraph,
+  FlowItem,
+  FlowNode,
+  FlowSettings,
+  WaitSpec,
+} from '@ctb/shared';
 import { Cron } from 'croner';
 import type { TgEvent } from '../telegram/normalize';
 import {
@@ -31,12 +38,34 @@ import {
   type TriggerParams,
 } from './match';
 
+/** A flow as the router sees it — id/name + graph + per-flow settings (P3-T6). */
+export type RouterFlow = FlowRef & { graph: FlowGraph; settings: FlowSettings };
+
 /** Where the router finds flows. Server impl arrives with the bots API (P1-T8). */
 export interface FlowSource {
   /** Active flows for a bot — trigger matching scans their graphs. */
-  activeFlows(botId: string): Promise<Array<FlowRef & { graph: FlowGraph }>>;
+  activeFlows(botId: string): Promise<RouterFlow[]>;
   /** Flow by id — needed to resume waiting/timed-out executions. */
-  getFlow(flowId: string): Promise<(FlowRef & { graph: FlowGraph }) | null>;
+  getFlow(flowId: string): Promise<RouterFlow | null>;
+}
+
+/** A trigger parked by executionPolicy='queue' (P3-T6), drained on terminal. */
+export interface PendingTriggerStore {
+  /** Park a trigger to run later (FIFO per bot/flow/chat). */
+  enqueue(t: {
+    botId: string;
+    flowId: string;
+    chatId: number;
+    entryNodeId: string;
+    userId: string | null;
+    item: FlowItem;
+  }): Promise<void>;
+  /** Pop the oldest parked trigger for (bot, flow, chat), or null. */
+  dequeue(botId: string, flowId: string, chatId: number): Promise<{
+    entryNodeId: string;
+    userId: string | null;
+    item: FlowItem;
+  } | null>;
 }
 
 export interface RouterDeps {
@@ -59,6 +88,12 @@ export interface RouterDeps {
    * dropping an update because a side-table write hiccuped would be wrong.
    */
   onUser?(event: TgEvent): Promise<void>;
+  /**
+   * Queue store for executionPolicy='queue' (P3-T6). Optional — without it the
+   * `queue` policy degrades to `ignore` (parking is impossible, so the new
+   * trigger is simply dropped while a run is waiting).
+   */
+  pending?: PendingTriggerStore;
   /** Execution id factory (injectable for deterministic tests). */
   newId?: () => string;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
@@ -211,13 +246,14 @@ export class UpdateRouter {
         }
         // "btn:key" port → bare key for the button-meta lookup (menu WaitSpec).
         const key = port.startsWith('btn:') ? port.slice(4) : port;
-        await this.deps.executor.resume({
+        const result = await this.deps.executor.resume({
           executionId: exec.id,
           graph: flow.graph,
           flow: { id: flow.id, name: flow.name },
           port,
           items: [callbackItem(event, wait.buttons?.[key])],
         });
+        await this.afterRun(flow, event.botId, event.chat.id, exec.id, result.status, result.error);
         return true;
       }
 
@@ -244,17 +280,18 @@ export class UpdateRouter {
             return true;
           }
           // retries exhausted → invalid port
-          await this.deps.executor.resume({
+          const invalidResult = await this.deps.executor.resume({
             executionId: exec.id,
             graph: flow.graph,
             flow: { id: flow.id, name: flow.name },
             port: 'invalid',
             items: [replyItem(event, null)],
           });
+          await this.afterRun(flow, event.botId, event.chat.id, exec.id, invalidResult.status, invalidResult.error);
           return true;
         }
 
-        await this.deps.executor.resume({
+        const result = await this.deps.executor.resume({
           executionId: exec.id,
           graph: flow.graph,
           flow: { id: flow.id, name: flow.name },
@@ -264,17 +301,17 @@ export class UpdateRouter {
           // on resume, so the router applies its saveTo durably via varsPatch.
           ...(wait.saveTo !== undefined ? { varsPatch: { [wait.saveTo]: verdict.value } } : {}),
         });
+        await this.afterRun(flow, event.botId, event.chat.id, exec.id, result.status, result.error);
         return true;
       }
     }
     return false;
   }
 
-  /** Try to start a flow from a trigger. True = execution started. */
+  /** Try to start a flow from a trigger. True = the event was consumed. */
   private async tryTriggers(event: TgEvent): Promise<boolean> {
     const flows = await this.deps.flows.activeFlows(event.botId);
-    let best: { flow: FlowRef & { graph: FlowGraph }; node: FlowNode; priority: number } | null =
-      null;
+    let best: { flow: RouterFlow; node: FlowNode; priority: number } | null = null;
 
     for (const flow of flows) {
       for (const node of flow.graph.nodes) {
@@ -287,17 +324,161 @@ export class UpdateRouter {
     }
     if (!best) return false;
 
-    const result = await this.deps.executor.start({
-      executionId: this.newId(),
-      flow: { id: best.flow.id, name: best.flow.name },
-      graph: best.flow.graph,
+    // Execution policy (P3-T6): a NEW trigger arriving while THIS flow already
+    // has a waiting run in THIS chat. one-waiting-execution-per-(flow,chat).
+    const policy = best.flow.settings.executionPolicy;
+    if (policy !== 'replace') {
+      const waiting = await this.waitingForFlow(event.botId, event.chat.id, best.flow.id);
+      if (waiting.length > 0) {
+        if (policy === 'ignore') {
+          this.log('debug', `trigger ignored — ${best.flow.id} already waiting in chat ${event.chat.id}`);
+          return true; // consumed (deliberately dropped)
+        }
+        // queue: park the trigger; it runs when the waiting run finishes.
+        if (this.deps.pending) {
+          await this.deps.pending.enqueue({
+            botId: event.botId,
+            flowId: best.flow.id,
+            chatId: event.chat.id,
+            entryNodeId: best.node.id,
+            userId: String(event.user.id),
+            item: triggerItem(event),
+          });
+          this.log('info', `trigger queued — ${best.flow.id} busy in chat ${event.chat.id}`);
+        } else {
+          // No queue store wired → degrade to ignore (documented in RouterDeps).
+          this.log('debug', `trigger dropped (no queue store) — ${best.flow.id} waiting`);
+        }
+        return true;
+      }
+    } else {
+      // replace: cancel any waiting run of THIS flow in THIS chat before starting.
+      await this.cancelWaitingForFlow(event.botId, event.chat.id, best.flow.id);
+    }
+
+    await this.startFlow(best.flow, {
       botId: event.botId,
       chatId: event.chat.id,
       userId: String(event.user.id),
-      entry: { nodeId: best.node.id, items: { main: [triggerItem(event)] } },
+      entryNodeId: best.node.id,
+      item: triggerItem(event),
     });
-    this.log('info', `started execution via ${best.node.id} (${best.flow.id}) → ${result.status}`);
     return true;
+  }
+
+  /** Start a flow execution from a trigger entry, then run post-run hooks. */
+  private async startFlow(
+    flow: RouterFlow,
+    entry: { botId: string; chatId: number; userId: string | null; entryNodeId: string; item: FlowItem },
+  ): Promise<void> {
+    const executionId = this.newId();
+    const result = await this.deps.executor.start({
+      executionId,
+      flow: { id: flow.id, name: flow.name },
+      graph: flow.graph,
+      botId: entry.botId,
+      chatId: entry.chatId,
+      userId: entry.userId,
+      entry: { nodeId: entry.entryNodeId, items: { main: [entry.item] } },
+    });
+    this.log('info', `started execution ${executionId} via ${entry.entryNodeId} (${flow.id}) → ${result.status}`);
+    await this.afterRun(flow, entry.botId, entry.chatId, executionId, result.status, result.error);
+  }
+
+  /**
+   * Post-run hooks (P3-T6), run after a start OR a resume reaches a terminal
+   * status. (1) on error → fire the flow's error-handler flow; (2) on any
+   * terminal status → drain the next queued trigger for this (flow, chat).
+   */
+  private async afterRun(
+    flow: RouterFlow,
+    botId: string,
+    chatId: number,
+    executionId: string,
+    status: Execution['status'],
+    error: string | null,
+  ): Promise<void> {
+    if (status === 'error') {
+      await this.runErrorHandler(flow, botId, chatId, executionId, error);
+    }
+    // waiting runs are not terminal — they still own the (flow, chat) slot.
+    if (status === 'done' || status === 'error' || status === 'canceled') {
+      await this.drainQueue(flow, botId, chatId);
+    }
+  }
+
+  /** Fire the flow's configured error-handler flow (P3-T6), if any. */
+  private async runErrorHandler(
+    flow: RouterFlow,
+    botId: string,
+    chatId: number,
+    failedExecutionId: string,
+    error: string | null,
+  ): Promise<void> {
+    const handlerId = flow.settings.errorHandlerFlowId;
+    if (!handlerId) return;
+    const handler = await this.deps.flows.getFlow(handlerId);
+    if (!handler) {
+      this.log('warn', `error-handler ${handlerId} for flow ${flow.id} not found — skipped`);
+      return;
+    }
+    // The handler enters at its first enabled trigger node (any trigger — it's
+    // an internal invocation, not a real Telegram event). Falls back to nothing
+    // if the handler has no trigger.
+    const entryNode = handler.graph.nodes.find((n) => n.type === TRIGGER_TYPE && !n.disabled);
+    if (!entryNode) {
+      this.log('warn', `error-handler ${handlerId} has no enabled trigger — skipped`);
+      return;
+    }
+    const item: FlowItem = {
+      json: {
+        error: error ?? 'unknown error',
+        failedFlowId: flow.id,
+        failedFlowName: flow.name,
+        failedExecutionId,
+      },
+    };
+    const executionId = this.newId();
+    const result = await this.deps.executor.start({
+      executionId,
+      flow: { id: handler.id, name: handler.name },
+      graph: handler.graph,
+      botId,
+      chatId,
+      userId: null,
+      entry: { nodeId: entryNode.id, items: { main: [item] } },
+    });
+    this.log('info', `error-handler ${handlerId} ran for failed ${failedExecutionId} → ${result.status}`);
+    // Note: an error-handler that itself errors is NOT re-handled (no recursion).
+  }
+
+  /** Drain the next queued trigger for (flow, chat) and run it (P3-T6, queue policy). */
+  private async drainQueue(flow: RouterFlow, botId: string, chatId: number): Promise<void> {
+    if (!this.deps.pending) return;
+    const next = await this.deps.pending.dequeue(botId, flow.id, chatId);
+    if (!next) return;
+    this.log('info', `draining queued trigger for ${flow.id} in chat ${chatId}`);
+    await this.startFlow(flow, {
+      botId,
+      chatId,
+      userId: next.userId,
+      entryNodeId: next.entryNodeId,
+      item: next.item,
+    });
+  }
+
+  /** Waiting executions of a SPECIFIC flow in a chat (filters findWaiting by flowId). */
+  private async waitingForFlow(botId: string, chatId: number, flowId: string): Promise<Execution[]> {
+    const waiting = await this.deps.store.findWaiting({ botId, chatId });
+    return waiting.filter((e) => e.flowId === flowId);
+  }
+
+  /** Cancel every waiting execution of a specific flow in a chat (replace policy). */
+  private async cancelWaitingForFlow(botId: string, chatId: number, flowId: string): Promise<void> {
+    for (const exec of await this.waitingForFlow(botId, chatId, flowId)) {
+      await this.deps.store.save({ id: exec.id, status: 'canceled', state: exec.state, wait: null });
+      this.log('info', `execution ${exec.id} replaced (policy=replace) in chat ${chatId}`);
+    }
   }
 
   private async resumeTimedOut(exec: Execution): Promise<void> {
@@ -307,7 +488,7 @@ export class UpdateRouter {
     if (!flow) return;
     // delays resume on "main" (the wait simply elapsed); reply/callback fire "timeout"
     const port = fresh.wait.kind === 'delay' ? 'main' : 'timeout';
-    await this.deps.executor.resume({
+    const result = await this.deps.executor.resume({
       executionId: fresh.id,
       graph: flow.graph,
       flow: { id: flow.id, name: flow.name },
@@ -315,9 +496,14 @@ export class UpdateRouter {
       items: [{ json: { timedOut: fresh.wait.kind !== 'delay' } }],
     });
     this.log('info', `execution ${fresh.id} resumed via "${port}" after timeout`);
+    // Drive error-handler / queue-drain hooks after the timeout resume too.
+    // Requires a concrete chat (queue + error-handler are per-chat); skip if null.
+    if (fresh.chatId !== null) {
+      await this.afterRun(flow, fresh.botId, fresh.chatId, fresh.id, result.status, result.error);
+    }
   }
 
-  private async flowOf(exec: Execution): Promise<(FlowRef & { graph: FlowGraph }) | null> {
+  private async flowOf(exec: Execution): Promise<RouterFlow | null> {
     const flow = await this.deps.flows.getFlow(exec.flowId);
     if (!flow) this.log('warn', `execution ${exec.id} references missing flow ${exec.flowId}`);
     return flow;

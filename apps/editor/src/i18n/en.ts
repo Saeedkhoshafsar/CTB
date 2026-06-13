@@ -115,6 +115,22 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.versions.confirm': 'Restore version {n}? The current graph is also saved as a version and can be restored.',
   'editor.versions.counts': '{nodes} nodes · {edges} edges',
   'editor.versions.restore': 'Restore',
+  'editor.settings.button': 'Settings',
+  'editor.settings.title': 'Flow settings',
+  'editor.settings.policy.label': 'Execution policy',
+  'editor.settings.policy.replace': 'Replace',
+  'editor.settings.policy.queue': 'Queue',
+  'editor.settings.policy.ignore': 'Ignore',
+  'editor.settings.policy.replace.desc':
+    'While this flow is waiting in this chat, a new trigger cancels the waiting run and starts a fresh one.',
+  'editor.settings.policy.queue.desc':
+    'While this flow is waiting in this chat, new triggers are parked and run in order after the current run finishes.',
+  'editor.settings.policy.ignore.desc':
+    'While this flow is waiting in this chat, new triggers are dropped.',
+  'editor.settings.errorHandler.label': 'Error-handler flow',
+  'editor.settings.errorHandler.none': '— none —',
+  'editor.settings.errorHandler.hint':
+    'If a run of this flow ends in error, this flow runs with the error details (must belong to the same bot and not be itself).',
   'editor.problems.title': 'Activation blocked — fix these first:',
 
   'editor.palette.title': 'Nodes',
@@ -514,5 +530,6 @@ export const en: Record<keyof typeof fa, string> = {
   'common.cancel': 'Cancel',
   'common.back': 'Back',
   'common.close': 'Close',
+  'common.save': 'Save',
   'common.language': 'فارسی',
 };

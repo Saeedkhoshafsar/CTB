@@ -9,14 +9,27 @@
  * Graphs are validated on read: a row whose JSON no longer parses is skipped
  * (activeFlows) or null (getFlow) with a log — never a crash in the router.
  */
-import { FlowGraphSchema, type FlowGraph } from '@ctb/shared';
+import {
+  FlowGraphSchema,
+  FlowSettingsSchema,
+  defaultFlowSettings,
+  type FlowGraph,
+  type FlowSettings,
+} from '@ctb/shared';
 import type { FlowRef } from '@ctb/core';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
 import { flows } from '../db/schema';
 import type { FlowSource } from './router';
 
-type LoadedFlow = FlowRef & { graph: FlowGraph };
+/** A flow loaded for the router — graph + per-flow settings (policy/error-handler, P3-T6). */
+type LoadedFlow = FlowRef & { graph: FlowGraph; settings: FlowSettings };
+
+/** Stored settings JSON → typed FlowSettings, defaulting anything missing/legacy. */
+function readSettings(raw: unknown): FlowSettings {
+  const parsed = FlowSettingsSchema.safeParse(raw ?? {});
+  return parsed.success ? parsed.data : defaultFlowSettings();
+}
 
 /** A flow loaded for sub-flow execution — carries its owning bot for the same-bot guard (P3-T1). */
 export type LoadedSubFlow = LoadedFlow & { botId: string };
@@ -40,7 +53,7 @@ export class SqliteFlowSource implements FlowSource {
         this.log?.('warn', `flow ${row.id} has an invalid graph — skipped from trigger matching`);
         continue;
       }
-      result.push({ id: row.id, name: row.name, graph: graph.data });
+      result.push({ id: row.id, name: row.name, graph: graph.data, settings: readSettings(row.settings) });
     }
     return result;
   }
@@ -53,7 +66,7 @@ export class SqliteFlowSource implements FlowSource {
       this.log?.('warn', `flow ${row.id} has an invalid graph — resume impossible`);
       return null;
     }
-    return { id: row.id, name: row.name, graph: graph.data };
+    return { id: row.id, name: row.name, graph: graph.data, settings: readSettings(row.settings) };
   }
 
   /**
@@ -70,6 +83,12 @@ export class SqliteFlowSource implements FlowSource {
       this.log?.('warn', `sub-flow ${row.id} has an invalid graph — cannot execute`);
       return null;
     }
-    return { id: row.id, name: row.name, graph: graph.data, botId: row.botId };
+    return {
+      id: row.id,
+      name: row.name,
+      graph: graph.data,
+      settings: readSettings(row.settings),
+      botId: row.botId,
+    };
   }
 }

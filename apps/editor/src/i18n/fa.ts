@@ -112,6 +112,22 @@ export const fa = {
   'editor.versions.confirm': 'بازگردانی به نسخهٔ {n}؟ گراف فعلی هم به‌عنوان نسخه ذخیره می‌شود و قابل بازگشت است.',
   'editor.versions.counts': '{nodes} نود · {edges} یال',
   'editor.versions.restore': 'بازگردانی',
+  'editor.settings.button': 'تنظیمات',
+  'editor.settings.title': 'تنظیمات فلو',
+  'editor.settings.policy.label': 'سیاست اجرا',
+  'editor.settings.policy.replace': 'جایگزینی',
+  'editor.settings.policy.queue': 'صف',
+  'editor.settings.policy.ignore': 'نادیده‌گرفتن',
+  'editor.settings.policy.replace.desc':
+    'وقتی این فلو در همین چت منتظر است، یک تریگر جدید اجرای منتظر را لغو و اجرای تازه را شروع می‌کند.',
+  'editor.settings.policy.queue.desc':
+    'وقتی این فلو در همین چت منتظر است، تریگرهای جدید در صف می‌مانند و پس از پایان اجرای فعلی به‌ترتیب اجرا می‌شوند.',
+  'editor.settings.policy.ignore.desc':
+    'وقتی این فلو در همین چت منتظر است، تریگرهای جدید نادیده گرفته می‌شوند.',
+  'editor.settings.errorHandler.label': 'فلوی مدیریت خطا',
+  'editor.settings.errorHandler.none': '— هیچ‌کدام —',
+  'editor.settings.errorHandler.hint':
+    'اگر اجرای این فلو با خطا تمام شود، این فلو با اطلاعات خطا اجرا می‌شود (باید متعلق به همین بات و غیر از خودش باشد).',
   'editor.problems.title': 'فعال‌سازی انجام نشد — این موارد را برطرف کنید:',
 
   'editor.palette.title': 'نودها',
@@ -511,5 +527,6 @@ export const fa = {
   'common.cancel': 'انصراف',
   'common.back': 'بازگشت',
   'common.close': 'بستن',
+  'common.save': 'ذخیره',
   'common.language': 'English',
 } as const;

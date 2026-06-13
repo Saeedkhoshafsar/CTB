@@ -11,7 +11,7 @@ import {
   type ExecutorServices,
 } from '@ctb/core';
 import { destroyDefaultSandboxPool } from '@ctb/sandbox';
-import { end, out, wait, type FlowGraph, type NodeDef } from '@ctb/shared';
+import { defaultFlowSettings, end, out, wait, type FlowGraph, type NodeDef } from '@ctb/shared';
 import type { Update } from 'grammy/types';
 import { afterAll, describe, expect, it } from 'vitest';
 import { UpdateRouter, type FlowSource } from '../src/engine/router';
@@ -118,7 +118,7 @@ function makeHarness() {
     tg: () => null,
   };
   const executor = new Executor(registry, store, services);
-  const flow = { id: 'f1', name: 'سن‌پرس', graph: GRAPH };
+  const flow = { id: 'f1', name: 'سن‌پرس', graph: GRAPH, settings: defaultFlowSettings() };
   const flows: FlowSource = {
     activeFlows: async (botId) => (botId === 'b1' ? [flow] : []),
     getFlow: async (id) => (id === 'f1' ? flow : null),
@@ -326,7 +326,7 @@ function makeMenuHarness() {
     tg: () => null,
   };
   const executor = new Executor(registry, store, services);
-  const flow = { id: 'f2', name: 'منو', graph: MENU_GRAPH };
+  const flow = { id: 'f2', name: 'منو', graph: MENU_GRAPH, settings: defaultFlowSettings() };
   const flows: FlowSource = {
     activeFlows: async (botId) => (botId === 'b1' ? [flow] : []),
     getFlow: async (id) => (id === 'f2' ? flow : null),

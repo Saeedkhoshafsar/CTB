@@ -292,6 +292,15 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.match': 'The value compared against the main value.',
   'paramDesc.operator': 'How to compare — equals, contains, greater than…',
   'paramDesc.mode': '“Duration” waits a fixed time; “until” waits until a specific datetime.',
+  // `mode` is reused by several nodes with different meanings — give each its own help text.
+  'paramDesc.flow.merge.mode':
+    '“Append” passes each branch through as it arrives; “wait for both” holds until both branches arrive then emits together; “first branch” keeps the first branch and ignores the rest.',
+  'paramDesc.data.code.mode':
+    '“Once” runs the whole batch in one go (as $items); “per item” runs the code once for each item ($json = current item).',
+  'paramDesc.flow.executeSubFlow.mode':
+    '“Wait for result” blocks until the sub-flow finishes and returns its output; “fire and forget” starts the sub-flow and continues without waiting.',
+  'paramDesc.tg.editMessage.target':
+    'What to edit on the message: “text”, “caption” (for media messages) or “keyboard only” (swap the buttons without touching the text).',
   'paramDesc.duration': 'How long to pause — seconds to days. Survives server restarts.',
   'paramDesc.until': 'Wake-up datetime (ISO) — usually an expression like {{ $vars.deadline }}.',
   'paramDesc.method': 'HTTP method: GET to read, POST/PUT/PATCH to send data.',

@@ -93,7 +93,12 @@ function PanelInner({ node }: { node: FlowNode }) {
       {nodeDesc ? <p className="param-desc">{nodeDesc}</p> : null}
 
       {info ? (
-        <SchemaForm schema={info.paramsJsonSchema as JsonSchema} value={draft} onChange={onFormChange} />
+        <SchemaForm
+          schema={info.paramsJsonSchema as JsonSchema}
+          value={draft}
+          onChange={onFormChange}
+          namespace={node.type}
+        />
       ) : (
         <p className="alert">{t('editor.node.unknownType')}</p>
       )}

@@ -10,12 +10,12 @@
  * decides when/where to persist (the node param panel debounce-commits into
  * the canvas store; a Collection form will POST on submit).
  */
-import { useDesc, useLabel, FieldRow, SchemaWidget } from './widgets';
+import { useDesc, useLabel, FieldRow, FormNamespace, SchemaWidget } from './widgets';
 import { objectFields, type JsonSchema } from './schema';
 import { setAtPath } from './model';
 import { useI18n } from '../i18n';
 
-export function SchemaForm({
+function FormBody({
   schema,
   value,
   onChange,
@@ -43,5 +43,29 @@ export function SchemaForm({
         </FieldRow>
       ))}
     </div>
+  );
+}
+
+export function SchemaForm({
+  schema,
+  value,
+  onChange,
+  namespace = '',
+}: {
+  schema: JsonSchema;
+  value: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  /**
+   * Optional i18n namespace (e.g. the node type) so param key names that are
+   * reused across nodes with different meanings — `mode`, `target` — resolve
+   * a node-specific `paramDesc.<namespace>.<key>` before the shared bare key.
+   * Empty (the default) preserves the legacy node-agnostic behaviour.
+   */
+  namespace?: string;
+}) {
+  return (
+    <FormNamespace value={namespace}>
+      <FormBody schema={schema} value={value} onChange={onChange} />
+    </FormNamespace>
   );
 }

@@ -5,9 +5,15 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+/** Panel roles (P3.5-T2). `admin` sees everything; `operator` (the manager)
+ * sees ONLY the Data section — records/files of Collections. */
+export type SessionRole = 'admin' | 'operator';
+
 export interface SessionPayload {
-  /** Admin username the session belongs to. */
+  /** Username the session belongs to. */
   sub: string;
+  /** Panel role. Older tokens (pre-P3.5-T2) lack it → treated as `admin`. */
+  role: SessionRole;
   /** Unix ms expiry. */
   exp: number;
 }
@@ -18,8 +24,13 @@ function hmac(data: string, secret: string): Buffer {
   return createHmac('sha256', `ctb-session-v1:${secret}`).update(data).digest();
 }
 
-export function createSessionToken(username: string, secret: string, now = Date.now()): string {
-  const payload: SessionPayload = { sub: username, exp: now + SESSION_TTL_MS };
+export function createSessionToken(
+  username: string,
+  secret: string,
+  role: SessionRole = 'admin',
+  now = Date.now(),
+): string {
+  const payload: SessionPayload = { sub: username, role, exp: now + SESSION_TTL_MS };
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = hmac(body, secret).toString('base64url');
   return `${body}.${sig}`;
@@ -45,6 +56,8 @@ export function verifySessionToken(
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
     if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') return null;
     if (payload.exp <= now) return null;
+    // Back-compat: tokens minted before roles existed are admins.
+    if (payload.role !== 'admin' && payload.role !== 'operator') payload.role = 'admin';
     return payload;
   } catch {
     return null;

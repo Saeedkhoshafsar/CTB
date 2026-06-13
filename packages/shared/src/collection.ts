@@ -520,3 +520,47 @@ export interface RecordPublic {
   updatedAt: string;
   createdBy: string;
 }
+
+// ---- record request bodies (P3.5-T2 records API) --------------------------
+
+/** Create a record: the raw data document (validated against the schema server-side). */
+export const CreateRecordBodySchema = z.object({
+  data: z.record(z.string(), z.unknown()),
+});
+export type CreateRecordBody = z.infer<typeof CreateRecordBodySchema>;
+
+/** Update a record: partial data + merge|replace mode (default merge). */
+export const UpdateRecordBodySchema = z.object({
+  data: z.record(z.string(), z.unknown()),
+  mode: z.enum(['merge', 'replace']).default('merge'),
+});
+export type UpdateRecordBody = z.infer<typeof UpdateRecordBodySchema>;
+
+/**
+ * Query body for `POST /api/records/:collectionId/query` — the full RecordFilter.
+ * (POST, not GET, so the filter travels as JSON exactly as the store/node use it,
+ * with no URL-encoding ambiguity for nested `where` rows.)
+ */
+export const QueryRecordsBodySchema = RecordFilterSchema.partial().extend({
+  where: z.array(WhereRowSchema).default([]),
+  sort: z.array(SortRowSchema).default([]),
+});
+export type QueryRecordsBody = z.infer<typeof QueryRecordsBodySchema>;
+
+/** A page of records as returned by the query/list endpoint. */
+export interface RecordsPage {
+  records: RecordPublic[];
+  total: number;
+}
+
+/** A stored file's public projection (the records API returns this on upload). */
+export interface FilePublic {
+  id: string;
+  botId: string;
+  kind: 'local' | 'tg_file_id';
+  mime: string | null;
+  size: number | null;
+  createdAt: string;
+  /** Convenience download URL the panel/Telegram nodes can use. */
+  url: string;
+}

@@ -229,6 +229,78 @@ describe('flows API (P1-T8)', () => {
     await w.app.inject({ method: 'DELETE', url: `/api/bots/${botId}`, cookies: w.cookie });
     expect(w.db.select().from(schema.flows).all()).toHaveLength(0);
   });
+
+  // ── P3-T6: execution-policy + error-handler flow settings ──────────────────
+
+  it('create defaults settings to { replace, null }', async () => {
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie,
+      payload: { botId, name: 'set' },
+    })).json().flow;
+    expect(flow.settings).toEqual({ executionPolicy: 'replace', errorHandlerFlowId: null });
+  });
+
+  it('PATCH settings persists policy + a same-bot error-handler', async () => {
+    const target = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'handler' },
+    })).json().flow;
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'main' },
+    })).json().flow;
+
+    const patched = (await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'queue', errorHandlerFlowId: target.id } },
+    })).json().flow;
+    expect(patched.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: target.id });
+
+    // round-trips through GET (stored, not just echoed)
+    const fetched = (await w.app.inject({
+      method: 'GET', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+    })).json().flow;
+    expect(fetched.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: target.id });
+    // settings change does NOT bump the graph version
+    expect(fetched.version).toBe(flow.version);
+  });
+
+  it('rejects an error-handler pointing at itself (error_handler_self)', async () => {
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'self' },
+    })).json().flow;
+    const res = await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'replace', errorHandlerFlowId: flow.id } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('error_handler_self');
+  });
+
+  it('rejects an error-handler from another bot (error_handler_not_same_bot)', async () => {
+    const otherBotId = (await w.app.inject({
+      method: 'POST', url: '/api/bots', cookies: w.cookie, payload: { name: 'B', token: TOKEN },
+    })).json().bot.id;
+    const otherFlow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId: otherBotId, name: 'foreign' },
+    })).json().flow;
+    const flow = (await w.app.inject({
+      method: 'POST', url: '/api/flows', cookies: w.cookie, payload: { botId, name: 'cross' },
+    })).json().flow;
+
+    const res = await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'replace', errorHandlerFlowId: otherFlow.id } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('error_handler_not_same_bot');
+
+    // an unknown id is likewise rejected (not_same_bot covers missing too)
+    const unknown = await w.app.inject({
+      method: 'PATCH', url: `/api/flows/${flow.id}`, cookies: w.cookie,
+      payload: { settings: { executionPolicy: 'replace', errorHandlerFlowId: 'does-not-exist' } },
+    });
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json().error).toBe('error_handler_not_same_bot');
+  });
 });
 
 describe('flow lifecycle: versions + rollback + activation problems (P2-T4)', () => {

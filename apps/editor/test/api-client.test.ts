@@ -95,6 +95,26 @@ describe('ApiClient (P2-T1)', () => {
     expect(await client.listFlows(bot.id)).toHaveLength(0);
   });
 
+  it('updateFlow persists execution-policy + error-handler settings (P3-T6)', async () => {
+    const { client } = loggedInClient();
+    await client.login({ username: 'admin', password: 'pw' });
+    const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
+
+    const handler = await client.createFlow({ botId: bot.id, name: 'مدیر-خطا', graph: { nodes: [], edges: [] } });
+    const flow = await client.createFlow({ botId: bot.id, name: 'اصلی', graph: { nodes: [], edges: [] } });
+    // create defaults to { replace, null }
+    expect(flow.settings).toEqual({ executionPolicy: 'replace', errorHandlerFlowId: null });
+
+    const updated = await client.updateFlow(flow.id, {
+      settings: { executionPolicy: 'queue', errorHandlerFlowId: handler.id },
+    });
+    expect(updated.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: handler.id });
+
+    // round-trips through GET (stored, not just echoed)
+    const fetched = await client.getFlow(flow.id);
+    expect(fetched.settings).toEqual({ executionPolicy: 'queue', errorHandlerFlowId: handler.id });
+  });
+
   it('unauthenticated API call → ApiError 401', async () => {
     const { client } = loggedInClient();
     await expect(client.listBots()).rejects.toMatchObject({ status: 401 });

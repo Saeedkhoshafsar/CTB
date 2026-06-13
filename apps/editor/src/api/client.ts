@@ -11,12 +11,17 @@
 import {
   type ApiErrorBody,
   type BotPublic,
+  type CollectionPublic,
   type CreateBotBody,
   CreateBotBodySchema,
+  type CreateCollectionBody,
+  CreateCollectionBodySchema,
   type CreateCredentialBody,
   CreateCredentialBodySchema,
   type CreateFlowBody,
   CreateFlowBodySchema,
+  type CreateRecordBody,
+  CreateRecordBodySchema,
   type CredentialPublic,
   type ExecutionDetail,
   type ExecutionSummary,
@@ -33,13 +38,21 @@ import {
   type LoginBody,
   LoginBodySchema,
   type NodeTypeInfo,
+  type QueryRecordsBody,
+  QueryRecordsBodySchema,
+  type RecordPublic,
+  type RecordsPage,
   type SessionUser,
   type UpdateBotBody,
   UpdateBotBodySchema,
+  type UpdateCollectionBody,
+  UpdateCollectionBodySchema,
   type UpdateCredentialBody,
   UpdateCredentialBodySchema,
   type UpdateFlowBody,
   UpdateFlowBodySchema,
+  type UpdateRecordBody,
+  UpdateRecordBodySchema,
   type UpdateUserBody,
   UpdateUserBodySchema,
   type UserPublic,
@@ -281,6 +294,98 @@ export class ApiClient {
   async updateUser(id: string, body: UpdateUserBody): Promise<UserPublic> {
     const valid = this.validate(UpdateUserBodySchema, body);
     return (await this.request<{ user: UserPublic }>('PATCH', `/api/users/${id}`, valid)).user;
+  }
+
+  // -- collections (Data section, P3.5-T3) ------------------------------------
+
+  /** List a bot's collection definitions (admin only). */
+  async listCollections(botId: string): Promise<CollectionPublic[]> {
+    const qs = `?botId=${encodeURIComponent(botId)}`;
+    return (await this.request<{ collections: CollectionPublic[] }>('GET', `/api/collections${qs}`))
+      .collections;
+  }
+
+  async getCollection(id: string): Promise<CollectionPublic> {
+    return (await this.request<{ collection: CollectionPublic }>('GET', `/api/collections/${id}`))
+      .collection;
+  }
+
+  /** Define a new collection on `botId` (schema validated locally first, I5). */
+  async createCollection(botId: string, body: CreateCollectionBody): Promise<CollectionPublic> {
+    const valid = this.validate(CreateCollectionBodySchema, body);
+    const qs = `?botId=${encodeURIComponent(botId)}`;
+    return (
+      await this.request<{ collection: CollectionPublic }>('POST', `/api/collections${qs}`, valid)
+    ).collection;
+  }
+
+  async updateCollection(id: string, body: UpdateCollectionBody): Promise<CollectionPublic> {
+    const valid = this.validate(UpdateCollectionBodySchema, body);
+    return (
+      await this.request<{ collection: CollectionPublic }>('PATCH', `/api/collections/${id}`, valid)
+    ).collection;
+  }
+
+  async deleteCollection(id: string): Promise<void> {
+    await this.request<{ ok: true }>('DELETE', `/api/collections/${id}`);
+  }
+
+  // -- records (auto-generated CRUD panel, P3.5-T3/T4) ------------------------
+
+  /** Simple paged list (no filter). For filtered reads use queryRecords. */
+  async listRecords(
+    collectionId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<RecordsPage> {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    const qs = params.size > 0 ? `?${params.toString()}` : '';
+    return this.request<RecordsPage>('GET', `/api/records/${collectionId}${qs}`);
+  }
+
+  /** Filtered query — the shared RecordFilter travels as a JSON POST body (I5). */
+  async queryRecords(collectionId: string, body: QueryRecordsBody): Promise<RecordsPage> {
+    const valid = this.validate(QueryRecordsBodySchema, body);
+    return this.request<RecordsPage>('POST', `/api/records/${collectionId}/query`, valid);
+  }
+
+  /** Live record count — used by the destructive-edit warning (P3.5-T3 accept). */
+  async countRecords(collectionId: string): Promise<number> {
+    return (await this.request<{ count: number }>('GET', `/api/records/${collectionId}/count`))
+      .count;
+  }
+
+  async getRecord(collectionId: string, id: string): Promise<RecordPublic> {
+    return (
+      await this.request<{ record: RecordPublic }>('GET', `/api/records/${collectionId}/${id}`)
+    ).record;
+  }
+
+  async createRecord(collectionId: string, body: CreateRecordBody): Promise<RecordPublic> {
+    const valid = this.validate(CreateRecordBodySchema, body);
+    return (
+      await this.request<{ record: RecordPublic }>('POST', `/api/records/${collectionId}`, valid)
+    ).record;
+  }
+
+  async updateRecord(
+    collectionId: string,
+    id: string,
+    body: UpdateRecordBody,
+  ): Promise<RecordPublic> {
+    const valid = this.validate(UpdateRecordBodySchema, body);
+    return (
+      await this.request<{ record: RecordPublic }>(
+        'PATCH',
+        `/api/records/${collectionId}/${id}`,
+        valid,
+      )
+    ).record;
+  }
+
+  async deleteRecord(collectionId: string, id: string): Promise<void> {
+    await this.request<{ ok: true }>('DELETE', `/api/records/${collectionId}/${id}`);
   }
 
   // -- node types (canvas palette, P2-T2) -------------------------------------

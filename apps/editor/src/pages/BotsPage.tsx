@@ -121,6 +121,9 @@ export function BotsPage() {
               <Link className="btn ghost" to={`/bots/${bot.id}/users`}>
                 {t('bots.action.users')}
               </Link>
+              <Link className="btn ghost" to={`/bots/${bot.id}/collections`}>
+                {t('bots.action.collections')}
+              </Link>
               <button
                 className="danger ghost"
                 onClick={() => {

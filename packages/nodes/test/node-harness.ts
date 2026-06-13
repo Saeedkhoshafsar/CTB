@@ -45,6 +45,13 @@ export function makeCtx(
      * omit to get a default that echoes the input items back.
      */
     subflowRun?: ((flowId: string, items: FlowItem[]) => Promise<{ items: FlowItem[] }>) | null;
+    /** P3-T2: the executing node's graph id (flow.loop scopes $vars by it). */
+    nodeId?: string;
+    /**
+     * P3-T2: items grouped by the input port they arrived on (flow.merge reads
+     * this to tell its two branches apart). Empty by default.
+     */
+    inputsByPort?: Record<string, FlowItem[]>;
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -63,6 +70,8 @@ export function makeCtx(
     flowId: 'flow1',
     botId: 'bot1',
     chatId: overrides.chatId === undefined ? 777 : overrides.chatId,
+    nodeId: overrides.nodeId ?? 'node1',
+    inputsByPort: overrides.inputsByPort ?? {},
     sent,
     edited,
     varsBag,

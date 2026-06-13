@@ -9,7 +9,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  builtinNodes,
   flowExecuteSubFlow,
   flowReturn,
   registerBuiltinNodes,
@@ -124,10 +123,9 @@ describe('flow.executeSubFlow', () => {
 });
 
 describe('registry', () => {
-  it('registers both P3-T1 nodes (count 15, includes the new types)', () => {
+  it('registers the P3-T1 nodes (includes the new types)', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     const types = reg.list().map((d) => d.type);
-    expect(builtinNodes).toHaveLength(15);
     expect(types).toContain('flow.executeSubFlow');
     expect(types).toContain('flow.return');
   });

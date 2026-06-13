@@ -19,10 +19,13 @@ import type { Executor, NodeRegistry } from '@ctb/core';
 import {
   CreateFlowBodySchema,
   FlowGraphSchema,
+  FlowSettingsSchema,
   RollbackFlowBodySchema,
   UpdateFlowBodySchema,
+  defaultFlowSettings,
   problemStrings,
   validateFlowForActivation,
+  type FlowSettings,
   type FlowVersionInfo,
 } from '@ctb/shared';
 import { and, desc, eq } from 'drizzle-orm';
@@ -36,6 +39,12 @@ import { bots, flowVersions, flows } from '../db/schema';
 
 type FlowRow = typeof flows.$inferSelect;
 
+/** Stored settings JSON → typed FlowSettings, defaulting anything missing/legacy. */
+function readSettings(raw: unknown): FlowSettings {
+  const parsed = FlowSettingsSchema.safeParse(raw ?? {});
+  return parsed.success ? parsed.data : defaultFlowSettings();
+}
+
 function toPublic(row: FlowRow): Record<string, unknown> {
   return {
     id: row.id,
@@ -43,6 +52,7 @@ function toPublic(row: FlowRow): Record<string, unknown> {
     name: row.name,
     status: row.status,
     graph: row.graph,
+    settings: readSettings(row.settings),
     version: row.version,
     updatedAt: row.updatedAt,
   };
@@ -94,6 +104,7 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       name: parsed.data.name,
       status: 'draft',
       graph: parsed.data.graph,
+      settings: defaultFlowSettings(),
       version: 1,
       updatedAt: now(),
     };
@@ -112,6 +123,22 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
 
     const patch: Partial<FlowRow> = { updatedAt: now() };
     if (parsed.data.name !== undefined) patch.name = parsed.data.name;
+    if (parsed.data.settings !== undefined) {
+      // Error-handler must be another flow OF THE SAME BOT (P3-T6) — a handler
+      // on a different bot could never run in this bot's context, and pointing
+      // a flow at itself would loop on every failure. Reject both.
+      const handlerId = parsed.data.settings.errorHandlerFlowId;
+      if (handlerId !== null) {
+        if (handlerId === id) {
+          return reply.code(400).send({ error: 'error_handler_self' });
+        }
+        const handler = db.select().from(flows).where(eq(flows.id, handlerId)).get();
+        if (!handler || handler.botId !== row.botId) {
+          return reply.code(400).send({ error: 'error_handler_not_same_bot' });
+        }
+      }
+      patch.settings = parsed.data.settings;
+    }
     if (parsed.data.graph !== undefined) {
       // Snapshot the outgoing version for rollback (P2-T4 UI; durable now).
       db.insert(flowVersions)

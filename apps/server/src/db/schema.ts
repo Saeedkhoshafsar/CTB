@@ -25,10 +25,37 @@ export const flows = sqliteTable(
     status: text('status', { enum: ['draft', 'active'] }).notNull().default('draft'),
     /** FlowGraph JSON — the exact document the canvas edits (FlowGraphSchema). */
     graph: text('graph', { mode: 'json' }).notNull(),
+    /** FlowSettings JSON (executionPolicy + errorHandlerFlowId, P3-T6). */
+    settings: text('settings', { mode: 'json' }).notNull().default('{}'),
     version: integer('version').notNull().default(1),
     updatedAt: text('updated_at').notNull(),
   },
   (t) => [index('flows_bot_idx').on(t.botId)],
+);
+
+/**
+ * Pending triggers (P3-T6, executionPolicy='queue'). When a trigger fires for
+ * a (flow, chat) that already has a WAITING execution and the flow's policy is
+ * `queue`, the router parks the trigger here instead of starting/replacing.
+ * Once the waiting run reaches a terminal state, the router drains the oldest
+ * pending row for that (flow, chat) and starts it. FIFO via the autoincrement id.
+ */
+export const pendingTriggers = sqliteTable(
+  'pending_triggers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    botId: text('bot_id').notNull().references(() => bots.id, { onDelete: 'cascade' }),
+    flowId: text('flow_id').notNull().references(() => flows.id, { onDelete: 'cascade' }),
+    chatId: integer('chat_id').notNull(),
+    /** Trigger node the parked run should enter through. */
+    entryNodeId: text('entry_node_id').notNull(),
+    /** tg user id (string) for the parked run's userId, or null. */
+    userId: text('user_id'),
+    /** The trigger FlowItem JSON (one item) the parked run starts with. */
+    item: text('item', { mode: 'json' }).notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [index('pending_triggers_chat_idx').on(t.botId, t.flowId, t.chatId, t.id)],
 );
 
 export const flowVersions = sqliteTable(

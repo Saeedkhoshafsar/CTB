@@ -10,7 +10,7 @@
 import { Executor, MemoryExecutionStore, NodeRegistry, type ExecutorServices } from '@ctb/core';
 import { registerBuiltinNodes } from '@ctb/nodes';
 import { destroyDefaultSandboxPool } from '@ctb/sandbox';
-import { FlowGraphSchema, type FlowGraph } from '@ctb/shared';
+import { FlowGraphSchema, defaultFlowSettings, type FlowGraph } from '@ctb/shared';
 import type { Update } from 'grammy/types';
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -46,7 +46,7 @@ function makeWorld(store = new MemoryExecutionStore()) {
     }),
   };
   const executor = new Executor(registry, store, services);
-  const flow = { id: 'f1', name: 'خوش‌آمد', graph: GRAPH };
+  const flow = { id: 'f1', name: 'خوش‌آمد', graph: GRAPH, settings: defaultFlowSettings() };
   const flows: FlowSource = {
     activeFlows: async () => [flow],
     getFlow: async (id) => (id === 'f1' ? flow : null),

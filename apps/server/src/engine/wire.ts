@@ -20,6 +20,7 @@ import { credentials as credentialsTable, execLogs, kvStore } from '../db/schema
 import { decrypt, deriveKey } from '../lib/crypto';
 import { TelegramGateway } from '../telegram/gateway';
 import { SqliteFlowSource } from './flow-source';
+import { SqlitePendingTriggerStore } from './pending-store';
 import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
 import { SqliteUserStore } from './user-store';
@@ -399,6 +400,8 @@ export function wireEngine(opts: WireOptions): Engine {
 
   const executor = new Executor(registry, store, services);
   const flowSource = new SqliteFlowSource(opts.db, (lvl, msg) => log(lvl, msg));
+  // Durable queue backing the `queue` execution policy (P3-T6).
+  const pending = new SqlitePendingTriggerStore(opts.db, clock);
   // Resolve the forward refs the subflow capability closes over.
   executorRef = executor;
   flowSourceRef = flowSource;
@@ -407,6 +410,7 @@ export function wireEngine(opts: WireOptions): Engine {
     store,
     executor,
     flows: flowSource,
+    pending,
     sendText: async (botId, chatId, text) => {
       const handle = gateway.get(botId);
       if (!handle) throw new Error(`sendText: bot ${botId} not registered`);

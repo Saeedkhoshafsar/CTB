@@ -18,6 +18,7 @@ import {
   TgTriggerParamsSchema,
   TgWaitForReplyParamsSchema,
   UpdateUserBodySchema,
+  defaultFlowSettings,
   problemStrings,
   userDisplayName,
   validateFlowForActivation,
@@ -258,6 +259,7 @@ export function createFakeServer(): FakeServer {
           name: body.name,
           status: 'draft',
           graph: body.graph ?? { nodes: [], edges: [] },
+          settings: defaultFlowSettings(),
           version: 1,
           updatedAt: new Date().toISOString(),
         };

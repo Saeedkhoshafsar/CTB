@@ -4,7 +4,7 @@
  * The document lives in the canvas store; this page wires routing, keyboard
  * shortcuts (Ctrl+Z/Y/S) and the save-state indicator around it.
  */
-import type { FlowPublic } from '@ctb/shared';
+import type { ExecutionPolicy, FlowPublic, FlowSettings } from '@ctb/shared';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -133,8 +133,15 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
   );
 }
 
-function Toolbar({ flow }: { flow: FlowPublic }) {
+function Toolbar({
+  flow,
+  onFlowChange,
+}: {
+  flow: FlowPublic;
+  onFlowChange: (f: FlowPublic) => void;
+}) {
   const t = useI18n((s) => s.t);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const past = useCanvas((s) => s.past);
   const future = useCanvas((s) => s.future);
   const undo = useCanvas((s) => s.undo);
@@ -178,6 +185,18 @@ function Toolbar({ flow }: { flow: FlowPublic }) {
           </button>
           {versionsOpen ? <VersionsPanel /> : null}
         </div>
+        <div className="versions-anchor">
+          <button className="ghost" onClick={() => setSettingsOpen((v) => !v)}>
+            {t('editor.settings.button')}
+          </button>
+          {settingsOpen ? (
+            <SettingsPanel
+              flow={flow}
+              onClose={() => setSettingsOpen(false)}
+              onSaved={(settings) => onFlowChange({ ...flow, settings })}
+            />
+          ) : null}
+        </div>
         {status === 'active' ? (
           <button className="danger" disabled={busy} onClick={() => void useLifecycle.getState().deactivate()}>
             {t('flows.action.deactivate')}
@@ -191,6 +210,94 @@ function Toolbar({ flow }: { flow: FlowPublic }) {
       </div>
       <ProblemsStrip />
     </>
+  );
+}
+
+/**
+ * Per-flow settings panel (P3-T6): execution policy (replace/queue/ignore) and
+ * an optional error-handler flow. Persists via PATCH /api/flows/:id { settings }.
+ */
+function SettingsPanel({
+  flow,
+  onClose,
+  onSaved,
+}: {
+  flow: FlowPublic;
+  onClose: () => void;
+  onSaved: (settings: FlowSettings) => void;
+}) {
+  const t = useI18n((s) => s.t);
+  const [policy, setPolicy] = useState<ExecutionPolicy>(flow.settings.executionPolicy);
+  const [handlerId, setHandlerId] = useState<string | null>(flow.settings.errorHandlerFlowId);
+  const [otherFlows, setOtherFlows] = useState<FlowPublic[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    // error-handler candidates = same-bot flows, excluding this one (no self).
+    api
+      .listFlows(flow.botId)
+      .then((flows) => setOtherFlows(flows.filter((f) => f.id !== flow.id)))
+      .catch(() => setOtherFlows([]));
+  }, [flow.botId, flow.id]);
+
+  const onSave = async () => {
+    setBusy(true);
+    setErr(null);
+    const settings: FlowSettings = { executionPolicy: policy, errorHandlerFlowId: handlerId };
+    try {
+      const updated = await api.updateFlow(flow.id, { settings });
+      onSaved(updated.settings);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="versions-panel" data-testid="settings-panel">
+      <div className="versions-head">{t('editor.settings.title')}</div>
+      <label className="field">
+        <span className="field-label">{t('editor.settings.policy.label')}</span>
+        <select
+          value={policy}
+          onChange={(e) => setPolicy(e.target.value as ExecutionPolicy)}
+          data-testid="settings-policy"
+        >
+          <option value="replace">{t('editor.settings.policy.replace')}</option>
+          <option value="queue">{t('editor.settings.policy.queue')}</option>
+          <option value="ignore">{t('editor.settings.policy.ignore')}</option>
+        </select>
+        <span className="field-hint">{t(`editor.settings.policy.${policy}.desc` as MessageKey)}</span>
+      </label>
+      <label className="field">
+        <span className="field-label">{t('editor.settings.errorHandler.label')}</span>
+        <select
+          value={handlerId ?? ''}
+          onChange={(e) => setHandlerId(e.target.value === '' ? null : e.target.value)}
+          data-testid="settings-error-handler"
+        >
+          <option value="">{t('editor.settings.errorHandler.none')}</option>
+          {otherFlows.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+        <span className="field-hint">{t('editor.settings.errorHandler.hint')}</span>
+      </label>
+      {err ? <div className="alert">{err}</div> : null}
+      <div className="versions-actions">
+        <button className="ghost" onClick={onClose} disabled={busy}>
+          {t('common.close')}
+        </button>
+        <button className="primary" onClick={() => void onSave()} disabled={busy}>
+          {t('common.save')}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -280,7 +387,7 @@ export function FlowEditorPage() {
   return (
     <ReactFlowProvider>
       <div className="editor-layout">
-        <Toolbar flow={flow} />
+        <Toolbar flow={flow} onFlowChange={setFlow} />
         <div className="editor-main">
           <PaletteWithViewport />
           <div className="editor-canvas">

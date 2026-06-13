@@ -76,6 +76,33 @@ export interface BotPublic {
 export const FlowStatusSchema = z.enum(['draft', 'active', 'inactive']);
 export type FlowStatus = z.infer<typeof FlowStatusSchema>;
 
+/**
+ * Execution policy (P3-T6, ARCHITECTURE §4) — what happens when a NEW trigger
+ * fires for a (flow, chat) that already has a WAITING execution:
+ *  - replace (default): cancel the waiting run, start the new one
+ *  - ignore: drop the new trigger, keep the waiting run untouched
+ *  - queue: park the new trigger; run it once the waiting run finishes
+ */
+export const ExecutionPolicySchema = z.enum(['replace', 'ignore', 'queue']);
+export type ExecutionPolicy = z.infer<typeof ExecutionPolicySchema>;
+
+/**
+ * Per-flow settings (P3-T6) — stored in flows.settings, edited from the flow
+ * editor's settings panel. Kept SEPARATE from the graph (graph = nodes/edges
+ * only). `errorHandlerFlowId` names another flow OF THE SAME BOT to run when
+ * this flow's execution ends in error (the host enforces the same-bot guard).
+ */
+export const FlowSettingsSchema = z.object({
+  executionPolicy: ExecutionPolicySchema.default('replace'),
+  errorHandlerFlowId: z.string().min(1).nullable().default(null),
+});
+export type FlowSettings = z.infer<typeof FlowSettingsSchema>;
+
+/** Defaults used when a flow has no stored settings yet. */
+export function defaultFlowSettings(): FlowSettings {
+  return { executionPolicy: 'replace', errorHandlerFlowId: null };
+}
+
 export function emptyFlowGraph(): z.infer<typeof FlowGraphSchema> {
   return { nodes: [], edges: [] };
 }
@@ -90,6 +117,8 @@ export type CreateFlowBody = z.infer<typeof CreateFlowBodySchema>;
 export const UpdateFlowBodySchema = z.object({
   name: z.string().min(1).max(200).optional(),
   graph: FlowGraphSchema.optional(),
+  /** Per-flow execution policy + error-handler (P3-T6). */
+  settings: FlowSettingsSchema.optional(),
 });
 export type UpdateFlowBody = z.infer<typeof UpdateFlowBodySchema>;
 
@@ -100,6 +129,8 @@ export interface FlowPublic {
   name: string;
   status: FlowStatus;
   graph: z.infer<typeof FlowGraphSchema>;
+  /** Per-flow execution policy + error-handler (P3-T6). */
+  settings: FlowSettings;
   version: number;
   updatedAt: string;
 }

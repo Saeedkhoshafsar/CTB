@@ -431,6 +431,99 @@ export const FlowMergeParamsSchema = z.object({
 });
 export type FlowMergeParams = z.infer<typeof FlowMergeParamsSchema>;
 
+// ── tg.editMessage ───────────────────────────────────────────────────────────
+
+/**
+ * Edit an existing message's text/caption and/or inline keyboard (P3-T3,
+ * NODES.md §"Edit Message"). `message_id` defaults to the message id carried on
+ * the input item — `$json.sent_message_id` (set by tg.sendMessage) or
+ * `$json.clicked.message_id` (set by the router on a button click) — so the
+ * common "edit what I just sent / what was clicked" case needs no param.
+ * `target` picks what to edit:
+ *  • `text`     — editMessageText (the common case)
+ *  • `caption`  — editMessageCaption (media messages)
+ *  • `keyboard` — editMessageReplyMarkup only (swap buttons, leave text)
+ */
+export const TgEditMessageParamsSchema = z
+  .object({
+    /** Chat id; defaults to the execution's current chat. */
+    chat: z.union([z.number(), z.string().min(1)]).optional(),
+    /** Message id to edit; blank → last message sent in this execution. */
+    message_id: z.union([z.number().int(), z.string()]).optional(),
+    target: z.enum(['text', 'caption', 'keyboard']).default('text'),
+    /** New text (target=text) / new caption (target=caption). */
+    text: z.string().optional(),
+    parse_mode: ParseModeSchema.optional(),
+    /** Replacement inline keyboard (optional for text/caption; the payload for keyboard). */
+    keyboard: KeyboardSchema.optional(),
+  })
+  .superRefine((p, ctx) => {
+    if ((p.target === 'text' || p.target === 'caption') && (p.text === undefined || p.text === '')) {
+      ctx.addIssue({ code: 'custom', message: `target "${p.target}" requires non-empty \`text\``, path: ['text'] });
+    }
+    if (p.target === 'keyboard' && p.keyboard === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'target "keyboard" requires a `keyboard`', path: ['keyboard'] });
+    }
+  });
+export type TgEditMessageParams = z.infer<typeof TgEditMessageParamsSchema>;
+
+// ── tg.deleteMessage ─────────────────────────────────────────────────────────
+
+/**
+ * Delete a message by id (P3-T3). `message_id` defaults to the message id on
+ * the input item (`$json.sent_message_id` or `$json.clicked.message_id`).
+ * Passes input items through unchanged.
+ */
+export const TgDeleteMessageParamsSchema = z.object({
+  chat: z.union([z.number(), z.string().min(1)]).optional(),
+  message_id: z.union([z.number().int(), z.string()]).optional(),
+});
+export type TgDeleteMessageParams = z.infer<typeof TgDeleteMessageParamsSchema>;
+
+// ── tg.answerCallback ────────────────────────────────────────────────────────
+
+/**
+ * Acknowledge a button click outside Menu (P3-T3, NODES.md §"Answer Callback").
+ * `callback_query_id` defaults to `$json.callback_query_id` (set by the router's
+ * callbackItem) so in the common case the node needs no params. `show_alert`
+ * turns the toast into a modal alert.
+ */
+export const TgAnswerCallbackParamsSchema = z.object({
+  /** Callback query id; blank → $json.callback_query_id of the current item. */
+  callback_query_id: z.string().optional(),
+  /** Toast/alert text (optional — empty just dismisses the loading spinner). */
+  text: z.string().optional(),
+  show_alert: z.boolean().default(false),
+});
+export type TgAnswerCallbackParams = z.infer<typeof TgAnswerCallbackParamsSchema>;
+
+// ── tg.chatAction ────────────────────────────────────────────────────────────
+
+/**
+ * Send a chat action indicator — "typing…", "uploading photo…", etc. (P3-T3,
+ * NODES.md §"Send Chat Action"). Telegram auto-clears it after ~5s or when the
+ * next message arrives; passes input items through unchanged.
+ */
+export const TgChatActionParamsSchema = z.object({
+  chat: z.union([z.number(), z.string().min(1)]).optional(),
+  action: z
+    .enum([
+      'typing',
+      'upload_photo',
+      'record_video',
+      'upload_video',
+      'record_voice',
+      'upload_voice',
+      'upload_document',
+      'choose_sticker',
+      'find_location',
+      'record_video_note',
+      'upload_video_note',
+    ])
+    .default('typing'),
+});
+export type TgChatActionParams = z.infer<typeof TgChatActionParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

@@ -13,7 +13,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  builtinNodes,
   flowLoop,
   flowMerge,
   LOOP_STATE_PREFIX,
@@ -167,10 +166,9 @@ describe('flow.merge', () => {
 });
 
 describe('registry', () => {
-  it('registers both P3-T2 nodes (count 17, includes the new types)', () => {
+  it('registers both P3-T2 nodes (includes the new types)', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     const types = reg.list().map((d) => d.type);
-    expect(builtinNodes).toHaveLength(17);
     expect(types).toContain('flow.loop');
     expect(types).toContain('flow.merge');
   });

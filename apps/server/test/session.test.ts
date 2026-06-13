@@ -13,6 +13,12 @@ describe('signed-cookie sessions', () => {
     const token = createSessionToken('admin', SECRET);
     const payload = verifySessionToken(token, SECRET);
     expect(payload?.sub).toBe('admin');
+    expect(payload?.role).toBe('admin'); // default role
+  });
+
+  it('carries an operator role', () => {
+    const token = createSessionToken('mgr', SECRET, 'operator');
+    expect(verifySessionToken(token, SECRET)?.role).toBe('operator');
   });
 
   it('rejects a tampered payload', () => {
@@ -32,7 +38,7 @@ describe('signed-cookie sessions', () => {
 
   it('rejects expired token', () => {
     const past = Date.now() - SESSION_TTL_MS - 1000;
-    const token = createSessionToken('admin', SECRET, past);
+    const token = createSessionToken('admin', SECRET, 'admin', past);
     expect(verifySessionToken(token, SECRET)).toBeNull();
   });
 

@@ -21,8 +21,13 @@ export const LoginBodySchema = z.object({
 });
 export type LoginBody = z.infer<typeof LoginBodySchema>;
 
+/** Panel role (P3.5-T2): admin sees everything; operator sees only the Data section. */
+export type SessionRole = 'admin' | 'operator';
+
 export interface SessionUser {
   username: string;
+  /** Optional for back-compat with pre-P3.5-T2 clients; defaults to 'admin'. */
+  role?: SessionRole;
 }
 
 // ---------------------------------------------------------------------------

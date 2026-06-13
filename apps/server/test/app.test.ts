@@ -52,7 +52,7 @@ describe('server app (P0-T4)', () => {
       cookies: { [SESSION_COOKIE]: cookie!.value },
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toEqual({ user: { username: 'admin' } });
+    expect(me.json()).toEqual({ user: { username: 'admin', role: 'admin' } });
 
     const logout = await app.inject({
       method: 'POST',

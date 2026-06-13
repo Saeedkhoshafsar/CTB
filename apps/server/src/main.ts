@@ -33,7 +33,7 @@ async function main(): Promise<void> {
     },
   });
 
-  const app = buildApp({ env, db, engine });
+  const app = buildApp({ env, db, sqlite, engine });
   app.log.info({ dbPath: env.CTB_DB_PATH }, 'database migrated');
 
   // Re-arm bots that were active before the last shutdown.

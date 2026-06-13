@@ -12,17 +12,22 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type BetterSqlite3 from 'better-sqlite3';
 import { registerBotsApi, type BotsApiDeps } from './api/bots';
+import { registerCollectionsApi } from './api/collections';
 import { registerCredentialsApi } from './api/credentials';
 import { registerExecutionsApi } from './api/executions';
 import { registerFlowsApi } from './api/flows';
 import { registerNodeTypesApi } from './api/node-types';
+import { registerRecordsApi } from './api/records';
 import { registerUsersApi } from './api/users';
+import { SqliteCollectionStore } from './collections/store';
+import { SqliteFileStore } from './collections/file-store';
 import type { Db } from './db/index';
 import type { Engine } from './engine/wire';
 import type { Env } from './lib/env';
 import { deriveKey } from './lib/crypto';
-import { createSessionToken, safeEqual, verifySessionToken } from './lib/session';
+import { createSessionToken, safeEqual, verifySessionToken, type SessionRole } from './lib/session';
 import { registerWebhookRoute } from './telegram/gateway';
 
 export const SESSION_COOKIE = 'ctb_session';
@@ -45,6 +50,12 @@ export interface BuildAppOptions {
    */
   db?: Db;
   engine?: Engine;
+  /**
+   * Raw better-sqlite3 handle (P3.5-T2) — the Collections store needs it for
+   * the `json_extract` filter queries and the computed-index DDL that Drizzle
+   * can't express. When omitted, the Collections/records APIs are not mounted.
+   */
+  sqlite?: BetterSqlite3.Database;
   /** Extra bot-registration opts per bot (botInfo/fake transport in tests). */
   botRegisterOpts?: BotsApiDeps['registerOpts'];
 }
@@ -80,12 +91,22 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       req.log.warn('login attempted but CTB_ADMIN_PASS is not configured');
       return reply.code(503).send({ error: 'admin_auth_not_configured' });
     }
-    const userOk = safeEqual(username, env.CTB_ADMIN_USER);
-    const passOk = safeEqual(password, env.CTB_ADMIN_PASS);
-    if (!userOk || !passOk) {
+    // Resolve the role from the matching account. Admin wins if both share a
+    // username. Operator login only works when CTB_OPERATOR_PASS is configured.
+    let role: SessionRole | null = null;
+    if (safeEqual(username, env.CTB_ADMIN_USER) && safeEqual(password, env.CTB_ADMIN_PASS)) {
+      role = 'admin';
+    } else if (
+      env.CTB_OPERATOR_PASS &&
+      safeEqual(username, env.CTB_OPERATOR_USER) &&
+      safeEqual(password, env.CTB_OPERATOR_PASS)
+    ) {
+      role = 'operator';
+    }
+    if (!role) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
-    const token = createSessionToken(username, env.CTB_SECRET);
+    const token = createSessionToken(username, env.CTB_SECRET, role);
     return reply
       .setCookie(SESSION_COOKIE, token, {
         path: '/',
@@ -94,33 +115,55 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         secure: secureCookie,
         maxAge: 7 * 24 * 60 * 60,
       })
-      .send({ ok: true, user: { username } });
+      .send({ ok: true, user: { username, role } });
   });
 
   app.post('/api/auth/logout', async (_req, reply) => {
     return reply.clearCookie(SESSION_COOKIE, { path: '/' }).send({ ok: true });
   });
 
-  const requireAuth = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  type AuthedRequest = FastifyRequest & { session: { sub: string; role: SessionRole } };
+
+  /** Returns true when authenticated; otherwise sends 401 and returns false. */
+  const requireAuth = async (req: FastifyRequest, reply: FastifyReply): Promise<boolean> => {
     const raw = req.cookies[SESSION_COOKIE];
     const session = raw ? verifySessionToken(raw, env.CTB_SECRET) : null;
     if (!session) {
       await reply.code(401).send({ error: 'unauthorized' });
-      return;
+      return false;
     }
-    (req as FastifyRequest & { session: { sub: string } }).session = { sub: session.sub };
+    (req as AuthedRequest).session = { sub: session.sub, role: session.role };
+    return true;
   };
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {
-    const { session } = req as FastifyRequest & { session: { sub: string } };
-    return { user: { username: session.sub } };
+    const { session } = req as AuthedRequest;
+    return { user: { username: session.sub, role: session.role } };
   });
 
-  // Auth guard for everything under /api/ except the auth routes themselves.
+  /**
+   * The Data section the operator role is allowed to reach (ARCHITECTURE §13.5):
+   * record CRUD/query and file upload/download. Defining or editing the
+   * collection SCHEMA stays admin-only — operators manage data, not structure.
+   * Anything else under /api/ (bots, flows, executions, credentials, users, and
+   * the collection-definition routes) is admin-only.
+   */
+  const operatorAllowed = (url: string): boolean => {
+    const path = url.split('?')[0] ?? url;
+    return path.startsWith('/api/records') || path.startsWith('/api/files');
+  };
+
+  // Auth guard for everything under /api/ except the auth routes themselves,
+  // plus role enforcement for the operator.
   app.addHook('preHandler', async (req, reply) => {
     if (!req.url.startsWith('/api/')) return;
     if (req.url.startsWith('/api/auth/')) return;
-    await requireAuth(req, reply);
+    const ok = await requireAuth(req, reply);
+    if (!ok) return; // 401 already sent
+    const { session } = req as AuthedRequest;
+    if (session.role === 'operator' && !operatorAllowed(req.url)) {
+      await reply.code(403).send({ error: 'forbidden' });
+    }
   });
 
   // ---- engine APIs (P1-T8) -------------------------------------------------
@@ -143,6 +186,16 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     registerUsersApi(app, { userStore: opts.engine.userStore });
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);
+
+    // Collections layer (P3.5-T2). Needs the raw sqlite handle for json_extract
+    // queries + computed-index DDL. Definitions are admin-only; records/files
+    // are reachable by the operator role too (enforced by the guard above).
+    if (opts.sqlite) {
+      const collectionStore = new SqliteCollectionStore(opts.db, opts.sqlite);
+      const fileStore = new SqliteFileStore(opts.db, env.CTB_DATA_DIR);
+      registerCollectionsApi(app, { db: opts.db, store: collectionStore });
+      registerRecordsApi(app, { store: collectionStore, fileStore });
+    }
   }
 
   // ---- editor static ------------------------------------------------------

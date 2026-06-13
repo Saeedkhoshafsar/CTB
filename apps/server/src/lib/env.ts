@@ -8,6 +8,18 @@ const EnvSchema = z.object({
   CTB_HOST: z.string().default('0.0.0.0'),
   CTB_ADMIN_USER: z.string().default('admin'),
   CTB_ADMIN_PASS: z.string().optional(),
+  /**
+   * Operator (the "manager") login — sees ONLY the Collections Data section
+   * (records/files), never bots/flows/executions (P3.5-T2, ARCHITECTURE §13.5).
+   * Optional: unset ⇒ no operator account. Both must be set to enable it.
+   */
+  CTB_OPERATOR_USER: z.string().default('operator'),
+  CTB_OPERATOR_PASS: z.string().optional(),
+  /**
+   * Local data dir for uploaded files (the `files` table stores a path under
+   * `${CTB_DATA_DIR}/files`). Defaults beside the DB-style `data/`.
+   */
+  CTB_DATA_DIR: z.string().default('data'),
   /** Public base URL (https://bot.example.com) — required only for webhook-mode bots. */
   CTB_PUBLIC_URL: z.string().url().optional(),
   /**

@@ -57,12 +57,30 @@ export const OpenAiApiSchema = z.object({
 });
 export type OpenAiApi = z.infer<typeof OpenAiApiSchema>;
 
+/**
+ * MCP server credential (P5-T3). Points at a remote Model-Context-Protocol
+ * server reached over **streamable-HTTP** (one JSON-RPC POST endpoint) — the
+ * shape ships its standard transports (SSE/stdio-over-http per NODES.md) speak
+ * the same JSON-RPC envelope, so the only thing that varies is the endpoint URL
+ * and an optional bearer key. The host (`ctx.mcp`) performs the `tools/list` and
+ * `tools/call` requests; the decrypted key never reaches node code (I6/I7).
+ */
+export const McpServerSchema = z.object({
+  type: z.literal('mcpServer'),
+  /** The MCP server's JSON-RPC endpoint (e.g. `https://mcp.example.com/mcp`). */
+  url: z.string().url().max(2048),
+  /** Optional bearer token sent as `Authorization: Bearer <apiKey>`. */
+  apiKey: z.string().optional(),
+});
+export type McpServer = z.infer<typeof McpServerSchema>;
+
 /** The encrypted half of every credential — discriminated by `type`. */
 export const CredentialDataSchema = z.discriminatedUnion('type', [
   HttpHeaderAuthSchema,
   HttpBearerAuthSchema,
   HttpBasicAuthSchema,
   OpenAiApiSchema,
+  McpServerSchema,
 ]);
 export type CredentialData = z.infer<typeof CredentialDataSchema>;
 
@@ -71,6 +89,7 @@ export const CredentialTypeSchema = z.enum([
   'httpBearerAuth',
   'httpBasicAuth',
   'openAiApi',
+  'mcpServer',
 ]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
@@ -123,6 +142,7 @@ export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   httpBearerAuth: 'HTTP Bearer Token',
   httpBasicAuth: 'HTTP Basic Auth',
   openAiApi: 'OpenAI-compatible API',
+  mcpServer: 'MCP Server',
 };
 
 /**
@@ -144,6 +164,8 @@ export function credentialHint(data: CredentialData): string {
       return `${data.username}:${mask(data.password)}`;
     case 'openAiApi':
       return `${data.baseUrl} · ${mask(data.apiKey)}`;
+    case 'mcpServer':
+      return data.apiKey ? `${data.url} · ${mask(data.apiKey)}` : data.url;
   }
 }
 
@@ -177,5 +199,7 @@ export function credentialAuthHeaders(data: CredentialData): Record<string, stri
     }
     case 'openAiApi':
       return { authorization: `Bearer ${data.apiKey}` };
+    case 'mcpServer':
+      return data.apiKey ? { authorization: `Bearer ${data.apiKey}` } : {};
   }
 }

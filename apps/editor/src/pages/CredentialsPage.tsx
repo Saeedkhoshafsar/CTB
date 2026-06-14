@@ -14,7 +14,13 @@ import { ApiError, ClientValidationError } from '../api/client';
 import { useI18n } from '../i18n';
 import { useCredentials } from '../stores/credentials';
 
-const TYPES: CredentialType[] = ['httpHeaderAuth', 'httpBearerAuth', 'httpBasicAuth', 'openAiApi'];
+const TYPES: CredentialType[] = [
+  'httpHeaderAuth',
+  'httpBearerAuth',
+  'httpBasicAuth',
+  'openAiApi',
+  'mcpServer',
+];
 
 export function CredentialsPage() {
   const t = useI18n((s) => s.t);
@@ -31,6 +37,8 @@ export function CredentialsPage() {
   const [password, setPassword] = useState('');
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
   const [apiKey, setApiKey] = useState('');
+  const [mcpUrl, setMcpUrl] = useState('https://mcp.example.com/mcp');
+  const [mcpApiKey, setMcpApiKey] = useState('');
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -48,6 +56,8 @@ export function CredentialsPage() {
     setPassword('');
     setBaseUrl('https://api.openai.com/v1');
     setApiKey('');
+    setMcpUrl('https://mcp.example.com/mcp');
+    setMcpApiKey('');
   };
 
   const buildData = (): CredentialData => {
@@ -60,6 +70,11 @@ export function CredentialsPage() {
         return { type, username, password };
       case 'openAiApi':
         return { type, baseUrl, apiKey };
+      case 'mcpServer':
+        // apiKey is optional — omit when blank so the credential carries no key.
+        return mcpApiKey.trim() === ''
+          ? { type, url: mcpUrl }
+          : { type, url: mcpUrl, apiKey: mcpApiKey };
     }
   };
 
@@ -202,6 +217,30 @@ export function CredentialsPage() {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   required
+                />
+              </label>
+            </>
+          )}
+
+          {type === 'mcpServer' && (
+            <>
+              <label>
+                <span className="label-text">{t('credentials.field.mcpUrl')}</span>
+                <input
+                  dir="ltr"
+                  value={mcpUrl}
+                  onChange={(e) => setMcpUrl(e.target.value)}
+                  placeholder="https://mcp.example.com/mcp"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.mcpApiKey')}</span>
+                <input
+                  dir="ltr"
+                  type="password"
+                  value={mcpApiKey}
+                  onChange={(e) => setMcpApiKey(e.target.value)}
                 />
               </label>
             </>

@@ -971,6 +971,56 @@ export const AiExtractParamsSchema = z.object({
 });
 export type AiExtractParams = z.infer<typeof AiExtractParamsSchema>;
 
+// ── ai.mcpClient (P5-T3) ─────────────────────────────────────────────────────
+
+/**
+ * MCP Client (NODES.md §MCP Client). Talks to a remote Model-Context-Protocol
+ * server selected by an `mcpServer` credential (endpoint URL + optional key)
+ * which the HOST resolves — the node only passes a `credentialId`, the action,
+ * and (for `call`) a tool name + arguments (invariants I6/I7: the key never
+ * reaches here). Two actions:
+ *  - `list_tools` → the server's advertised tools land in `$json.<save_as>` as
+ *     `{ tools: McpTool[] }`.
+ *  - `call_tool`  → invoke `tool_name` with `arguments_json` (a JSON object,
+ *     expression-aware) → `{ result: { content, text, isError } }`.
+ *
+ * Runs ONCE per node run (like the other AI nodes): an MCP round-trip is
+ * expensive execution-external work, so the action targets the resolved params
+ * once rather than per item; the result is merged onto EVERY output item.
+ */
+export const McpActionSchema = z.enum(['list_tools', 'call_tool']);
+export type McpAction = z.infer<typeof McpActionSchema>;
+
+export const AiMcpClientParamsSchema = z
+  .object({
+    /** MCP server credential (endpoint URL + optional key); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'mcpServer' }),
+    /** What to do: enumerate tools, or invoke one. */
+    action: McpActionSchema.default('call_tool'),
+    /** Tool name to invoke (required for `call_tool`). */
+    tool_name: z.string().default(''),
+    /**
+     * Arguments for the tool as a JSON object string (expression-aware, e.g.
+     * `{"city":"{{ $json.city }}"}`). Parsed by the node; `{}` when omitted.
+     */
+    arguments_json: z.string().default('{}'),
+    /** Where the result lands on each output item (default `mcp`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('mcp'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.action === 'call_tool' && p.tool_name.trim() === '') {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'tool_name is required when action is call_tool',
+        path: ['tool_name'],
+      });
+    }
+  });
+export type AiMcpClientParams = z.infer<typeof AiMcpClientParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

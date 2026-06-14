@@ -221,6 +221,58 @@ export interface NodeCtx {
   ai: {
     chat(req: AiChatRequest): Promise<AiChatResult>;
   } | null;
+  /**
+   * MCP client capability (ai.mcpClient, P5-T3). The host resolves a stored
+   * `mcpServer` credential (endpoint URL + optional key) by id and performs the
+   * Model-Context-Protocol JSON-RPC calls — the decrypted key never crosses into
+   * node code (invariants I6/I7); the node only passes a credentialId plus the
+   * tool name + arguments. Null when no MCP service is wired (unit tests) — the
+   * node then fails with a clear error. Throws on a credential miss or a
+   * transport/protocol/tool error so the node can surface it.
+   */
+  mcp: {
+    /** List the tools the MCP server advertises (MCP `tools/list`). */
+    listTools(req: McpListToolsRequest): Promise<McpTool[]>;
+    /** Invoke one tool by name with arguments (MCP `tools/call`). */
+    callTool(req: McpCallToolRequest): Promise<McpToolCallResult>;
+  } | null;
+}
+
+/** What ai.mcpClient asks the host to list (the secret credential is resolved host-side). */
+export interface McpListToolsRequest {
+  /** Stored credential id (mcpServer). The host turns it into endpoint URL + key. */
+  credentialId: string;
+}
+
+/** What ai.mcpClient asks the host to call. */
+export interface McpCallToolRequest {
+  credentialId: string;
+  /** The tool's name as advertised by the server. */
+  name: string;
+  /** JSON arguments for the tool (shape defined by the tool's inputSchema). */
+  arguments: Record<string, unknown>;
+}
+
+/** A tool advertised by an MCP server (MCP `tools/list` entry). */
+export interface McpTool {
+  name: string;
+  description?: string;
+  /** JSON Schema of the tool's arguments (best-effort; opaque to CTB). */
+  inputSchema?: Record<string, unknown>;
+}
+
+/**
+ * The result of an MCP `tools/call`. MCP returns `content` (an array of blocks,
+ * usually text) plus an `isError` flag. We surface the raw content, a flattened
+ * `text` convenience (joined text blocks), and `isError`.
+ */
+export interface McpToolCallResult {
+  /** Raw content blocks as returned by the server. */
+  content: unknown[];
+  /** Text blocks joined with newlines (empty when the result has none). */
+  text: string;
+  /** True when the server flagged the call as an error result. */
+  isError: boolean;
 }
 
 /** One message in an LLM conversation (OpenAI chat-completions shape). */

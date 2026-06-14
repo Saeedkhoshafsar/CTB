@@ -47,6 +47,7 @@ export const fa = {
   'credentials.type.httpBearerAuth': 'توکن Bearer',
   'credentials.type.httpBasicAuth': 'احراز هویت Basic',
   'credentials.type.openAiApi': 'API سازگار با OpenAI',
+  'credentials.type.mcpServer': 'سرور MCP',
   'credentials.field.headerName': 'نام هدر',
   'credentials.field.headerValue': 'مقدار هدر',
   'credentials.field.token': 'توکن',
@@ -54,6 +55,8 @@ export const fa = {
   'credentials.field.password': 'رمز عبور',
   'credentials.field.baseUrl': 'آدرس پایه (Base URL)',
   'credentials.field.apiKey': 'کلید API',
+  'credentials.field.mcpUrl': 'آدرس سرور MCP',
+  'credentials.field.mcpApiKey': 'کلید API (اختیاری)',
   'credentials.secret.hint':
     'مقدار محرمانه فقط یک‌بار ارسال و رمزنگاری‌شده ذخیره می‌شود؛ هرگز دوباره نمایش داده نمی‌شود. برای تغییر، حذف و دوباره بسازید.',
   'credentials.create': 'ساخت اعتبارنامه',
@@ -309,6 +312,7 @@ export const fa = {
   'nodes.ai.llmChat.label': 'گفتگوی هوش مصنوعی (LLM)',
   'nodes.ai.classify.label': 'دسته‌بندی هوش مصنوعی',
   'nodes.ai.extract.label': 'استخراج هوش مصنوعی',
+  'nodes.ai.mcpClient.label': 'کلاینت MCP',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -341,6 +345,7 @@ export const fa = {
   'nodeDesc.ai.llmChat': 'یک مدل زبانی (LLM) را صدا می‌زند: پرامپت سیستمی و پیام کاربر را می‌فرستد و پاسخ را در $json می‌گذارد. ارائه‌دهنده با انتخاب یک «کانکشن سازگار با OpenAI» (آدرس پایه + کلید) مشخص می‌شود — با OpenAI، OpenRouter، پروکسیِ Anthropic یا یک مدل محلی کار می‌کند. با روشن‌کردن «حافظه = گفتگو»، چند نوبت آخرِ مکالمهٔ هر چت ذخیره می‌شود تا ربات گفتگو را به یاد بسپارد.',
   'nodeDesc.ai.classify': 'یک «سوییچ» که با مدل زبانی کار می‌کند: مدل متن ورودی را می‌خواند و یکی از دسته‌های شما را انتخاب می‌کند، سپس آیتم‌ها از خروجیِ همان دسته بیرون می‌روند. برای هر مقصود (مثلاً سفارش، پشتیبانی، بازگشت وجه) یک دسته بسازید و هر خروجی را به شاخهٔ خودش وصل کنید. هرچه در هیچ دسته‌ای نگنجد از خروجی «other» خارج می‌شود.',
   'nodeDesc.ai.extract': 'دادهٔ ساختاریافته را از متن آزاد بیرون می‌کشد: فیلدهای موردنظر را تعریف می‌کنید (نام، نوع، توضیح) و مدل یک شیء JSON برمی‌گرداند که در $json می‌نشیند (پیش‌فرض «extracted»). اگر پاسخ JSON معتبر نباشد یا فیلدِ اجباری گم شده باشد، خودکار دوباره می‌پرسد.',
+  'nodeDesc.ai.mcpClient': 'با یک سرور راه‌دور MCP (پروتکل بافت مدل) که با اعتبارنامهٔ MCP انتخاب می‌شود گفتگو می‌کند. «فهرست ابزارها» ابزارهای سرور را برمی‌گرداند؛ «فراخوانی ابزار» یک ابزار را با نام و آرگومان‌های JSON صدا می‌زند و نتیجه را در $json می‌گذارد. آدرس و کلید سرور سمت سرور می‌ماند — این نود فقط به اعتبارنامه ارجاع می‌دهد.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
@@ -572,6 +577,10 @@ export const fa = {
   'paramDesc.categories': 'دسته‌هایی که بین آن‌ها مسیریابی می‌شود. هر دسته یک خروجی می‌سازد؛ توضیح به مدل کمک می‌کند انتخاب کند. ورودیِ بی‌تطبیق از خروجی «other» بیرون می‌رود.',
   'paramDesc.ai.extract.fields': 'فیلدهایی که استخراج می‌شوند. به هر کدام یک نام، یک نوع (متن/عدد/بله‌خیر) و یک توضیح بدهید. فیلد را «اجباری» علامت بزنید تا در صورت نبودنش دوباره تلاش شود.',
   'paramDesc.ai.extract.max_retries': 'وقتی پاسخ مدل JSON معتبر نباشد یا فیلدِ اجباری را نداشته باشد، چند بارِ دیگر دوباره پرسیده شود.',
+  // ai.mcpClient params (P5-T3)
+  'paramDesc.ai.mcpClient.action': '«فهرست ابزارها» آنچه سرور MCP ارائه می‌دهد را برمی‌گرداند؛ «فراخوانی ابزار» یک ابزار را با نام صدا می‌زند.',
+  'paramDesc.tool_name': 'نام دقیق ابزار همان‌طور که سرور MCP اعلام کرده (هنگام فراخوانی ابزار اجباری است).',
+  'paramDesc.arguments_json': 'آرگومان‌های ابزار به‌صورت یک شیء JSON — عبارت‌پذیر، مثل {"city":"{{ $json.city }}"}.',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',
@@ -620,6 +629,8 @@ export const fa = {
   'option.type.string': 'متن',
   'option.type.number': 'عدد',
   'option.type.boolean': 'بله/خیر',
+  'option.ai.mcpClient.action.list_tools': 'فهرست ابزارها',
+  'option.ai.mcpClient.action.call_tool': 'فراخوانی ابزار',
   'option.expect.text': 'متن',
   'option.expect.number': 'عدد',
   'option.expect.photo': 'عکس',

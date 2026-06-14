@@ -49,6 +49,7 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.type.httpBearerAuth': 'Bearer token',
   'credentials.type.httpBasicAuth': 'Basic auth',
   'credentials.type.openAiApi': 'OpenAI-compatible API',
+  'credentials.type.mcpServer': 'MCP Server',
   'credentials.field.headerName': 'Header name',
   'credentials.field.headerValue': 'Header value',
   'credentials.field.token': 'Token',
@@ -56,6 +57,8 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.field.password': 'Password',
   'credentials.field.baseUrl': 'Base URL',
   'credentials.field.apiKey': 'API key',
+  'credentials.field.mcpUrl': 'MCP server URL',
+  'credentials.field.mcpApiKey': 'API key (optional)',
   'credentials.secret.hint':
     'The secret value is sent once and stored encrypted; it is never shown again. To change it, delete and recreate.',
   'credentials.create': 'Create credential',
@@ -312,6 +315,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.ai.llmChat.label': 'AI Chat (LLM)',
   'nodes.ai.classify.label': 'AI Classify',
   'nodes.ai.extract.label': 'AI Extract',
+  'nodes.ai.mcpClient.label': 'MCP Client',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -344,6 +348,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.ai.llmChat': 'Calls a Large Language Model: sends a system prompt and the user message, then puts the reply in $json. The provider is chosen by selecting an OpenAI-compatible credential (base URL + key) — works with OpenAI, OpenRouter, an Anthropic proxy or a local model. Turn on "memory = conversation" to remember the last few turns per chat so the bot keeps context.',
   'nodeDesc.ai.classify': 'A Switch powered by an LLM: the model reads the input text and picks ONE of your categories, then the items leave through that category\'s output port. Add a category for each intent (e.g. order, support, refund) and wire each port to its branch. Anything that doesn\'t fit leaves through the "other" port.',
   'nodeDesc.ai.extract': 'Pulls structured data out of free text: define the fields you want (name, type, description) and the model returns a JSON object, which lands in $json (default "extracted"). It re-asks automatically if the reply isn\'t valid JSON or a required field is missing.',
+  'nodeDesc.ai.mcpClient': 'Talks to a remote MCP (Model Context Protocol) server selected by an MCP credential. "List tools" returns the tools the server offers; "Call tool" invokes one by name with JSON arguments and puts the result in $json. The server\'s URL and key stay on the server — this node only references the credential.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -575,6 +580,10 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.categories': 'The categories to route between. Each one becomes an output port; the description helps the model choose. Unmatched input leaves through "other".',
   'paramDesc.ai.extract.fields': 'The fields to extract. Give each a name, a type (string/number/boolean) and a description. Mark a field "required" to retry when it\'s missing.',
   'paramDesc.ai.extract.max_retries': 'How many extra times to re-ask the model when its reply isn\'t valid JSON or misses a required field.',
+  // ai.mcpClient params (P5-T3)
+  'paramDesc.ai.mcpClient.action': '"List tools" returns what the MCP server offers; "Call tool" invokes one tool by name.',
+  'paramDesc.tool_name': 'The exact tool name as advertised by the MCP server (required when calling a tool).',
+  'paramDesc.arguments_json': 'Arguments for the tool as a JSON object — expression-aware, e.g. {"city":"{{ $json.city }}"}.',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -623,6 +632,8 @@ export const en: Record<keyof typeof fa, string> = {
   'option.type.string': 'Text',
   'option.type.number': 'Number',
   'option.type.boolean': 'Yes/No',
+  'option.ai.mcpClient.action.list_tools': 'List tools',
+  'option.ai.mcpClient.action.call_tool': 'Call tool',
   'option.expect.text': 'Text',
   'option.expect.number': 'Number',
   'option.expect.photo': 'Photo',

@@ -20,6 +20,10 @@ import {
   type CollectionFilter,
   type CredentialData,
   type FlowItem,
+  type McpCallToolRequest,
+  type McpListToolsRequest,
+  type McpTool,
+  type McpToolCallResult,
   type NodeCtx,
   type RecordFilter,
 } from '@ctb/shared';
@@ -242,6 +246,135 @@ function parseChatCompletion(body: unknown): AiChatResult {
   if (typeof b.usage?.completion_tokens === 'number') usage.completionTokens = b.usage.completion_tokens;
   if (typeof b.usage?.total_tokens === 'number') usage.totalTokens = b.usage.total_tokens;
   return { reply, usage, ...(typeof b.model === 'string' ? { model: b.model } : {}) };
+}
+
+/**
+ * MCP client capability for ai.mcpClient (P5-T3). The node passes a credentialId;
+ * the host decrypts the `mcpServer` credential (endpoint URL + optional key) and
+ * performs the Model-Context-Protocol JSON-RPC calls (`tools/list`,
+ * `tools/call`) over streamable-HTTP. The decrypted key never crosses into node
+ * code (invariants I6/I7). Throws on a missing/wrong-type credential or a
+ * transport/protocol/tool error so the node fails loudly. `fetchImpl` is
+ * injectable so tests run with no network.
+ */
+function makeMcp(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeCtx['mcp']> {
+  function resolveServer(credentialId: string): { url: string; apiKey?: string } {
+    const row = db
+      .select()
+      .from(credentialsTable)
+      .where(eq(credentialsTable.id, credentialId))
+      .get();
+    if (!row) throw new Error(`credential "${credentialId}" not found`);
+    let data: CredentialData;
+    try {
+      data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
+    } catch {
+      throw new Error(`credential "${credentialId}" could not be decrypted`);
+    }
+    if (data.type !== 'mcpServer') {
+      throw new Error(`credential "${credentialId}" is not an MCP server credential`);
+    }
+    return data.apiKey !== undefined ? { url: data.url, apiKey: data.apiKey } : { url: data.url };
+  }
+
+  /** One JSON-RPC POST to the MCP endpoint; returns the `result` field. */
+  async function rpc(server: { url: string; apiKey?: string }, method: string, params: unknown): Promise<unknown> {
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      // MCP streamable-HTTP servers may stream the response as SSE; accept both.
+      accept: 'application/json, text/event-stream',
+    };
+    if (server.apiKey) headers.authorization = `Bearer ${server.apiKey}`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    let res: Response;
+    try {
+      res = await fetchImpl(server.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ jsonrpc: '2.0', id: randomUUID(), method, params }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const text = await res.text();
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`MCP server returned HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    const envelope = parseMcpEnvelope(text);
+    if (envelope.error) {
+      const e = envelope.error as { code?: unknown; message?: unknown };
+      throw new Error(`MCP error ${String(e.code ?? '')}: ${String(e.message ?? 'unknown')}`.trim());
+    }
+    return envelope.result;
+  }
+
+  return {
+    async listTools(req: McpListToolsRequest): Promise<McpTool[]> {
+      const server = resolveServer(req.credentialId);
+      const result = (await rpc(server, 'tools/list', {})) as { tools?: unknown };
+      const tools = Array.isArray(result?.tools) ? result.tools : [];
+      return tools
+        .filter((t): t is Record<string, unknown> => typeof t === 'object' && t !== null)
+        .map((t) => {
+          const tool: McpTool = { name: String(t.name ?? '') };
+          if (typeof t.description === 'string') tool.description = t.description;
+          if (t.inputSchema && typeof t.inputSchema === 'object') {
+            tool.inputSchema = t.inputSchema as Record<string, unknown>;
+          }
+          return tool;
+        });
+    },
+    async callTool(req: McpCallToolRequest): Promise<McpToolCallResult> {
+      const server = resolveServer(req.credentialId);
+      const result = (await rpc(server, 'tools/call', {
+        name: req.name,
+        arguments: req.arguments,
+      })) as { content?: unknown; isError?: unknown };
+      const content = Array.isArray(result?.content) ? result.content : [];
+      const text = content
+        .filter(
+          (c): c is { type?: string; text?: string } => typeof c === 'object' && c !== null,
+        )
+        .filter((c) => c.type === 'text' && typeof c.text === 'string')
+        .map((c) => c.text)
+        .join('\n');
+      return { content, text, isError: result?.isError === true };
+    },
+  };
+}
+
+/**
+ * Parse an MCP JSON-RPC response. Streamable-HTTP servers may answer with a
+ * raw JSON body OR an SSE stream (`data: {…}` lines) — accept both. Returns the
+ * `{ result?, error? }` envelope of the first/only JSON-RPC message.
+ */
+function parseMcpEnvelope(text: string): { result?: unknown; error?: unknown } {
+  const trimmed = text.trim();
+  if (trimmed === '') throw new Error('MCP server returned an empty response');
+  // SSE framing: pick the last `data:` payload (the final JSON-RPC message).
+  if (trimmed.startsWith('event:') || trimmed.startsWith('data:') || trimmed.includes('\ndata:')) {
+    const dataLines = trimmed
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => l.slice('data:'.length).trim())
+      .filter((l) => l !== '' && l !== '[DONE]');
+    const last = dataLines[dataLines.length - 1];
+    if (last === undefined) throw new Error('MCP SSE response carried no data');
+    try {
+      return JSON.parse(last) as { result?: unknown; error?: unknown };
+    } catch {
+      throw new Error('MCP SSE response carried non-JSON data');
+    }
+  }
+  try {
+    return JSON.parse(trimmed) as { result?: unknown; error?: unknown };
+  } catch {
+    throw new Error('MCP server returned a non-JSON response');
+  }
 }
 
 /** Host matches an allow-list entry (exact, or dot-prefixed suffix). */
@@ -638,6 +771,9 @@ export function wireEngine(opts: WireOptions): Engine {
     // provider, so this is a plain object, not a per-bot factory. The decrypted
     // key never reaches node code (invariants I6/I7).
     ai: makeAi(opts.db, credentialKey, opts.fetchImpl ?? fetch),
+    // MCP client (ai.mcpClient, P5-T3). Like ai, the credential selects the MCP
+    // server, so this is a plain object. The decrypted key stays host-side (I6/I7).
+    mcp: makeMcp(opts.db, credentialKey, opts.fetchImpl ?? fetch),
     log: stepLogger,
     clock,
   };

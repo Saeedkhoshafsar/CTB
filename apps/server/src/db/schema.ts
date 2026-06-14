@@ -151,6 +151,33 @@ export const users = sqliteTable(
   (t) => [uniqueIndex('users_bot_tg_unique').on(t.botId, t.tgUserId)],
 );
 
+/**
+ * API tokens (P4-T3, PROTOCOL.md §Inbound REST API). Bearer tokens that
+ * authenticate the public `/api/v1/*` surface (trigger a flow, send a message,
+ * query executions/users). The plaintext token is shown ONCE on creation and
+ * NEVER stored — only its SHA-256 hash lives here (invariant I7 spirit: a DB
+ * leak can't replay tokens). An optional `bot_id` scopes a token to one bot;
+ * null = instance-wide (every bot/flow). `prefix` is a non-secret display
+ * fragment so the panel can identify a token without revealing it.
+ */
+export const apiTokens = sqliteTable(
+  'api_tokens',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    /** SHA-256 hex of the plaintext token — the token itself is never stored. */
+    tokenHash: text('token_hash').notNull(),
+    /** First chars of the token (e.g. "ctb_a1b2c3") — non-secret, for display. */
+    prefix: text('prefix').notNull(),
+    /** Optional bot scope: null = instance-wide; else restricted to this bot. */
+    botId: text('bot_id').references(() => bots.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+    /** Last time a request authenticated with this token (null = never used). */
+    lastUsedAt: text('last_used_at'),
+  },
+  (t) => [uniqueIndex('api_tokens_hash_unique').on(t.tokenHash)],
+);
+
 // ---------- Collections layer (ARCHITECTURE §13) ----------
 
 export const collections = sqliteTable(

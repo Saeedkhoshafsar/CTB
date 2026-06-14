@@ -13,6 +13,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type BetterSqlite3 from 'better-sqlite3';
+import { registerApiTokensApi } from './api/api-tokens';
 import { registerBotsApi, type BotsApiDeps } from './api/bots';
 import { registerCollectionsApi } from './api/collections';
 import { registerCredentialsApi } from './api/credentials';
@@ -21,6 +22,7 @@ import { registerFlowsApi } from './api/flows';
 import { registerNodeTypesApi } from './api/node-types';
 import { registerRecordsApi } from './api/records';
 import { registerUsersApi } from './api/users';
+import { registerV1Api } from './api/v1';
 import { SqliteCollectionStore } from './collections/store';
 import { SqliteFileStore } from './collections/file-store';
 import type { Db } from './db/index';
@@ -155,10 +157,13 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
   };
 
   // Auth guard for everything under /api/ except the auth routes themselves,
-  // plus role enforcement for the operator.
+  // plus role enforcement for the operator. The public v1 API (/api/v1/*) is
+  // EXEMPT — it has its own bearer-token auth (P4-T3, registerV1Api), so the
+  // panel cookie guard must not touch it.
   app.addHook('preHandler', async (req, reply) => {
     if (!req.url.startsWith('/api/')) return;
     if (req.url.startsWith('/api/auth/')) return;
+    if (req.url.startsWith('/api/v1/')) return;
     const ok = await requireAuth(req, reply);
     if (!ok) return; // 401 already sent
     const { session } = req as AuthedRequest;
@@ -190,6 +195,8 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     registerCredentialsApi(app, { db: opts.db, key });
     registerUsersApi(app, { userStore: opts.engine.userStore });
     registerNodeTypesApi(app, opts.engine.registry);
+    // P4-T3: API-token management (admin-only, panel cookie auth).
+    registerApiTokensApi(app, { db: opts.db });
     registerWebhookRoute(app, opts.engine.gateway);
     // P4-T1: inbound Webhook Trigger route (public, outside /api/).
     registerWebhookTriggerRoute(app, {
@@ -197,6 +204,15 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       executor: opts.engine.executor,
       store: opts.engine.store,
       ctbSecret: env.CTB_SECRET,
+    });
+    // P4-T3: public REST API v1 (bearer-token auth, its own preHandler).
+    registerV1Api(app, {
+      db: opts.db,
+      flowSource: opts.engine.flowSource,
+      executor: opts.engine.executor,
+      registry: opts.engine.registry,
+      gateway: opts.engine.gateway,
+      userStore: opts.engine.userStore,
     });
 
     // Collections layer (P3.5-T2 + P3.5-T5). Needs the raw sqlite handle for

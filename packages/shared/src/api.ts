@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { ExecutionStatus, WaitSpec } from './execution';
 import { FlowGraphSchema } from './flow';
 import type { FlowItem } from './item';
+import { KeyboardSchema } from './node-params';
 
 // ---------------------------------------------------------------------------
 // auth
@@ -333,6 +334,65 @@ export const UpdateUserBodySchema = z
     message: 'nothing to update — provide tags and/or profile',
   });
 export type UpdateUserBody = z.infer<typeof UpdateUserBodySchema>;
+
+// ---------------------------------------------------------------------------
+// public REST API — bearer tokens + v1 surface (P4-T3, PROTOCOL.md §Inbound REST API)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an API token (admin-only). `botId` scopes the token to one bot; omit
+ * for an instance-wide token. The plaintext token is returned ONCE in the
+ * create response and never again (only its hash is stored).
+ */
+export const CreateApiTokenBodySchema = z.object({
+  name: z.string().min(1).max(120),
+  /** Optional bot scope; omit/null = instance-wide (all bots & flows). */
+  botId: z.string().min(1).nullish(),
+});
+export type CreateApiTokenBody = z.infer<typeof CreateApiTokenBodySchema>;
+
+/** Public projection of an API token — NEVER carries the secret, only a prefix. */
+export interface ApiTokenPublic {
+  id: string;
+  name: string;
+  /** Non-secret display fragment, e.g. "ctb_a1b2c3…". */
+  prefix: string;
+  /** Bot scope, or null for instance-wide. */
+  botId: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** The create response — the ONLY time the full plaintext token is revealed. */
+export interface ApiTokenCreated extends ApiTokenPublic {
+  /** Full plaintext bearer token. Shown once; store it now. */
+  token: string;
+}
+
+/**
+ * `POST /api/v1/flows/:id/trigger` — start a flow run via the public API.
+ * `chat_id` (optional) gives the run a chat (Telegram nodes default to it);
+ * omitted ⇒ a chatless run (the flow resolves its own chat, like a webhook).
+ * `payload` (optional) becomes the trigger item's `$json.payload`.
+ */
+export const TriggerFlowBodySchema = z.object({
+  chat_id: z.union([z.number().int(), z.string().min(1)]).optional(),
+  payload: z.unknown().optional(),
+});
+export type TriggerFlowBody = z.infer<typeof TriggerFlowBodySchema>;
+
+/**
+ * `POST /api/v1/bots/:id/send` — send a Telegram message through a bot's
+ * centralized rate-limited sender (no raw token ever crosses the API edge).
+ */
+export const ApiSendMessageBodySchema = z.object({
+  chat_id: z.union([z.number().int(), z.string().min(1)]),
+  text: z.string().min(1).max(4096 * 4),
+  parse_mode: z.enum(['HTML', 'MarkdownV2']).optional(),
+  /** Reuses the node keyboard schema (inline/reply/remove) — one shape (I5). */
+  keyboard: KeyboardSchema.optional(),
+});
+export type ApiSendMessageBody = z.infer<typeof ApiSendMessageBodySchema>;
 
 // ---------------------------------------------------------------------------
 // error envelope (shared shape of every non-2xx body)

@@ -29,6 +29,10 @@ const TRIGGER_TYPES: ReadonlySet<string> = new Set([
   // P4-T1: an inbound HTTP webhook is a flow entry point — the webhook route
   // starts the flow at this node (chatId=null) when a signed request arrives.
   'webhook.trigger',
+  // P4-T2: a cron schedule is a flow entry point — the Scheduler starts the
+  // flow at this node (chatId=null, or per-user on a for_each_user fan-out)
+  // when the cron expression fires.
+  'schedule.trigger',
 ]);
 
 /** Walk a Zod issue path into the raw params object (tolerant of misses). */

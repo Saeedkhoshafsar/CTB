@@ -26,8 +26,12 @@ Starts a flow from a Telegram update.
 - A pure pass-through (route does the work host-side, like `collection.recordChanged`). Webhook-started runs have no implicit chat (`chatId=null`).
 - Param `target_chat`: expression resolving which chat the conversation nodes talk to (e.g. `{{ $json.body.chat_id }}`) — used by the Telegram nodes themselves, not the route (a raw param the executor never `{{ }}`-resolves).
 
-### Schedule Trigger `+P4`
-- `cron` expression + timezone. Optional `for_each_user` mode: emit one item per known bot user (rate-limited fan-out).
+### Schedule Trigger `+P4` ✅ (`schedule.trigger`)
+- `cron` expression evaluated in `timezone` (IANA name; empty = server tz). The host-side **Scheduler** (`apps/server/src/triggers/schedule.ts`) runs ONE croner job per enabled `schedule.trigger` node of an ACTIVE flow; on fire it builds the item and starts the run, so the node is a pure pass-through (like tg.trigger / webhook.trigger).
+- **Emits:** `{ json: { now, cron, timezone, scheduled: true, user? } }` — `user` (`{ id, profile, tags }`) only on a fan-out run.
+- Plain mode → ONE chatless run (chatId null; the flow resolves its own chat, same rule as Webhook/recordChanged). `for_each_user` → one run per KNOWN bot user, each run's chat = that user's tg id, throttled to `rate_per_min` starts/min (0 = unlimited).
+- Reconciled against the DB: the flows API re-runs the Scheduler's `reconcile()` on activate / deactivate / edit / delete, so cron jobs always track the live active-flow set; the job set survives restart (re-armed on boot from active flows). Invalid cron/timezone strings are logged and skipped, never fatal.
+- Params `cron` / `timezone` / `target_chat` are raw (host directives, never `{{ }}`-resolved).
 
 ### Record Changed Trigger `+P3.5` (`collection.recordChanged`)
 Starts a flow when a record in a Collection is created/updated/deleted (from the admin panel, the records API, or another flow — unless that write set `suppress_events`).

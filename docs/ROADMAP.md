@@ -76,8 +76,8 @@
 
 **Goal:** CTB triggers and is triggered by anything.
 
-- [ ] Webhook Trigger (async + sync with Respond to Webhook), per-flow secrets, HMAC option
-- [ ] Schedule Trigger (cron, timezone, for-each-user fan-out with rate limits)
+- [x] Webhook Trigger (async + sync with Respond to Webhook), per-flow secrets, HMAC option
+- [x] Schedule Trigger (cron, timezone, for-each-user fan-out with rate limits)
 - [ ] REST API (token-auth) for external systems: trigger flow, send message, query users/executions
 - [ ] Outgoing instance webhooks (execution.finished, user.first_seen, …)
 - [ ] docs/PROTOCOL.md complete + n8n recipe examples (n8n→CTB and CTB→n8n)

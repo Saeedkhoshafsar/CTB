@@ -183,6 +183,8 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       executor: opts.engine.executor,
       ctbSecret: env.CTB_SECRET,
       ...(env.CTB_PUBLIC_URL ? { publicUrl: env.CTB_PUBLIC_URL } : {}),
+      // P4-T2: re-arm cron schedules whenever the active-flow set changes.
+      onFlowsChanged: () => void opts.engine!.scheduler.reconcile(),
     });
     registerExecutionsApi(app, { db: opts.db });
     registerCredentialsApi(app, { db: opts.db, key });

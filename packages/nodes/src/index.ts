@@ -28,6 +28,7 @@ import { flowReturn } from './flow/return';
 import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
+import { scheduleTrigger } from './flow/schedule-trigger';
 import { webhookTrigger } from './flow/webhook-trigger';
 import { tgAnswerCallback } from './tg/answer-callback';
 import { tgChatAction } from './tg/chat-action';
@@ -59,6 +60,7 @@ export { flowReturn, SUBFLOW_RETURN_VAR } from './flow/return';
 export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
+export { scheduleTrigger } from './flow/schedule-trigger';
 export { webhookTrigger } from './flow/webhook-trigger';
 export { tgAnswerCallback } from './tg/answer-callback';
 export { tgChatAction } from './tg/chat-action';
@@ -78,6 +80,7 @@ export const builtinNodes: NodeDef<never>[] = [
   flowManualTrigger,
   collectionRecordChanged,
   webhookTrigger,
+  scheduleTrigger,
   tgSendMessage,
   tgWaitForReply,
   tgMenu,

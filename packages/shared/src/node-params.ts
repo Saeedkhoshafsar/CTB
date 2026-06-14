@@ -870,6 +870,157 @@ export const AiLlmChatParamsSchema = z.object({
 });
 export type AiLlmChatParams = z.infer<typeof AiLlmChatParamsSchema>;
 
+// ── ai.classify (P5-T2) ──────────────────────────────────────────────────────
+
+/**
+ * AI Classify (NODES.md §AI nodes). A Switch powered by an LLM: the model is
+ * asked to pick exactly ONE of the configured categories for the `input` text,
+ * and the item is routed to that category's output port. An unrecognized /
+ * empty answer falls through to the `other` port.
+ *
+ * Like ai.llmChat the provider call happens HOST-side via `ctx.ai.chat()` — the
+ * node only passes a `credentialId` + model + messages (invariants I6/I7). Runs
+ * ONCE per node run (one LLM call routes the whole batch — categorising N items
+ * separately would multiply cost; the typical use is "route this conversation
+ * turn", a single value).
+ */
+export const ClassifyCategorySchema = z.object({
+  /** Output port key — letters/digits/_/./- (must not be the reserved `other`). */
+  key: z
+    .string()
+    .regex(/^[A-Za-z0-9_.-]{1,48}$/, 'letters/digits/_/./- only')
+    .refine((k) => k !== 'other', '`other` is reserved for the fallback port'),
+  /** What this category means — the model reads these to choose. */
+  description: z.string().default(''),
+});
+export type ClassifyCategory = z.infer<typeof ClassifyCategorySchema>;
+
+export const AiClassifyParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key); host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Model name as the provider expects it, e.g. `gpt-4o-mini`. */
+  model: z.string().min(1).default('gpt-4o-mini'),
+  /** The text to classify (expression-aware — usually `{{ $json.text }}`). */
+  input: z.string().min(1),
+  /** The categories; each becomes an output port. At least one required. */
+  categories: z.array(ClassifyCategorySchema).min(1),
+  /** Optional extra steering prepended to the classification instruction. */
+  system_prompt: z.string().default(''),
+  /** Sampling temperature 0–2 (provider default when omitted; low is best here). */
+  temperature: z.coerce.number().min(0).max(2).optional(),
+  /** Where the `{ category }` result lands on each routed item (default `classification`). */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('classification'),
+});
+export type AiClassifyParams = z.infer<typeof AiClassifyParamsSchema>;
+
+/** Output ports of a classify instance: one per category + `other`, deduped. */
+export function classifyOutputs(params: AiClassifyParams): string[] {
+  return [...new Set(params.categories.map((c) => c.key)), 'other'];
+}
+
+// ── ai.extract (P5-T2) ───────────────────────────────────────────────────────
+
+/**
+ * AI Extract (NODES.md §AI nodes). Pulls structured JSON out of free text: the
+ * model is asked to return a JSON object matching the configured `fields`, the
+ * node parses it and (on a parse/shape failure) retries up to `max_retries`
+ * times before failing. The extracted object lands in `$json.<save_as>`
+ * (default `extracted`).
+ *
+ * Provider call is HOST-side via `ctx.ai.chat()` (I6/I7). Runs ONCE per node
+ * run — the extraction targets the resolved `input` (a single value), and one
+ * LLM call should not be multiplied by the item count.
+ */
+export const ExtractFieldTypeSchema = z.enum(['string', 'number', 'boolean']);
+export type ExtractFieldType = z.infer<typeof ExtractFieldTypeSchema>;
+
+export const ExtractFieldSchema = z.object({
+  /** Output JSON key — a valid identifier so `$json.extracted.<name>` is clean. */
+  name: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier'),
+  type: ExtractFieldTypeSchema.default('string'),
+  /** What to extract for this field — the model reads it. */
+  description: z.string().default(''),
+  /** When true, a missing/null value for this field fails validation → retry. */
+  required: z.boolean().default(false),
+});
+export type ExtractField = z.infer<typeof ExtractFieldSchema>;
+
+export const AiExtractParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key); host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Model name as the provider expects it, e.g. `gpt-4o-mini`. */
+  model: z.string().min(1).default('gpt-4o-mini'),
+  /** The source text to extract from (expression-aware — usually `{{ $json.text }}`). */
+  input: z.string().min(1),
+  /** The target schema — fields to pull out. At least one required. */
+  fields: z.array(ExtractFieldSchema).min(1),
+  /** Optional extra steering prepended to the extraction instruction. */
+  system_prompt: z.string().default(''),
+  /** Sampling temperature 0–2 (provider default when omitted; low is best here). */
+  temperature: z.coerce.number().min(0).max(2).optional(),
+  /** How many times to re-ask when the reply isn't valid JSON / misses required fields. */
+  max_retries: z.coerce.number().int().min(0).max(5).default(2),
+  /** Where the extracted object lands on each output item (default `extracted`). */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('extracted'),
+});
+export type AiExtractParams = z.infer<typeof AiExtractParamsSchema>;
+
+// ── ai.mcpClient (P5-T3) ─────────────────────────────────────────────────────
+
+/**
+ * MCP Client (NODES.md §MCP Client). Talks to a remote Model-Context-Protocol
+ * server selected by an `mcpServer` credential (endpoint URL + optional key)
+ * which the HOST resolves — the node only passes a `credentialId`, the action,
+ * and (for `call`) a tool name + arguments (invariants I6/I7: the key never
+ * reaches here). Two actions:
+ *  - `list_tools` → the server's advertised tools land in `$json.<save_as>` as
+ *     `{ tools: McpTool[] }`.
+ *  - `call_tool`  → invoke `tool_name` with `arguments_json` (a JSON object,
+ *     expression-aware) → `{ result: { content, text, isError } }`.
+ *
+ * Runs ONCE per node run (like the other AI nodes): an MCP round-trip is
+ * expensive execution-external work, so the action targets the resolved params
+ * once rather than per item; the result is merged onto EVERY output item.
+ */
+export const McpActionSchema = z.enum(['list_tools', 'call_tool']);
+export type McpAction = z.infer<typeof McpActionSchema>;
+
+export const AiMcpClientParamsSchema = z
+  .object({
+    /** MCP server credential (endpoint URL + optional key); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'mcpServer' }),
+    /** What to do: enumerate tools, or invoke one. */
+    action: McpActionSchema.default('call_tool'),
+    /** Tool name to invoke (required for `call_tool`). */
+    tool_name: z.string().default(''),
+    /**
+     * Arguments for the tool as a JSON object string (expression-aware, e.g.
+     * `{"city":"{{ $json.city }}"}`). Parsed by the node; `{}` when omitted.
+     */
+    arguments_json: z.string().default('{}'),
+    /** Where the result lands on each output item (default `mcp`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('mcp'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.action === 'call_tool' && p.tool_name.trim() === '') {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'tool_name is required when action is call_tool',
+        path: ['tool_name'],
+      });
+    }
+  });
+export type AiMcpClientParams = z.infer<typeof AiMcpClientParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;
@@ -914,6 +1065,16 @@ export function dynamicOutputPorts(type: string, rawParams: unknown): string[] |
       }
     }
     return [...new Set(ports), 'default'];
+  }
+  if (type === 'ai.classify') {
+    const ports: string[] = [];
+    if (Array.isArray(p.categories)) {
+      for (const cat of p.categories) {
+        const key = (cat as { key?: unknown } | null)?.key;
+        if (typeof key === 'string' && key !== 'other' && PORT_KEY_RE.test(key)) ports.push(key);
+      }
+    }
+    return [...new Set(ports), 'other'];
   }
   return null;
 }

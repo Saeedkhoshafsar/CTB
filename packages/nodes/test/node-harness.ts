@@ -5,7 +5,18 @@
  * registry does at runtime — so tests validate the schema too).
  */
 import { runInSandbox } from '@ctb/sandbox';
-import type { AiChatRequest, CollectionRecord, CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
+import type {
+  AiChatRequest,
+  CollectionRecord,
+  CtbUser,
+  FlowItem,
+  McpCallToolRequest,
+  McpListToolsRequest,
+  McpTool,
+  McpToolCallResult,
+  NodeCtx,
+  NodeDef,
+} from '@ctb/shared';
 
 export interface SentMessage {
   opts: Record<string, unknown>;
@@ -44,6 +55,9 @@ export interface FakeCtx extends NodeCtx {
   recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[];
   /** ai.llmChat (P5-T1): recorded LLM chat requests. */
   aiCalls: AiChatRequest[];
+  /** ai.mcpClient (P5-T3): recorded MCP requests by kind. */
+  mcpListCalls: McpListToolsRequest[];
+  mcpCallCalls: McpCallToolRequest[];
 }
 
 export function makeCtx(
@@ -91,6 +105,24 @@ export function makeCtx(
      * (ctx.ai === null). Omit → a default echo reply.
      */
     aiResponses?: { reply: string; usage?: Record<string, number>; model?: string }[] | null;
+    /**
+     * P5-T3: scripted MCP behaviour for ctx.mcp. Pass `null` to simulate an
+     * instance with no MCP service (ctx.mcp === null). Omit → a default that
+     * returns one echo tool / echoes the call arguments back as text.
+     *  - `tools`: what listTools() returns.
+     *  - `callResult`: what callTool() returns (or a function of the request).
+     *  - `callError` / `listError`: throw this message instead (transport/tool error).
+     */
+    mcp?:
+      | null
+      | {
+          tools?: McpTool[];
+          callResult?:
+            | McpToolCallResult
+            | ((req: McpCallToolRequest) => McpToolCallResult);
+          listError?: string;
+          callError?: string;
+        };
     /** Seed the in-memory collection store: slug → array of record docs (id auto-assigned if absent). */
     seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
     /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
@@ -114,6 +146,8 @@ export function makeCtx(
   const recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[] = [];
   const aiCalls: AiChatRequest[] = [];
   let aiIdx = 0;
+  const mcpListCalls: McpListToolsRequest[] = [];
+  const mcpCallCalls: McpCallToolRequest[] = [];
   let nextRecordId = 1;
   const knownSlugs = new Set<string>(
     overrides.knownCollections ?? Object.keys(overrides.seedCollections ?? {}),
@@ -172,6 +206,8 @@ export function makeCtx(
     collectionsBag,
     recordEvents,
     aiCalls,
+    mcpListCalls,
+    mcpCallCalls,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -397,6 +433,30 @@ export function makeCtx(
               }
               const r = scripted[Math.min(aiIdx++, scripted.length - 1)]!;
               return { reply: r.reply, usage: r.usage ?? {}, ...(r.model ? { model: r.model } : {}) };
+            },
+          },
+    // ai.mcpClient (P5-T3): records requests; `mcp: null` simulates an instance
+    // with no MCP service (ctx.mcp === null); omit → a default echo server.
+    mcp:
+      overrides.mcp === null
+        ? null
+        : {
+            async listTools(req) {
+              mcpListCalls.push(req);
+              if (overrides.mcp?.listError) throw new Error(overrides.mcp.listError);
+              return (
+                overrides.mcp?.tools ?? [
+                  { name: 'echo', description: 'echoes its input', inputSchema: { type: 'object' } },
+                ]
+              );
+            },
+            async callTool(req) {
+              mcpCallCalls.push(req);
+              if (overrides.mcp?.callError) throw new Error(overrides.mcp.callError);
+              const cr = overrides.mcp?.callResult;
+              if (cr) return typeof cr === 'function' ? cr(req) : cr;
+              const text = JSON.stringify(req.arguments);
+              return { content: [{ type: 'text', text }], text, isError: false };
             },
           },
   };

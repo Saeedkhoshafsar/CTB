@@ -11,7 +11,10 @@
  */
 import type { NodeRegistry } from '@ctb/core';
 import type { NodeDef } from '@ctb/shared';
+import { aiClassify } from './ai/classify';
+import { aiExtract } from './ai/extract';
 import { aiLlmChat } from './ai/llm-chat';
+import { aiMcpClient } from './ai/mcp-client';
 import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
@@ -40,7 +43,10 @@ import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
 
+export { aiClassify } from './ai/classify';
+export { aiExtract } from './ai/extract';
 export { aiLlmChat, AI_MEMORY_KEY_PREFIX } from './ai/llm-chat';
+export { aiMcpClient } from './ai/mcp-client';
 export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
@@ -106,6 +112,9 @@ export const builtinNodes: NodeDef<never>[] = [
   flowReturn,
   flowRespondToWebhook,
   aiLlmChat,
+  aiClassify,
+  aiExtract,
+  aiMcpClient,
 ] as NodeDef<never>[];
 
 /** Register every built-in node on a registry (server boot, tests). */

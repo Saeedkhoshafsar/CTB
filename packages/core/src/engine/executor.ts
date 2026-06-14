@@ -143,6 +143,14 @@ export interface ExecutorServices {
    * credential — not the bot — selects the provider.
    */
   ai?: NonNullable<NodeCtx['ai']>;
+  /**
+   * MCP client service for ai.mcpClient (P5-T3) — optional: ctx.mcp is null
+   * without it. The host resolves the `mcpServer` credential (endpoint + key)
+   * and performs the JSON-RPC `tools/list`/`tools/call`, so the decrypted key
+   * never reaches node code (invariants I6/I7). A simple object (not per-bot)
+   * because the credential — not the bot — selects the MCP server.
+   */
+  mcp?: NonNullable<NodeCtx['mcp']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -522,6 +530,7 @@ export class Executor {
         ? executor.services.collections(exec.botId, flow.id)
         : null,
       ai: executor.services.ai ?? null,
+      mcp: executor.services.mcp ?? null,
     };
   }
 

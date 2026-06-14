@@ -822,6 +822,54 @@ export const ScheduleTriggerParamsSchema = z.object({
 });
 export type ScheduleTriggerParams = z.infer<typeof ScheduleTriggerParamsSchema>;
 
+// ── ai.llmChat (P5-T1) ───────────────────────────────────────────────────────
+
+/**
+ * LLM Chat (NODES.md §AI nodes). Calls an OpenAI-compatible chat-completions
+ * endpoint via the host `ctx.ai` capability. The provider (OpenAI / OpenRouter /
+ * Anthropic-proxy / local) is chosen by the selected `credentialId` (openAiApi:
+ * base_url + key) — the node never sees the key (invariants I6/I7).
+ *
+ * `memory: conversation` persists the rolling last-N turns per chat in KV, so a
+ * support bot remembers the dialogue without an external DB. `none` is stateless.
+ * The model's reply lands in `$json.<save_as>` (default `ai`) as `{ reply, usage }`.
+ */
+export const AiMemorySchema = z.enum(['none', 'conversation']);
+export type AiMemory = z.infer<typeof AiMemorySchema>;
+
+export const AiLlmChatParamsSchema = z.object({
+  /**
+   * The OpenAI-compatible credential (base_url + key). The editor renders a
+   * selector filtered to `openAiApi` credentials via the `credentialRef`
+   * widget; the host resolves it to base URL + bearer key (the node only ever
+   * sees the id — invariant I7).
+   */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Model name as the provider expects it, e.g. `gpt-4o-mini`, `llama-3.1-8b`. */
+  model: z.string().min(1).default('gpt-4o-mini'),
+  /** Optional system prompt steering the assistant (expression-aware). */
+  system_prompt: z.string().default(''),
+  /** The user turn to send (expression-aware — usually `{{ $json.text }}`). */
+  user_prompt: z.string().min(1),
+  /** Sampling temperature 0–2 (provider default when omitted). */
+  temperature: z.coerce.number().min(0).max(2).optional(),
+  /** Hard cap on response tokens (provider default when omitted). */
+  max_tokens: z.coerce.number().int().min(1).max(32_000).optional(),
+  /** none = stateless; conversation = remember the rolling last-N turns per chat. */
+  memory: AiMemorySchema.default('none'),
+  /**
+   * How many PRIOR turns (user+assistant pairs) to replay when memory is on.
+   * Bounded so the prompt — and the KV row — stay small.
+   */
+  memory_window: z.coerce.number().int().min(1).max(50).default(10),
+  /** Where the `{ reply, usage }` result lands on each output item. */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('ai'),
+});
+export type AiLlmChatParams = z.infer<typeof AiLlmChatParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

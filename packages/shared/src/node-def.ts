@@ -209,6 +209,51 @@ export interface NodeCtx {
       opts?: { confirmMany?: boolean; suppressEvents?: boolean },
     ): Promise<number>;
   } | null;
+  /**
+   * LLM chat capability (ai.llmChat, P5-T1). The host resolves a stored
+   * OpenAI-compatible credential (base_url + key) by id and performs the
+   * `POST {baseUrl}/chat/completions` request — the decrypted key never crosses
+   * into node code (invariants I6/I7); the node only passes a credentialId, the
+   * model and the messages. Null when no AI service is wired (unit tests) — the
+   * node then fails with a clear error. Throws on a credential miss or a
+   * transport/API error so the node can surface it.
+   */
+  ai: {
+    chat(req: AiChatRequest): Promise<AiChatResult>;
+  } | null;
+}
+
+/** One message in an LLM conversation (OpenAI chat-completions shape). */
+export interface AiChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/** What ai.llmChat asks the host to run (the secret credential is resolved host-side). */
+export interface AiChatRequest {
+  /** Stored credential id (openAiApi). The host turns it into base URL + key. */
+  credentialId: string;
+  model: string;
+  messages: AiChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/** Token-usage figures as returned by an OpenAI-compatible API (best-effort). */
+export interface AiChatUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+/** The host's reply to an AiChatRequest. */
+export interface AiChatResult {
+  /** The assistant's text reply (first choice). */
+  reply: string;
+  /** Token usage, when the provider reports it. */
+  usage: AiChatUsage;
+  /** The model the provider actually used (echoed back when present). */
+  model?: string;
 }
 
 /** A record as seen by data.collection (the host's RecordPublic, minus host-only ids). */

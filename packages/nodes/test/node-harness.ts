@@ -5,7 +5,7 @@
  * registry does at runtime — so tests validate the schema too).
  */
 import { runInSandbox } from '@ctb/sandbox';
-import type { CollectionRecord, CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
+import type { AiChatRequest, CollectionRecord, CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
 
 export interface SentMessage {
   opts: Record<string, unknown>;
@@ -42,6 +42,8 @@ export interface FakeCtx extends NodeCtx {
   collectionsBag: Map<string, Map<string, CollectionRecord>>;
   /** data.collection: recorded write events (for suppress_events assertions). */
   recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[];
+  /** ai.llmChat (P5-T1): recorded LLM chat requests. */
+  aiCalls: AiChatRequest[];
 }
 
 export function makeCtx(
@@ -83,6 +85,12 @@ export function makeCtx(
     seedUsers?: CtbUser[];
     /** Pass `null` to simulate an instance with no collection store (ctx.collections === null). */
     collections?: null;
+    /**
+     * P5-T1: scripted LLM responses for ctx.ai.chat, consumed in order (last
+     * repeats). Pass `null` to simulate an instance with no AI service
+     * (ctx.ai === null). Omit → a default echo reply.
+     */
+    aiResponses?: { reply: string; usage?: Record<string, number>; model?: string }[] | null;
     /** Seed the in-memory collection store: slug → array of record docs (id auto-assigned if absent). */
     seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
     /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
@@ -104,6 +112,8 @@ export function makeCtx(
   const usersBag = new Map<number, CtbUser>();
   const collectionsBag = new Map<string, Map<string, CollectionRecord>>();
   const recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[] = [];
+  const aiCalls: AiChatRequest[] = [];
+  let aiIdx = 0;
   let nextRecordId = 1;
   const knownSlugs = new Set<string>(
     overrides.knownCollections ?? Object.keys(overrides.seedCollections ?? {}),
@@ -161,6 +171,7 @@ export function makeCtx(
     usersBag,
     collectionsBag,
     recordEvents,
+    aiCalls,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -369,6 +380,23 @@ export function makeCtx(
                 if (!opts?.suppressEvents) recordEvents.push({ event: 'deleted', slug, recordId: id });
               }
               return ids.length;
+            },
+          },
+    // ai.llmChat (P5-T1): records requests; `aiResponses: null` simulates an
+    // instance with no AI service (ctx.ai === null); omit → a default echo.
+    ai:
+      overrides.aiResponses === null
+        ? null
+        : {
+            async chat(req) {
+              aiCalls.push(req);
+              const scripted = overrides.aiResponses;
+              if (!scripted || scripted.length === 0) {
+                const last = req.messages[req.messages.length - 1];
+                return { reply: `echo: ${last?.content ?? ''}`, usage: {} };
+              }
+              const r = scripted[Math.min(aiIdx++, scripted.length - 1)]!;
+              return { reply: r.reply, usage: r.usage ?? {}, ...(r.model ? { model: r.model } : {}) };
             },
           },
   };

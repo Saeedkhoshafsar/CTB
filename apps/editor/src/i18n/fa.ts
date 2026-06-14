@@ -46,11 +46,14 @@ export const fa = {
   'credentials.type.httpHeaderAuth': 'هدر HTTP (کلید API)',
   'credentials.type.httpBearerAuth': 'توکن Bearer',
   'credentials.type.httpBasicAuth': 'احراز هویت Basic',
+  'credentials.type.openAiApi': 'API سازگار با OpenAI',
   'credentials.field.headerName': 'نام هدر',
   'credentials.field.headerValue': 'مقدار هدر',
   'credentials.field.token': 'توکن',
   'credentials.field.username': 'نام کاربری',
   'credentials.field.password': 'رمز عبور',
+  'credentials.field.baseUrl': 'آدرس پایه (Base URL)',
+  'credentials.field.apiKey': 'کلید API',
   'credentials.secret.hint':
     'مقدار محرمانه فقط یک‌بار ارسال و رمزنگاری‌شده ذخیره می‌شود؛ هرگز دوباره نمایش داده نمی‌شود. برای تغییر، حذف و دوباره بسازید.',
   'credentials.create': 'ساخت اعتبارنامه',
@@ -303,6 +306,7 @@ export const fa = {
   'nodes.webhook.trigger.label': 'وبهوک (تریگر)',
   'nodes.schedule.trigger.label': 'زمان‌بندی (تریگر)',
   'nodes.flow.respondToWebhook.label': 'پاسخ به وبهوک',
+  'nodes.ai.llmChat.label': 'گفتگوی هوش مصنوعی (LLM)',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -332,6 +336,7 @@ export const fa = {
   'nodeDesc.webhook.trigger': 'این فلو را با یک درخواست HTTP ورودی (مثلاً از n8n یا هر سرویس دیگر) آغاز می‌کند. بدنه، هدرها و کوئریِ درخواست به $json تبدیل می‌شوند. حالت async بلافاصله 202 پاسخ می‌دهد؛ حالت sync تا اجرای گرهِ «پاسخ به وبهوک» منتظر می‌ماند. آدرس شامل یک سکرت غیرقابل‌حدسِ مخصوص هر فلو است؛ بررسی امضای HMAC اختیاری است.',
   'nodeDesc.flow.respondToWebhook': 'پاسخ HTTP را به یک تریگر وبهوکِ همگام (sync) بازمی‌گرداند: کد وضعیت، هدرها و بدنه (به‌صورت JSON یا متن). آیتم‌ها عبور می‌کنند تا فلو پس از پاسخ‌دادن ادامه یابد.',
   'nodeDesc.schedule.trigger': 'این فلو را طبق یک زمان‌بندی آغاز می‌کند (عبارت cron که در منطقهٔ زمانی انتخابی ارزیابی می‌شود). حالت اختیاریِ «برای هر کاربر» به‌ازای هر کاربرِ شناخته‌شدهٔ ربات یک اجرا ایجاد می‌کند — هر اجرا به‌صورت پیش‌فرض با چتِ همان کاربر کار می‌کند — و با محدودیت نرخ کنترل می‌شود تا تعداد زیاد کاربران به‌تدریج پردازش شوند. در $json زمان اجرا و cron قرار می‌گیرد.',
+  'nodeDesc.ai.llmChat': 'یک مدل زبانی (LLM) را صدا می‌زند: پرامپت سیستمی و پیام کاربر را می‌فرستد و پاسخ را در $json می‌گذارد. ارائه‌دهنده با انتخاب یک «کانکشن سازگار با OpenAI» (آدرس پایه + کلید) مشخص می‌شود — با OpenAI، OpenRouter، پروکسیِ Anthropic یا یک مدل محلی کار می‌کند. با روشن‌کردن «حافظه = گفتگو»، چند نوبت آخرِ مکالمهٔ هر چت ذخیره می‌شود تا ربات گفتگو را به یاد بسپارد.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
@@ -550,6 +555,14 @@ export const fa = {
   'paramDesc.data.userProfile.mode': '«ادغام» فقط فیلدهای داده‌شده را به‌روزرسانی می‌کند؛ «جایگزینی» کل پروفایل را با همین فیلدها بازنویسی می‌کند.',
   'paramDesc.data.userProfile.tags': 'برچسب‌هایی که افزوده یا حذف می‌شوند (برچسب‌های تکراری خودکار حذف می‌شوند).',
   'paramDesc.data.userProfile.save_as': 'نام فیلدی در $json که رکورد کاربر در آن می‌نشیند. خالی = user',
+  // ai.llmChat params (P5-T1)
+  'paramDesc.model': 'نام مدل همان‌طور که ارائه‌دهنده می‌خواهد — مثل gpt-4o-mini یا llama-3.1-8b.',
+  'paramDesc.system_prompt': 'دستور سیستمی که رفتار و لحن مدل را تعیین می‌کند (اختیاری). متغیر هم می‌شود.',
+  'paramDesc.user_prompt': 'پیامی که به مدل فرستاده می‌شود — معمولاً {{ $json.text }} (متن کاربر).',
+  'paramDesc.temperature': 'میزان خلاقیت پاسخ بین ۰ تا ۲. کمتر = دقیق‌تر و پایدارتر، بیشتر = خلاقانه‌تر. خالی = پیش‌فرض مدل.',
+  'paramDesc.max_tokens': 'سقف طول پاسخ (به توکن). خالی = پیش‌فرض ارائه‌دهنده.',
+  'paramDesc.memory': '«بدون حافظه» هر بار از صفر؛ «گفتگو» چند نوبت آخرِ مکالمهٔ همین چت را به یاد می‌سپارد.',
+  'paramDesc.memory_window': 'چند نوبتِ گذشته (سؤال+جواب) هنگام روشن‌بودن حافظه دوباره به مدل داده شود.',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',
@@ -648,6 +661,8 @@ export const fa = {
   'option.data.userProfile.op.remove_tags': 'حذف برچسب',
   'option.data.userProfile.mode.merge': 'ادغام (فقط فیلدهای داده‌شده)',
   'option.data.userProfile.mode.replace': 'جایگزینی کامل پروفایل',
+  'option.memory.none': 'بدون حافظه',
+  'option.memory.conversation': 'حافظهٔ گفتگو (چند نوبت آخر)',
 
   'executions.title': 'اجراها',
 

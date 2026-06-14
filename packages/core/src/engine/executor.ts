@@ -135,6 +135,14 @@ export interface ExecutorServices {
    * the schema, validation or the event bus — invariant I6 keeps it host-side.
    */
   collections?: (botId: string, flowId: string) => NonNullable<NodeCtx['collections']>;
+  /**
+   * LLM chat service for ai.llmChat (P5-T1) — optional: ctx.ai is null without
+   * it. The host resolves the OpenAI-compatible credential (base_url + key) and
+   * performs the chat-completions request, so the decrypted key never reaches
+   * node code (invariants I6/I7). It's a simple object (not per-bot) because the
+   * credential — not the bot — selects the provider.
+   */
+  ai?: NonNullable<NodeCtx['ai']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -513,6 +521,7 @@ export class Executor {
       collections: executor.services.collections
         ? executor.services.collections(exec.botId, flow.id)
         : null,
+      ai: executor.services.ai ?? null,
     };
   }
 

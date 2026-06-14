@@ -344,9 +344,16 @@ function CredentialRefWidget({ spec, value, onChange }: WidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const current = typeof value === 'string' ? value : '';
-  // Selected id no longer present (deleted) → still show it so the user sees the
-  // dangling reference rather than a silent reset.
-  const orphaned = current !== '' && !creds.some((c) => c.id === current);
+  // A field may pin the credential TYPE it accepts (z.meta({ credentialType }))
+  // — e.g. ai.llmChat only takes `openAiApi`. When present we offer only those,
+  // so the user can't bind an HTTP-auth credential to an LLM node. Unannotated
+  // fields (http.request) keep listing everything.
+  const wantType =
+    typeof spec.schema.credentialType === 'string' ? spec.schema.credentialType : undefined;
+  const options = wantType ? creds.filter((c) => c.type === wantType) : creds;
+  // Selected id no longer present (deleted, or filtered out by type) → still show
+  // it so the user sees the dangling reference rather than a silent reset.
+  const orphaned = current !== '' && !options.some((c) => c.id === current);
   return (
     <select
       className="credref-widget"
@@ -354,7 +361,7 @@ function CredentialRefWidget({ spec, value, onChange }: WidgetProps) {
       onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
     >
       <option value="">{t('credentials.none')}</option>
-      {creds.map((c) => (
+      {options.map((c) => (
         <option key={c.id} value={c.id}>
           {c.name} · {CREDENTIAL_TYPE_LABELS[c.type]}
         </option>

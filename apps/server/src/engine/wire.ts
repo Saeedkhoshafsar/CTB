@@ -15,6 +15,8 @@ import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import { randomUUID } from 'node:crypto';
 import {
   credentialAuthHeaders,
+  type AiChatRequest,
+  type AiChatResult,
   type CollectionFilter,
   type CredentialData,
   type FlowItem,
@@ -157,6 +159,89 @@ function makeCredentials(db: Db, key: Buffer): NonNullable<NodeCtx['credentials'
       }
     },
   };
+}
+
+/**
+ * LLM chat capability for ai.llmChat (P5-T1). The node passes a credentialId;
+ * the host decrypts the openAiApi credential (base_url + key), POSTs the
+ * OpenAI-compatible `/chat/completions` request and returns the reply + usage.
+ * The decrypted key never crosses into node code (invariants I6/I7). Throws on
+ * a missing/wrong-type credential or a transport/API error so the node fails
+ * loudly. The `fetchImpl` is injectable so tests run with no network.
+ */
+function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeCtx['ai']> {
+  return {
+    async chat(req: AiChatRequest): Promise<AiChatResult> {
+      const row = db
+        .select()
+        .from(credentialsTable)
+        .where(eq(credentialsTable.id, req.credentialId))
+        .get();
+      if (!row) throw new Error(`credential "${req.credentialId}" not found`);
+      let data: CredentialData;
+      try {
+        data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
+      } catch {
+        throw new Error(`credential "${req.credentialId}" could not be decrypted`);
+      }
+      if (data.type !== 'openAiApi') {
+        throw new Error(`credential "${req.credentialId}" is not an OpenAI-compatible API credential`);
+      }
+
+      const url = `${data.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+      const payload: Record<string, unknown> = {
+        model: req.model,
+        messages: req.messages,
+      };
+      if (req.temperature !== undefined) payload.temperature = req.temperature;
+      if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60_000);
+      let res: Response;
+      try {
+        res = await fetchImpl(url, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${data.apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const text = await res.text();
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`LLM provider returned HTTP ${res.status}: ${text.slice(0, 500)}`);
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new Error('LLM provider returned a non-JSON response');
+      }
+      return parseChatCompletion(body);
+    },
+  };
+}
+
+/** Extract reply + usage from an OpenAI-compatible chat-completions response. */
+function parseChatCompletion(body: unknown): AiChatResult {
+  const b = (body ?? {}) as {
+    choices?: { message?: { content?: unknown } }[];
+    usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown };
+    model?: unknown;
+  };
+  const content = b.choices?.[0]?.message?.content;
+  const reply = typeof content === 'string' ? content : '';
+  const usage: AiChatResult['usage'] = {};
+  if (typeof b.usage?.prompt_tokens === 'number') usage.promptTokens = b.usage.prompt_tokens;
+  if (typeof b.usage?.completion_tokens === 'number') usage.completionTokens = b.usage.completion_tokens;
+  if (typeof b.usage?.total_tokens === 'number') usage.totalTokens = b.usage.total_tokens;
+  return { reply, usage, ...(typeof b.model === 'string' ? { model: b.model } : {}) };
 }
 
 /** Host matches an allow-list entry (exact, or dot-prefixed suffix). */
@@ -549,6 +634,10 @@ export function wireEngine(opts: WireOptions): Engine {
           },
         }
       : {}),
+    // LLM chat (ai.llmChat, P5-T1). The credential — not the bot — selects the
+    // provider, so this is a plain object, not a per-bot factory. The decrypted
+    // key never reaches node code (invariants I6/I7).
+    ai: makeAi(opts.db, credentialKey, opts.fetchImpl ?? fetch),
     log: stepLogger,
     clock,
   };

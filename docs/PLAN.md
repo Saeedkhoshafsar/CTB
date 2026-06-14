@@ -233,6 +233,19 @@ Postgres driver option · execution retention/pruning · sandbox v2 evaluation (
 
 ---
 
+## ➡️ After PLAN.md: see `docs/PLAN2.md`
+
+When every phase above is complete, the active roadmap becomes **`docs/PLAN2.md`**
+— the n8n-parity expansion: full Telegram media, a generic data-transform node
+library (Edit Fields / Filter / Split Out / Aggregate / Sort / Date-Time incl.
+Jalali), real **database connectors** (Postgres / MySQL), an **AI Agent with
+attached sub-nodes** (Chat Model / Memory / Tool) via a new typed-sub-connection
+model, **speech** nodes (STT/TTS), and an **API + MCP** builder surface so
+external agents can discover the node library and assemble workflows. PLAN2 is a
+design doc until PLAN.md is done; the active task pointer always lives in STATE.md.
+
+---
+
 ## Risk register (read when stuck)
 
 | Risk | Mitigation |

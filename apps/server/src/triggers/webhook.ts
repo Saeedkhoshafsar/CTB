@@ -95,6 +95,38 @@ function buildTriggerItem(req: FastifyRequest, rawBody: string): FlowItem {
   return { json: { body, headers, query: (req.query as unknown) ?? {}, method: req.method } };
 }
 
+/**
+ * Resolve the trigger's optional `target_chat` against the request payload.
+ * Accepts a literal numeric chat id, or a `$json.body.<field>` reference that
+ * digs into the parsed request body (the common n8n case: `{ "chat_id": … }`).
+ * Returns a finite number, or `null` when unset/unresolvable (chatless run).
+ */
+function resolveTargetChat(target: string | undefined, item: FlowItem): number | null {
+  if (target === undefined || target === '') return null;
+  const trimmed = target.trim();
+
+  // Literal number (`"555"`).
+  if (/^-?\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // `$json.body.<a>.<b>` reference into the trigger item.
+  const m = trimmed.match(/^\{?\{?\s*\$json\.((?:[A-Za-z_$][\w$]*)(?:\.[A-Za-z_$][\w$]*)*)\s*\}?\}?$/);
+  const path = m?.[1];
+  if (path) {
+    let cur: unknown = item.json;
+    for (const key of path.split('.')) {
+      if (cur === null || typeof cur !== 'object') return null;
+      cur = (cur as Record<string, unknown>)[key];
+    }
+    const n = typeof cur === 'string' || typeof cur === 'number' ? Number(cur) : NaN;
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
+}
+
 export function registerWebhookTriggerRoute(app: FastifyInstance, deps: WebhookRouteDeps): void {
   // Encapsulated scope: a raw-body-preserving JSON parser so HMAC sees exact
   // bytes. Scoped via register() so it does not affect the rest of the app.
@@ -151,13 +183,20 @@ export function registerWebhookTriggerRoute(app: FastifyInstance, deps: WebhookR
 
         // 3) Build the trigger item + start the run.
         const item = buildTriggerItem(req, rawBody);
+        // Optional `target_chat`: when set, the run is bound to a Telegram chat
+        // so conversation nodes (tg.sendMessage / tg.waitForReply) work — this
+        // is what makes a sync webhook able to ask a user and return the answer
+        // (PROTOCOL.md "n8n → CTB" recipe). It is a literal chat id or a simple
+        // `$json.body.<field>` reference into the request body; anything that
+        // doesn't resolve to a finite number leaves the run chatless (null).
+        const chatId = resolveTargetChat(params.target_chat, item);
         const executionId = randomUUID();
         const startArgs = {
           executionId,
           flow: { id: row.id, name: row.name },
           graph: graph.data,
           botId: row.botId,
-          chatId: null,
+          chatId,
           userId: null,
           entry: { nodeId: triggerNode.id, items: { main: [item] } },
         };
@@ -168,36 +207,53 @@ export function registerWebhookTriggerRoute(app: FastifyInstance, deps: WebhookR
           return reply.code(202).send({ ok: true, executionId });
         }
 
-        // sync: race the run against the (clamped) timeout.
+        // sync: hold the connection until flow.respondToWebhook parks a
+        // response, the run reaches a terminal status, or the (clamped)
+        // sync_timeout elapses. The run may PAUSE on a tg.waitForReply mid-way
+        // (the "n8n → CTB" conversation recipe): start() returns `waiting`, the
+        // user answers in Telegram, the router resumes the run on another tick,
+        // and respondToWebhook eventually parks the answer — so we can't just
+        // await start(); we poll the durable state until something resolves.
         const timeoutMs = Math.min(params.sync_timeout * 1000, MAX_SYNC_TIMEOUT_MS);
-        let timer: NodeJS.Timeout | undefined;
-        const timeout = new Promise<'timeout'>((resolve) => {
-          timer = setTimeout(() => resolve('timeout'), timeoutMs);
-        });
-        const run = deps.executor.start(startArgs).then((r) => r.status);
+        const deadline = Date.now() + timeoutMs;
 
-        let outcome: 'timeout' | string;
-        try {
-          outcome = await Promise.race([run, timeout]);
-        } finally {
-          if (timer) clearTimeout(timer);
+        // Kick off the run (fire-and-forget — its result is read from the store).
+        let firstStatus: string | null = null;
+        const run = deps.executor
+          .start(startArgs)
+          .then((r) => { firstStatus = r.status; })
+          .catch(() => { firstStatus = 'error'; });
+
+        const readParked = async (): Promise<ParkedWebhookResponse | undefined> => {
+          const exec = await deps.store.load(executionId);
+          return exec?.state.vars[WEBHOOK_RESPONSE_VAR] as ParkedWebhookResponse | undefined;
+        };
+        const readStatus = async (): Promise<string | undefined> =>
+          (await deps.store.load(executionId))?.status;
+
+        // Let the initial synchronous run settle (to a wait or a terminal state).
+        await run;
+
+        // Poll until a response is parked or the run is no longer in flight.
+        let parked = await readParked();
+        while (parked === undefined && Date.now() < deadline) {
+          const status = await readStatus();
+          if (status === 'done' || status === 'error' || status === 'canceled') break;
+          await new Promise((r) => setTimeout(r, 25));
+          parked = await readParked();
         }
+        if (parked === undefined) parked = await readParked();
 
-        if (outcome === 'timeout') {
+        if (parked) return sendParked(reply, parked);
+
+        // No respond node parked anything. If the run is still parked on a wait
+        // when the clock runs out, that's a sync timeout; otherwise it finished
+        // without a response → a plain ack carrying the final status.
+        const finalStatus = (await readStatus()) ?? firstStatus ?? 'running';
+        if (finalStatus === 'waiting' || finalStatus === 'running') {
           return reply.code(504).send({ ok: false, error: 'sync_timeout', executionId });
         }
-
-        // Read what flow.respondToWebhook parked (if anything).
-        const exec = await deps.store.load(executionId);
-        const parked = exec?.state.vars[WEBHOOK_RESPONSE_VAR] as
-          | ParkedWebhookResponse
-          | undefined;
-
-        if (!parked) {
-          // No respond node ran — acknowledge with the run status.
-          return reply.code(200).send({ ok: true, executionId, status: outcome });
-        }
-        return sendParked(reply, parked);
+        return reply.code(200).send({ ok: true, executionId, status: finalStatus });
       },
     );
   });

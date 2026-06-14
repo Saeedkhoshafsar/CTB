@@ -366,6 +366,40 @@ export class UpdateRouter {
     return true;
   }
 
+  /**
+   * Start a flow from a `collection.recordChanged` trigger (P3.5-T5). Unlike a
+   * Telegram trigger this has NO implicit chat (chatId null — the flow must
+   * resolve a chat itself if it sends messages, NODES.md). The record-write
+   * event bus has already matched the trigger + checked the condition; we just
+   * enter the flow at the trigger node with the pre-built item. Never throws —
+   * the write that caused the event is already committed.
+   */
+  async fireRecordChanged(input: {
+    flow: RouterFlow;
+    entryNodeId: string;
+    botId: string;
+    item: FlowItem;
+  }): Promise<void> {
+    const executionId = this.newId();
+    try {
+      const result = await this.deps.executor.start({
+        executionId,
+        flow: { id: input.flow.id, name: input.flow.name },
+        graph: input.flow.graph,
+        botId: input.botId,
+        chatId: null,
+        userId: null,
+        entry: { nodeId: input.entryNodeId, items: { main: [input.item] } },
+      });
+      this.log(
+        'info',
+        `recordChanged started execution ${executionId} (${input.flow.id}) → ${result.status}`,
+      );
+    } catch (err) {
+      this.log('error', `recordChanged start failed for ${input.flow.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   /** Start a flow execution from a trigger entry, then run post-run hooks. */
   private async startFlow(
     flow: RouterFlow,

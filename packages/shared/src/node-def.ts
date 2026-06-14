@@ -175,6 +175,56 @@ export interface NodeCtx {
     /** Remove tags; returns the updated record. */
     removeTags(tags: string[], tgUserId?: number): Promise<CtbUser>;
   } | null;
+  /**
+   * Collections data layer (data.collection, P3.5-T5). Generic CRUD against a
+   * user-defined Collection of THIS bot, looked up by slug — as domain-agnostic
+   * as `kv` (invariant I2). The host owns the schema, validation (shared
+   * `validateRecord`) and the record-write event bus; the node only sees this
+   * facade. Writes accept `suppressEvents` so a flow can opt out of firing
+   * `collection.recordChanged` (and the host applies a depth-1 loop guard so a
+   * flow's own writes never re-trigger the flow that started it). Null when no
+   * collection store is wired (unit tests) — the node then fails with a clear
+   * error. All ops resolve `slug` within the execution's bot.
+   */
+  collections: {
+    /** Find records by filter → `{ records, total }` (read-time defaults applied). Throws on unknown slug. */
+    find(slug: string, filter: CollectionFilter): Promise<{ records: CollectionRecord[]; total: number }>;
+    /** Read one record by id (null if missing / belongs to another collection). */
+    get(slug: string, recordId: string): Promise<CollectionRecord | null>;
+    /** Count records matching a filter (ignores limit/offset). */
+    count(slug: string, filter: CollectionFilter): Promise<number>;
+    /** Insert a record (validated). Fires recordChanged unless `suppressEvents`. */
+    insert(slug: string, data: Record<string, unknown>, opts?: { suppressEvents?: boolean }): Promise<CollectionRecord>;
+    /** Update a record by id (merge|replace). Fires recordChanged unless suppressed. */
+    update(
+      slug: string,
+      recordId: string,
+      patch: Record<string, unknown>,
+      opts?: { mode?: 'merge' | 'replace'; suppressEvents?: boolean },
+    ): Promise<CollectionRecord>;
+    /** Delete records by id or filter (`confirmMany` guards multi-delete). Returns #deleted. */
+    delete(
+      slug: string,
+      target: { recordId?: string; filter?: CollectionFilter },
+      opts?: { confirmMany?: boolean; suppressEvents?: boolean },
+    ): Promise<number>;
+  } | null;
+}
+
+/** A record as seen by data.collection (the host's RecordPublic, minus host-only ids). */
+export interface CollectionRecord {
+  id: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The filter shape data.collection passes to the host (mirrors shared RecordFilter). */
+export interface CollectionFilter {
+  where?: { field: string; op: string; value?: unknown }[];
+  sort?: { field: string; dir?: 'asc' | 'desc' }[];
+  limit?: number;
+  offset?: number;
 }
 
 export const NodeCategorySchema = z.enum(['trigger', 'telegram', 'flow', 'data', 'ai']);

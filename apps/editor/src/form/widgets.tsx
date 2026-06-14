@@ -21,6 +21,7 @@ import {
 import { CREDENTIAL_TYPE_LABELS } from '@ctb/shared';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCanvas } from '../stores/canvas';
+import { useCollections } from '../stores/collections';
 import { useCredentials } from '../stores/credentials';
 import { useFlows } from '../stores/flows';
 import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
@@ -359,6 +360,52 @@ function CredentialRefWidget({ spec, value, onChange }: WidgetProps) {
         </option>
       ))}
       {orphaned ? <option value={current}>{t('form.credentialRef.missing')}</option> : null}
+    </select>
+  );
+}
+
+// ── collection reference widget (collection-slug selector, P3.5-T5) ───────────
+//
+// Lists this bot's Collections so `data.collection` / `collection.recordChanged`
+// can bind one by SLUG (the value stored is the slug, never an internal id — so
+// templates/exports stay portable). Structural like `flowRef`/`credentialRef`:
+// keyed by the schema's `ctbWidget` annotation, never by node type, so it stays
+// domain-agnostic (invariant I2 — it offers whatever collections exist, with no
+// idea whether they're products or recipes). The bot is taken from the flows
+// store (the editor only ever edits one bot's flows at a time); the collections
+// store is lazily loaded for that bot the first time the widget mounts.
+
+function CollectionRefWidget({ spec, value, onChange }: WidgetProps) {
+  const t = useI18n((s) => s.t);
+  const botId = useFlows((s) => s.botId);
+  const collections = useCollections((s) => s.collections);
+  const loadedBotId = useCollections((s) => s.botId);
+  const loadCollections = useCollections((s) => s.load);
+  useEffect(() => {
+    // Load (or re-load) when the active bot differs from what the store holds.
+    if (botId && loadedBotId !== botId) void loadCollections(botId);
+    // load is stable; re-run only when the bot changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botId, loadedBotId]);
+  const current = typeof value === 'string' ? value : '';
+  // Selected slug no longer present (renamed / different bot) → still show it so
+  // the user sees the dangling reference rather than a silent reset.
+  const orphaned = current !== '' && !collections.some((c) => c.slug === current);
+  return (
+    <select
+      className="collectionref-widget"
+      value={current}
+      onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+    >
+      {!spec.required || current === '' ? (
+        <option value="">{t('form.collectionRef.none')}</option>
+      ) : null}
+      {collections.map((c) => (
+        <option key={c.id} value={c.slug}>
+          {c.name} · {c.slug}
+        </option>
+      ))}
+      {orphaned ? <option value={current}>{t('form.collectionRef.missing')}</option> : null}
     </select>
   );
 }
@@ -844,6 +891,8 @@ export function SchemaWidget(props: WidgetProps) {
       return <FlowRefWidget {...props} />;
     case 'credentialRef':
       return <CredentialRefWidget {...props} />;
+    case 'collectionRef':
+      return <CollectionRefWidget {...props} />;
     case 'boolean':
       return <BooleanWidget {...props} />;
     case 'number':

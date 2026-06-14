@@ -11,10 +11,11 @@ import { builtinNodes, dataUserProfile, registerBuiltinNodes } from '../src/inde
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P3-T5)', () => {
-  it('data.userProfile is registered; registry is now 22 types', () => {
+  it('data.userProfile is registered; registry is now 24 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.userProfile')).toBe(true);
-    expect(builtinNodes.length).toBe(22);
+    // +2 in P3.5-T5: data.collection + collection.recordChanged.
+    expect(builtinNodes.length).toBe(24);
   });
 });
 

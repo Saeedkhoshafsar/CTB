@@ -22,6 +22,7 @@ async function main(): Promise<void> {
 
   const engine = wireEngine({
     db,
+    sqlite,
     ctbSecret: env.CTB_SECRET,
     codeHttpAllowList: (env.CTB_CODE_HTTP_ALLOWLIST ?? '')
       .split(',')

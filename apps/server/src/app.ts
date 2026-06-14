@@ -187,14 +187,22 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);
 
-    // Collections layer (P3.5-T2). Needs the raw sqlite handle for json_extract
-    // queries + computed-index DDL. Definitions are admin-only; records/files
-    // are reachable by the operator role too (enforced by the guard above).
+    // Collections layer (P3.5-T2 + P3.5-T5). Needs the raw sqlite handle for
+    // json_extract queries + computed-index DDL. Definitions are admin-only;
+    // records/files are reachable by the operator role too (guard above).
+    // REUSE the engine's collection store + event bus when wired (P3.5-T5) so a
+    // panel write and a `data.collection` write share one store + one bus — the
+    // recordChanged trigger then fires for BOTH. Falls back to a fresh store.
     if (opts.sqlite) {
-      const collectionStore = new SqliteCollectionStore(opts.db, opts.sqlite);
+      const collectionStore =
+        opts.engine?.collectionStore ?? new SqliteCollectionStore(opts.db, opts.sqlite);
       const fileStore = new SqliteFileStore(opts.db, env.CTB_DATA_DIR);
       registerCollectionsApi(app, { db: opts.db, store: collectionStore });
-      registerRecordsApi(app, { store: collectionStore, fileStore });
+      registerRecordsApi(app, {
+        store: collectionStore,
+        fileStore,
+        ...(opts.engine?.recordEventBus ? { recordEventBus: opts.engine.recordEventBus } : {}),
+      });
     }
   }
 

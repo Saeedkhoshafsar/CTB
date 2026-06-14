@@ -586,6 +586,152 @@ export const UserProfileParamsSchema = z
   });
 export type UserProfileParams = z.infer<typeof UserProfileParamsSchema>;
 
+// ── data.collection (P3.5-T5) ────────────────────────────────────────────────
+
+/** Comparison operators the Collection filter understands (mirrors shared FilterOp). */
+export const CollectionFilterOpSchema = z.enum([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'contains',
+  'in',
+  'exists',
+]);
+export type CollectionFilterOp = z.infer<typeof CollectionFilterOpSchema>;
+
+/**
+ * One `where` row in a data.collection find/update/delete. `field` is a record
+ * field path (json key, dotted ok); `value` is an EXPRESSION (resolved by the
+ * executor before execute()). `in` expects a comma-separated value, `exists`
+ * ignores value (defaults to exists:true).
+ */
+export const CollectionWhereRowSchema = z.object({
+  field: z.string().min(1),
+  op: CollectionFilterOpSchema.default('eq'),
+  value: z.string().default(''),
+});
+export type CollectionWhereRow = z.infer<typeof CollectionWhereRowSchema>;
+
+/** One sort row. */
+export const CollectionSortRowSchema = z.object({
+  field: z.string().min(1),
+  dir: z.enum(['asc', 'desc']).default('asc'),
+});
+export type CollectionSortRow = z.infer<typeof CollectionSortRowSchema>;
+
+/** One `field = value(expression)` mapping row for insert/update. */
+export const CollectionFieldMapRowSchema = z.object({
+  /** Target field name — dotted path allowed (e.g. "address.city"). */
+  field: z.string().min(1),
+  /**
+   * Value expression — `{{ }}` resolved like every other param. COERCED to a
+   * string: the executor re-validates params AFTER resolving expressions, so an
+   * expression that yields a number/boolean (e.g. `{{ $vars.qty }}` → 2) would
+   * otherwise fail this row's `z.string()`. The mapping value is conceptually
+   * always a string template; the node hands it to `validateRecord`, which
+   * coerces it to the record field's real type (number/boolean/…). So coercing
+   * here is correct AND keeps the field types honest at write time.
+   */
+  value: z.coerce.string().default(''),
+});
+export type CollectionFieldMapRow = z.infer<typeof CollectionFieldMapRowSchema>;
+
+/**
+ * data.collection — generic CRUD against a user-defined Collection (NODES.md
+ * §Collection). As domain-agnostic as KV (invariant I2): CTB has no idea
+ * whether records are products, tickets or recipes — the host owns the schema.
+ *
+ * Ops:
+ *  - find    → `where`/`sort`/`limit`/`offset` → ONE output item per record
+ *              (`{ record, record_id }`); no matches → `empty` port
+ *  - get     → `record_id` (expression) → one item, or `empty` port
+ *  - insert  → `fields` rows → `{ record, record_id }`
+ *  - update  → `record_id` OR `where` (first match) + `fields` rows; `mode`
+ *              merge|replace for group fields → `{ record, record_id }`
+ *  - delete  → `record_id` OR `where` + `confirm_many` guard → `{ deleted: n }`
+ *  - count   → `where` → `{ count }`
+ *
+ * `suppress_events`: writes from this node do not fire `collection.recordChanged`.
+ */
+export const CollectionParamsSchema = z
+  .object({
+    /**
+     * Collection slug (selected from this bot's collections in the editor via a
+     * dedicated selector — the `collectionRef` `ctbWidget` annotation, mirroring
+     * how `flow_id`/`credentialId` surface flow/credential pickers).
+     */
+    collection: z.string().min(1).meta({ ctbWidget: 'collectionRef' }),
+    operation: z.enum(['find', 'get', 'insert', 'update', 'delete', 'count']).default('find'),
+    /** find/update/delete: where rows. */
+    where: z.array(CollectionWhereRowSchema).default([]),
+    /** find: sort rows. */
+    sort: z.array(CollectionSortRowSchema).default([]),
+    /** find: max rows (expression-free; positive int). */
+    limit: z.number().int().positive().max(1000).optional(),
+    /** find: skip N rows. */
+    offset: z.number().int().nonnegative().optional(),
+    /** get/update/delete: target record id (expression). */
+    record_id: z.string().optional(),
+    /** insert/update: field mapping rows. */
+    fields: z.array(CollectionFieldMapRowSchema).default([]),
+    /** update: `merge` (shallow top-level merge, default) | `replace` (whole doc). */
+    mode: z.enum(['merge', 'replace']).default('merge'),
+    /** delete: refuse to delete more than one row unless set. */
+    confirm_many: z.boolean().default(false),
+    /** Writes don't fire collection.recordChanged. */
+    suppress_events: z.boolean().default(false),
+  })
+  .superRefine((p, ctx) => {
+    if (p.operation === 'get' && (p.record_id === undefined || p.record_id === '')) {
+      ctx.addIssue({ code: 'custom', message: 'op "get" requires record_id', path: ['record_id'] });
+    }
+    if (p.operation === 'insert' && p.fields.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "insert" requires at least one field', path: ['fields'] });
+    }
+    if (p.operation === 'update') {
+      if ((p.record_id === undefined || p.record_id === '') && p.where.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires record_id or where', path: ['record_id'] });
+      }
+      if (p.fields.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one field', path: ['fields'] });
+      }
+    }
+    if (p.operation === 'delete' && (p.record_id === undefined || p.record_id === '') && p.where.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "delete" requires record_id or where', path: ['record_id'] });
+    }
+  });
+export type CollectionParams = z.infer<typeof CollectionParamsSchema>;
+
+// ── collection.recordChanged trigger (P3.5-T5) ───────────────────────────────
+
+/**
+ * collection.recordChanged — fires a flow when a record is created/updated/
+ * deleted (from the admin panel, the records API, or another flow — unless that
+ * write set `suppress_events`). NODES.md §Record Changed Trigger.
+ *
+ * - `events`: subset of created|updated|deleted (≥1).
+ * - `field_filter` (updated only): only fire if one of these fields changed.
+ * - `condition` (optional): expression on the new record; fire only when truthy.
+ *
+ * The MATCH happens host-side (the record-write event bus scans active flows);
+ * by the time execute() runs the item is already built, so the node is a typed
+ * pass-through (like tg.trigger).
+ */
+export const RecordChangedParamsSchema = z.object({
+  /** Collection slug this trigger watches (selected via the `collectionRef` widget). */
+  collection: z.string().min(1).meta({ ctbWidget: 'collectionRef' }),
+  /** Which write kinds fire the trigger (at least one). */
+  events: z.array(z.enum(['created', 'updated', 'deleted'])).min(1).default(['created']),
+  /** updated-only: only fire when one of these fields actually changed. */
+  field_filter: z.array(z.string().min(1)).default([]),
+  /** Optional guard expression on the new record (e.g. `{{ $json.record.status === 'shipped' }}`). */
+  condition: z.string().optional(),
+});
+export type RecordChangedParams = z.infer<typeof RecordChangedParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

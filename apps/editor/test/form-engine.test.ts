@@ -96,6 +96,32 @@ describe('schema resolver (against real /api/node-types output)', () => {
     });
   });
 
+  it('data.collection: collection selector + structural where/sort/field rows (P3.5-T5)', () => {
+    // The `collection` slug param carries the ctbWidget:'collectionRef' annotation
+    // (a dedicated picker), while where/sort/fields are arrays-of-objects that the
+    // generic `rows` widget renders — no node-type special-casing.
+    expect(widgetsOf('data.collection')).toMatchObject({
+      collection: 'collectionRef',
+      operation: 'select',
+      where: 'rows',
+      sort: 'rows',
+      fields: 'rows',
+      mode: 'select',
+      record_id: 'text',
+      confirm_many: 'boolean',
+      suppress_events: 'boolean',
+    });
+  });
+
+  it('collection.recordChanged: collection selector + events/field_filter rows (P3.5-T5)', () => {
+    expect(widgetsOf('collection.recordChanged')).toMatchObject({
+      collection: 'collectionRef',
+      events: 'rows',
+      field_filter: 'rows',
+      condition: 'text',
+    });
+  });
+
   it('structural detectors are not fooled by lookalikes', () => {
     expect(isKeyboardSchema({ anyOf: [{ type: 'string' }, { type: 'number' }] })).toBe(false);
     expect(

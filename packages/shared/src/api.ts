@@ -152,6 +152,18 @@ export const ImportTemplateBodySchema = z.object({
 });
 export type ImportTemplateBody = z.infer<typeof ImportTemplateBodySchema>;
 
+/**
+ * POST /api/collection-packs/import (P3.5-T6) — install a starter pack by its
+ * stable id: create every collection in the pack (skipping ones whose slug is
+ * already taken) then import every flow. One bot-scoped call sets up the whole
+ * "browse → order → notify" demo.
+ */
+export const ImportPackBodySchema = z.object({
+  botId: z.string().min(1),
+  packId: z.string().min(1),
+});
+export type ImportPackBody = z.infer<typeof ImportPackBodySchema>;
+
 /** What GET /api/flows returns per row. */
 export interface FlowPublic {
   id: string;

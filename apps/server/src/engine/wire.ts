@@ -13,20 +13,38 @@ import { Executor, NodeRegistry, type CodeRunner, type ExecutorServices, type St
 import { registerBuiltinNodes, SUBFLOW_RETURN_VAR } from '@ctb/nodes';
 import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import { randomUUID } from 'node:crypto';
-import { credentialAuthHeaders, type CredentialData, type FlowItem, type NodeCtx } from '@ctb/shared';
+import {
+  credentialAuthHeaders,
+  type CollectionFilter,
+  type CredentialData,
+  type FlowItem,
+  type NodeCtx,
+  type RecordFilter,
+} from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
 import { credentials as credentialsTable, execLogs, kvStore } from '../db/schema';
 import { decrypt, deriveKey } from '../lib/crypto';
+import type BetterSqlite3 from 'better-sqlite3';
 import { TelegramGateway } from '../telegram/gateway';
+import { SqliteCollectionStore } from '../collections/store';
 import { SqliteFlowSource } from './flow-source';
 import { SqlitePendingTriggerStore } from './pending-store';
+import { RecordEventBus } from './record-events';
 import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
 import { SqliteUserStore } from './user-store';
 
 export interface WireOptions {
   db: Db;
+  /**
+   * Raw better-sqlite3 handle (P3.5-T5) — the Collections store needs it for the
+   * json_extract filter queries + computed-index DDL Drizzle can't express. When
+   * provided, the engine owns the collection store, exposes it on `Engine` (so
+   * the records API shares the SAME instance), wires the `data.collection`
+   * capability and the record-write event bus. Omitted ⇒ ctx.collections is null.
+   */
+  sqlite?: BetterSqlite3.Database;
   ctbSecret: string;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
   clock?: () => Date;
@@ -60,6 +78,14 @@ export interface Engine {
   flowSource: SqliteFlowSource;
   /** Per-bot end-user store (P3-T5) — also backs the Users REST API. */
   userStore: SqliteUserStore;
+  /**
+   * Collections data layer (P3.5-T5) — present only when `sqlite` was passed.
+   * The records/collections REST APIs reuse THIS instance so panel writes and
+   * `data.collection` writes share one store + one event bus.
+   */
+  collectionStore?: SqliteCollectionStore;
+  /** Record-write event bus (P3.5-T5) — present only when `sqlite` was passed. */
+  recordEventBus?: RecordEventBus;
 }
 
 /** DB-backed kv capability. Scope ids: user→tg user (set per-ctx later), flow→flowId, bot→''. */
@@ -253,12 +279,20 @@ export function wireEngine(opts: WireOptions): Engine {
     }
   };
 
+  // Collections data layer (P3.5-T5) — only when the raw sqlite handle is given.
+  const collectionStore = opts.sqlite
+    ? new SqliteCollectionStore(opts.db, opts.sqlite, clock)
+    : null;
+
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
   // Forward refs: the subflow capability needs executor + flowSource, but those
   // are built FROM `services` — so the closure reads them lazily after wiring.
   let executorRef: Executor | null = null;
   let flowSourceRef: SqliteFlowSource | null = null;
+  // The record-write event bus is built AFTER the router (it needs it), but the
+  // `collections` capability closes over it lazily — same forward-ref pattern.
+  let recordEventBusRef: RecordEventBus | null = null;
   const maxSubFlowDepth = opts.maxSubFlowDepth ?? DEFAULT_MAX_SUBFLOW_DEPTH;
   const services: ExecutorServices = {
     kv: (botId) => {
@@ -394,6 +428,113 @@ export function wireEngine(opts: WireOptions): Engine {
         },
       };
     },
+    // data.collection (P3.5-T5). Per-bot + per-flow factory: the flowId lets the
+    // event bus stamp writes with their origin so the depth-1 loop guard works
+    // (a flow's own writes don't re-trigger it). The node sees only this facade
+    // — the host owns the schema, validation and the event bus (invariant I6).
+    // Absent when no sqlite handle was wired → ctx.collections is null. Spread
+    // conditionally so exactOptionalPropertyTypes never sees an explicit
+    // `collections: undefined`.
+    ...(collectionStore
+      ? {
+          collections: (botId: string, flowId: string): NonNullable<NodeCtx['collections']> => {
+          const cs = collectionStore;
+          /** Resolve a slug → collection id within THIS bot (throws if unknown). */
+          const requireId = (slug: string): string => {
+            const col = cs.getBySlug(botId, slug);
+            if (!col) throw new Error(`collection not found: ${slug}`);
+            return col.id;
+          };
+          /** Fire the bus after a write (flow source → origin loop guard). */
+          const fire = async (
+            collectionId: string,
+            kind: 'created' | 'updated' | 'deleted',
+            record: Record<string, unknown>,
+            recordId: string,
+            previous?: Record<string, unknown>,
+          ): Promise<void> => {
+            await recordEventBusRef?.emit({
+              collectionId,
+              kind,
+              record,
+              recordId,
+              source: 'flow',
+              originFlowId: flowId,
+              ...(previous !== undefined ? { previous } : {}),
+            });
+          };
+          // The capability's CollectionFilter types `op` loosely (string) since
+          // it crosses the node boundary; the node only emits valid FilterOps,
+          // and the store re-checks field paths. Narrow it for the store call.
+          const toStoreFilter = (f: CollectionFilter): Partial<RecordFilter> =>
+            f as unknown as Partial<RecordFilter>;
+          return {
+            async find(slug, filter) {
+              const res = cs.find(requireId(slug), toStoreFilter(filter));
+              return {
+                records: res.records.map((r) => ({
+                  id: r.id,
+                  data: r.data,
+                  createdAt: r.createdAt,
+                  updatedAt: r.updatedAt,
+                })),
+                total: res.total,
+              };
+            },
+            async get(slug, recordId) {
+              const rec = cs.getRecord(recordId);
+              const col = cs.getBySlug(botId, slug);
+              if (!rec || !col || rec.collectionId !== col.id) return null;
+              return { id: rec.id, data: rec.data, createdAt: rec.createdAt, updatedAt: rec.updatedAt };
+            },
+            async count(slug, filter) {
+              return cs.count(requireId(slug), toStoreFilter(filter));
+            },
+            async insert(slug, data, options) {
+              const id = requireId(slug);
+              const rec = cs.insert(id, data, 'flow');
+              if (!options?.suppressEvents) await fire(id, 'created', rec.data, rec.id);
+              return { id: rec.id, data: rec.data, createdAt: rec.createdAt, updatedAt: rec.updatedAt };
+            },
+            async update(slug, recordId, patch, options) {
+              const id = requireId(slug);
+              const before = cs.getRecord(recordId);
+              const rec = cs.update(recordId, patch, {
+                ...(options?.mode !== undefined ? { mode: options.mode } : {}),
+                updatedBy: 'flow',
+              });
+              if (!options?.suppressEvents) {
+                await fire(id, 'updated', rec.data, rec.id, before?.data);
+              }
+              return { id: rec.id, data: rec.data, createdAt: rec.createdAt, updatedAt: rec.updatedAt };
+            },
+            async delete(slug, target, options) {
+              const id = requireId(slug);
+              let deletedRecords: { id: string; data: Record<string, unknown> }[] = [];
+              if (target.recordId !== undefined) {
+                const rec = cs.getRecord(target.recordId);
+                if (rec && rec.collectionId === id) {
+                  cs.deleteRecord(target.recordId);
+                  deletedRecords = [{ id: rec.id, data: rec.data }];
+                }
+              } else {
+                const matches = cs.find(id, toStoreFilter(target.filter ?? {}));
+                if (matches.records.length > 1 && !options?.confirmMany) {
+                  throw new Error(`refusing to delete ${matches.records.length} records without confirmMany`);
+                }
+                for (const rec of matches.records) {
+                  if (cs.deleteRecord(rec.id)) deletedRecords.push({ id: rec.id, data: rec.data });
+                }
+              }
+              if (!options?.suppressEvents) {
+                for (const rec of deletedRecords) await fire(id, 'deleted', rec.data, rec.id);
+              }
+              return deletedRecords.length;
+            },
+          };
+          },
+        }
+      : {}),
     log: stepLogger,
     clock,
   };
@@ -440,5 +581,23 @@ export function wireEngine(opts: WireOptions): Engine {
 
   gateway.setHandler((event) => router.handle(event));
 
-  return { gateway, router, executor, store, registry, flowSource, userStore };
+  // Record-write event bus (P3.5-T5) — only when the collection store exists.
+  // Built after the router (it needs it); resolve the forward ref the
+  // `collections` capability closes over.
+  const recordEventBus = collectionStore
+    ? new RecordEventBus({ store: collectionStore, flowSource, router, log })
+    : undefined;
+  recordEventBusRef = recordEventBus ?? null;
+
+  return {
+    gateway,
+    router,
+    executor,
+    store,
+    registry,
+    flowSource,
+    userStore,
+    ...(collectionStore ? { collectionStore } : {}),
+    ...(recordEventBus ? { recordEventBus } : {}),
+  };
 }

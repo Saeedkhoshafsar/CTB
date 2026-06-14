@@ -23,10 +23,12 @@ import { flowIf } from './flow/if';
 import { flowLoop } from './flow/loop';
 import { flowManualTrigger } from './flow/manual-trigger';
 import { flowMerge } from './flow/merge';
+import { flowRespondToWebhook } from './flow/respond-to-webhook';
 import { flowReturn } from './flow/return';
 import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
+import { webhookTrigger } from './flow/webhook-trigger';
 import { tgAnswerCallback } from './tg/answer-callback';
 import { tgChatAction } from './tg/chat-action';
 import { tgDeleteMessage } from './tg/delete-message';
@@ -48,10 +50,16 @@ export { flowIf } from './flow/if';
 export { flowLoop, LOOP_STATE_PREFIX } from './flow/loop';
 export { flowManualTrigger } from './flow/manual-trigger';
 export { flowMerge, MERGE_STATE_PREFIX } from './flow/merge';
+export {
+  flowRespondToWebhook,
+  WEBHOOK_RESPONSE_VAR,
+  type ParkedWebhookResponse,
+} from './flow/respond-to-webhook';
 export { flowReturn, SUBFLOW_RETURN_VAR } from './flow/return';
 export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
+export { webhookTrigger } from './flow/webhook-trigger';
 export { tgAnswerCallback } from './tg/answer-callback';
 export { tgChatAction } from './tg/chat-action';
 export { tgDeleteMessage } from './tg/delete-message';
@@ -69,6 +77,7 @@ export const builtinNodes: NodeDef<never>[] = [
   tgTrigger,
   flowManualTrigger,
   collectionRecordChanged,
+  webhookTrigger,
   tgSendMessage,
   tgWaitForReply,
   tgMenu,
@@ -90,6 +99,7 @@ export const builtinNodes: NodeDef<never>[] = [
   flowStopError,
   flowExecuteSubFlow,
   flowReturn,
+  flowRespondToWebhook,
 ] as NodeDef<never>[];
 
 /** Register every built-in node on a registry (server boot, tests). */

@@ -2,18 +2,33 @@
 
 > Completed in Phase 4. This stub freezes the shapes early so nothing else builds against guesses.
 
-## Inbound: Webhook Trigger
+## Inbound: Webhook Trigger ✅ P4-T1
 
 ```
 POST /hooks/flow/:flowId/:secret
 Content-Type: application/json
 
-{ ...arbitrary payload... }   → becomes $json in the flow
+{ ...arbitrary payload... }   → becomes $json.body in the flow
 ```
 
-- **Async mode (default):** responds `202 {"ok":true,"executionId":"..."}` immediately.
-- **Sync mode:** holds the request until a `Respond to Webhook` node runs (or timeout → `504`).
-- Optional `X-CTB-Signature: hmac-sha256(body, secret2)` verification.
+The trigger item's `$json` is `{ body, headers, query, method }` (the parsed JSON
+body, request headers with `authorization`/`cookie`/`x-ctb-signature` redacted,
+the query object, and the HTTP method).
+
+- **`:secret`** — an unguessable per-flow path secret derived from `CTB_SECRET`
+  (`flowWebhookSecret(flowId)`, base64url HMAC; no DB column, stable across
+  restarts). A mismatch — or an unknown flow id — returns `404` (no existence
+  leak). `GET /api/flows/:id/webhook` returns the full URL + HMAC key for wiring.
+- **Async mode (default):** responds `202 {"ok":true,"executionId":"..."}`
+  immediately; the flow runs out-of-band.
+- **Sync mode:** holds the request until a `Respond to Webhook` node runs (it
+  parks `{status, headers, body}`, sent back as the HTTP response), or the
+  trigger's `sync_timeout` (1–120s) elapses → `504`. No respond node ran →
+  `200 {"ok":true,"executionId","status"}`.
+- **Optional HMAC:** when the trigger's `verify_signature` is on, the request
+  must carry `X-CTB-Signature: sha256=<hex>` = `HMAC-SHA256(rawBody, hmacKey)`
+  where `hmacKey = flowWebhookHmacKey(flowId)` (a SEPARATE derivation from the
+  path secret). Missing/invalid → `401`.
 
 ## Inbound: REST API (token auth)
 

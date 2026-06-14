@@ -26,6 +26,9 @@ const TRIGGER_TYPES: ReadonlySet<string> = new Set([
   // P3.5-T5: a record-write trigger is a flow entry point too — the event bus
   // starts the flow at this node (chatId=null) when a matching record changes.
   'collection.recordChanged',
+  // P4-T1: an inbound HTTP webhook is a flow entry point — the webhook route
+  // starts the flow at this node (chatId=null) when a signed request arrives.
+  'webhook.trigger',
 ]);
 
 /** Walk a Zod issue path into the raw params object (tolerant of misses). */

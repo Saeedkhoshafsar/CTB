@@ -732,6 +732,66 @@ export const RecordChangedParamsSchema = z.object({
 });
 export type RecordChangedParams = z.infer<typeof RecordChangedParamsSchema>;
 
+// ── webhook.trigger (P4-T1) ──────────────────────────────────────────────────
+
+/**
+ * webhook.trigger — inbound HTTP entry point (NODES.md §Webhook Trigger,
+ * PROTOCOL.md §Inbound). `POST /hooks/flow/:flowId/:secret` → the request
+ * body/headers/query/method become the first item's `$json`.
+ *
+ * Every param here is a HOST-side directive consumed by the webhook ROUTE
+ * (apps/server/src/triggers/webhook.ts), not a runtime template — by the time
+ * the node's execute() runs the host has already authenticated the request and
+ * built the item, so the node is a pure pass-through (like tg.trigger).
+ *
+ * - `mode`: async → the route replies `202 {ok,executionId}` and runs the flow
+ *   out-of-band; sync → the route holds the connection until a
+ *   `flow.respondToWebhook` node runs (or `sync_timeout` elapses → 504).
+ * - `verify_signature`: require an `X-CTB-Signature: sha256=<hex>` HMAC over the
+ *   raw body (keyed by a per-flow secret DERIVED from CTB_SECRET) → 401 if bad.
+ * - `sync_timeout`: seconds the sync request may wait (1–120).
+ * - `target_chat`: doc/UX-only expression naming which chat the Telegram nodes
+ *   in this flow talk to (e.g. `{{ $json.chat_id }}`); resolved by those nodes,
+ *   never by the route, so it is a raw param the executor leaves untouched.
+ */
+export const WebhookTriggerParamsSchema = z.object({
+  mode: z.enum(['async', 'sync']).default('async'),
+  verify_signature: z.boolean().default(false),
+  sync_timeout: z.number().int().min(1).max(120).default(30),
+  target_chat: z.string().optional(),
+});
+export type WebhookTriggerParams = z.infer<typeof WebhookTriggerParamsSchema>;
+
+// ── flow.respondToWebhook (P4-T1) ────────────────────────────────────────────
+
+/**
+ * flow.respondToWebhook — produces the HTTP response for a SYNC Webhook Trigger
+ * (NODES.md §Respond to Webhook). It parks `{status,bodyType,body,headers}`
+ * under a reserved `$vars` key (the EXACT mechanism flow.return uses) and passes
+ * its input through on `main` — it is NOT terminal, so the flow can keep going
+ * after answering. The webhook route reads the parked value once the run
+ * reaches a terminal/waiting status.
+ *
+ * - `body_type`: json → the body is sent as `application/json` (must be valid
+ *   JSON text, or it is sent verbatim as text); text → `text/plain`.
+ * - `headers`: extra response headers (name/value rows). A `Content-Type` row
+ *   overrides the body_type default.
+ */
+export const RespondHeaderRowSchema = z.object({
+  name: z.string().min(1),
+  value: z.string().default(''),
+});
+export type RespondHeaderRow = z.infer<typeof RespondHeaderRowSchema>;
+
+export const FlowRespondToWebhookParamsSchema = z.object({
+  status: z.number().int().min(100).max(599).default(200),
+  body_type: z.enum(['json', 'text']).default('json'),
+  /** Response body (expression-aware). Empty = no body. */
+  body: z.string().default(''),
+  headers: z.array(RespondHeaderRowSchema).default([]),
+});
+export type FlowRespondToWebhookParams = z.infer<typeof FlowRespondToWebhookParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

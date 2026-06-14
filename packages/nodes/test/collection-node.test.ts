@@ -23,11 +23,12 @@ import {
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P3.5-T5)', () => {
-  it('registers both new nodes; registry is now 24 types', () => {
+  it('registers both new nodes; registry is now 26 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.collection')).toBe(true);
     expect(reg.has('collection.recordChanged')).toBe(true);
-    expect(builtinNodes.length).toBe(24);
+    // +2 in P4-T1: webhook.trigger + flow.respondToWebhook.
+    expect(builtinNodes.length).toBe(26);
   });
 
   it('data.collection has main + empty ports; recordChanged is a trigger', () => {

@@ -20,9 +20,11 @@ Starts a flow from a Telegram update.
 - **Emits:** `{ json: { text, user{id,first_name,last_name,username,lang}, chat{id,type}, message_id, payload?, raw } }`
 - Multiple Telegram Triggers per bot allowed; most-specific match wins (command > button > text-pattern > any_message). Conflicts shown in editor.
 
-### Webhook Trigger `+P4`
-- `POST /hooks/flow/:flowId/:secret`; body → `$json`. Modes: async (202 immediately) | sync (wait for `Respond to Webhook` node, with timeout).
-- Param `target_chat`: expression resolving which chat the conversation nodes talk to (e.g. `{{ $json.chat_id }}`) — required if flow contains Telegram nodes.
+### Webhook Trigger `+P4` ✅ (`webhook.trigger`)
+- `POST /hooks/flow/:flowId/:secret`; request → `$json = { body, headers, query, method }`. Modes: async (202 + `executionId` immediately) | sync (wait for `Respond to Webhook` node, bounded by `sync_timeout` 1–120s → 504 on overrun; no respond node → 200 ack).
+- Auth: unguessable per-flow path `:secret` derived from `CTB_SECRET` (no DB column). Optional HMAC: `verify_signature` requires `X-CTB-Signature: sha256=<hex>` over the raw body. See PROTOCOL.md §Inbound.
+- A pure pass-through (route does the work host-side, like `collection.recordChanged`). Webhook-started runs have no implicit chat (`chatId=null`).
+- Param `target_chat`: expression resolving which chat the conversation nodes talk to (e.g. `{{ $json.body.chat_id }}`) — used by the Telegram nodes themselves, not the route (a raw param the executor never `{{ }}`-resolves).
 
 ### Schedule Trigger `+P4`
 - `cron` expression + timezone. Optional `for_each_user` mode: emit one item per known bot user (rate-limited fan-out).
@@ -117,8 +119,9 @@ Sends a message with inline buttons; each button is an **output port**.
 ### Stop & Error `M`
 - End execution with status error + message (visible in execution log; optional message to user).
 
-### Respond to Webhook `+P4`
-- Produces the HTTP response for a sync Webhook Trigger: status, headers, body (expression).
+### Respond to Webhook `+P4` ✅ (`flow.respondToWebhook`)
+- Produces the HTTP response for a sync Webhook Trigger: `status`, `body_type` (json | text), `body` (expression), header rows. A `Content-Type` header row overrides the body_type default.
+- Parks `{status, bodyType, body, headers}` under the reserved `$vars` key `__webhook_response__` (the same handshake `flow.return` uses); the route reads it after the run. NOT terminal — items pass through on `main`, so the flow can keep going (e.g. send a Telegram confirmation) after replying.
 
 ---
 

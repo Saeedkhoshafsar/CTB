@@ -11,6 +11,7 @@
  */
 import type { NodeRegistry } from '@ctb/core';
 import type { NodeDef } from '@ctb/shared';
+import { aiLlmChat } from './ai/llm-chat';
 import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
@@ -39,6 +40,7 @@ import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
 
+export { aiLlmChat, AI_MEMORY_KEY_PREFIX } from './ai/llm-chat';
 export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
@@ -103,6 +105,7 @@ export const builtinNodes: NodeDef<never>[] = [
   flowExecuteSubFlow,
   flowReturn,
   flowRespondToWebhook,
+  aiLlmChat,
 ] as NodeDef<never>[];
 
 /** Register every built-in node on a registry (server boot, tests). */

@@ -27,8 +27,8 @@ describe('registry (P3.5-T5)', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.collection')).toBe(true);
     expect(reg.has('collection.recordChanged')).toBe(true);
-    // +2 in P4-T1: webhook.trigger + flow.respondToWebhook.
-    expect(builtinNodes.length).toBe(27);
+    // +2 in P4-T1: webhook.trigger + flow.respondToWebhook; +1 in P5-T1: ai.llmChat.
+    expect(builtinNodes.length).toBe(28);
   });
 
   it('data.collection has main + empty ports; recordChanged is a trigger', () => {

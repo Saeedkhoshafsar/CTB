@@ -40,11 +40,29 @@ export const HttpBasicAuthSchema = z.object({
 });
 export type HttpBasicAuth = z.infer<typeof HttpBasicAuthSchema>;
 
+/**
+ * OpenAI-compatible API credential (P5-T1). One shape serves OpenAI, OpenRouter,
+ * Anthropic-via-proxy, Groq, Together, a local LM-Studio/Ollama gateway… — all
+ * of them speak the same `POST {baseUrl}/chat/completions` protocol, so the only
+ * thing that varies is the base URL and the key. The host (`ctx.ai`) appends the
+ * standard path; the user supplies the ROOT (e.g. `https://api.openai.com/v1`).
+ * Both halves are encrypted at rest (invariant I7) and never reach node code.
+ */
+export const OpenAiApiSchema = z.object({
+  type: z.literal('openAiApi'),
+  /** API root, WITHOUT a trailing `/chat/completions` (e.g. `https://api.openai.com/v1`). */
+  baseUrl: z.string().url().max(2048),
+  /** The bearer key sent as `Authorization: Bearer <apiKey>`. */
+  apiKey: z.string().min(1),
+});
+export type OpenAiApi = z.infer<typeof OpenAiApiSchema>;
+
 /** The encrypted half of every credential — discriminated by `type`. */
 export const CredentialDataSchema = z.discriminatedUnion('type', [
   HttpHeaderAuthSchema,
   HttpBearerAuthSchema,
   HttpBasicAuthSchema,
+  OpenAiApiSchema,
 ]);
 export type CredentialData = z.infer<typeof CredentialDataSchema>;
 
@@ -52,6 +70,7 @@ export const CredentialTypeSchema = z.enum([
   'httpHeaderAuth',
   'httpBearerAuth',
   'httpBasicAuth',
+  'openAiApi',
 ]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
@@ -103,6 +122,7 @@ export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   httpHeaderAuth: 'HTTP Header Auth',
   httpBearerAuth: 'HTTP Bearer Token',
   httpBasicAuth: 'HTTP Basic Auth',
+  openAiApi: 'OpenAI-compatible API',
 };
 
 /**
@@ -122,6 +142,8 @@ export function credentialHint(data: CredentialData): string {
       return `Bearer ${mask(data.token)}`;
     case 'httpBasicAuth':
       return `${data.username}:${mask(data.password)}`;
+    case 'openAiApi':
+      return `${data.baseUrl} · ${mask(data.apiKey)}`;
   }
 }
 
@@ -153,5 +175,7 @@ export function credentialAuthHeaders(data: CredentialData): Record<string, stri
     case 'httpBasicAuth': {
       return { authorization: `Basic ${base64Utf8(`${data.username}:${data.password}`)}` };
     }
+    case 'openAiApi':
+      return { authorization: `Bearer ${data.apiKey}` };
   }
 }

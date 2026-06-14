@@ -14,7 +14,7 @@ import { ApiError, ClientValidationError } from '../api/client';
 import { useI18n } from '../i18n';
 import { useCredentials } from '../stores/credentials';
 
-const TYPES: CredentialType[] = ['httpHeaderAuth', 'httpBearerAuth', 'httpBasicAuth'];
+const TYPES: CredentialType[] = ['httpHeaderAuth', 'httpBearerAuth', 'httpBasicAuth', 'openAiApi'];
 
 export function CredentialsPage() {
   const t = useI18n((s) => s.t);
@@ -29,6 +29,8 @@ export function CredentialsPage() {
   const [token, setToken] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
+  const [apiKey, setApiKey] = useState('');
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -44,6 +46,8 @@ export function CredentialsPage() {
     setToken('');
     setUsername('');
     setPassword('');
+    setBaseUrl('https://api.openai.com/v1');
+    setApiKey('');
   };
 
   const buildData = (): CredentialData => {
@@ -54,6 +58,8 @@ export function CredentialsPage() {
         return { type, token };
       case 'httpBasicAuth':
         return { type, username, password };
+      case 'openAiApi':
+        return { type, baseUrl, apiKey };
     }
   };
 
@@ -170,6 +176,31 @@ export function CredentialsPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </label>
+            </>
+          )}
+
+          {type === 'openAiApi' && (
+            <>
+              <label>
+                <span className="label-text">{t('credentials.field.baseUrl')}</span>
+                <input
+                  dir="ltr"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.apiKey')}</span>
+                <input
+                  dir="ltr"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
                   required
                 />
               </label>

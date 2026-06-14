@@ -48,11 +48,14 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.type.httpHeaderAuth': 'HTTP Header (API key)',
   'credentials.type.httpBearerAuth': 'Bearer token',
   'credentials.type.httpBasicAuth': 'Basic auth',
+  'credentials.type.openAiApi': 'OpenAI-compatible API',
   'credentials.field.headerName': 'Header name',
   'credentials.field.headerValue': 'Header value',
   'credentials.field.token': 'Token',
   'credentials.field.username': 'Username',
   'credentials.field.password': 'Password',
+  'credentials.field.baseUrl': 'Base URL',
+  'credentials.field.apiKey': 'API key',
   'credentials.secret.hint':
     'The secret value is sent once and stored encrypted; it is never shown again. To change it, delete and recreate.',
   'credentials.create': 'Create credential',
@@ -306,6 +309,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.webhook.trigger.label': 'Webhook (Trigger)',
   'nodes.schedule.trigger.label': 'Schedule (Trigger)',
   'nodes.flow.respondToWebhook.label': 'Respond to Webhook',
+  'nodes.ai.llmChat.label': 'AI Chat (LLM)',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -335,6 +339,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.webhook.trigger': 'Starts this flow from an inbound HTTP POST (e.g. from n8n or any service). The request body, headers and query become $json. Async replies 202 immediately; sync waits for a Respond to Webhook node. The URL carries an unguessable per-flow secret; optional HMAC signature check.',
   'nodeDesc.flow.respondToWebhook': 'Sends the HTTP response back to a synchronous Webhook Trigger: status, headers and body (as JSON or text). Items pass through so the flow can keep going after replying.',
   'nodeDesc.schedule.trigger': 'Starts this flow on a schedule (cron expression, evaluated in a chosen timezone). Optional "for each user" mode fans out one run per known bot user — each run defaults to that user\'s chat — rate-limited so a large user base is paced. $json carries the fire time and cron.',
+  'nodeDesc.ai.llmChat': 'Calls a Large Language Model: sends a system prompt and the user message, then puts the reply in $json. The provider is chosen by selecting an OpenAI-compatible credential (base URL + key) — works with OpenAI, OpenRouter, an Anthropic proxy or a local model. Turn on "memory = conversation" to remember the last few turns per chat so the bot keeps context.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -553,6 +558,14 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.data.userProfile.mode': '“Merge” updates only the given fields; “Replace” overwrites the whole profile with just these fields.',
   'paramDesc.data.userProfile.tags': 'Tags to add or remove (duplicates are removed automatically).',
   'paramDesc.data.userProfile.save_as': 'Field in $json where the user record lands. Empty = user',
+  // ai.llmChat params (P5-T1)
+  'paramDesc.model': 'Model name as the provider expects it — e.g. gpt-4o-mini or llama-3.1-8b.',
+  'paramDesc.system_prompt': 'A system instruction steering the model\'s behaviour and tone (optional). Supports expressions.',
+  'paramDesc.user_prompt': 'The message sent to the model — usually {{ $json.text }} (the user\'s text).',
+  'paramDesc.temperature': 'Creativity 0–2. Lower = more precise and stable, higher = more creative. Empty = the model\'s default.',
+  'paramDesc.max_tokens': 'Hard cap on the reply length (tokens). Empty = the provider\'s default.',
+  'paramDesc.memory': '"None" starts fresh each time; "conversation" remembers the last few turns of THIS chat.',
+  'paramDesc.memory_window': 'How many past turns (question+answer) to replay to the model when memory is on.',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -651,6 +664,8 @@ export const en: Record<keyof typeof fa, string> = {
   'option.data.userProfile.op.remove_tags': 'Remove tags',
   'option.data.userProfile.mode.merge': 'Merge (only given fields)',
   'option.data.userProfile.mode.replace': 'Replace whole profile',
+  'option.memory.none': 'No memory',
+  'option.memory.conversation': 'Conversation memory (last few turns)',
 
   'executions.title': 'Executions',
 

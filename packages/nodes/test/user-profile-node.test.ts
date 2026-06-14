@@ -16,7 +16,8 @@ describe('registry (P3-T5)', () => {
     expect(reg.has('data.userProfile')).toBe(true);
     // +2 in P3.5-T5: data.collection + collection.recordChanged.
     // +2 in P4-T1: webhook.trigger + flow.respondToWebhook.
-    expect(builtinNodes.length).toBe(27);
+    // +1 in P5-T1: ai.llmChat.
+    expect(builtinNodes.length).toBe(28);
   });
 });
 

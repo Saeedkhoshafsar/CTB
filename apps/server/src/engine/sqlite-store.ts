@@ -41,11 +41,26 @@ function rowToExecution(row: Row): Execution {
   });
 }
 
+/** Fired when an execution reaches a terminal status (done/error) — P4-T4. */
+export type ExecutionFinishedListener = (execution: Execution) => void;
+
 export class SqliteExecutionStore implements ExecutionStore {
+  /** Set by the host AFTER construction (drives outbound execution.* webhooks). */
+  private onFinished: ExecutionFinishedListener | null = null;
+
   constructor(
     private readonly db: Db,
     private readonly clock: () => Date = () => new Date(),
   ) {}
+
+  /**
+   * Register a callback fired once per execution when `save()` transitions it
+   * to a TERMINAL status (`done` → execution.finished, `error` →
+   * execution.failed). Best-effort: a throwing listener never fails the save.
+   */
+  setFinishedListener(fn: ExecutionFinishedListener | null): void {
+    this.onFinished = fn;
+  }
 
   async create(input: CreateExecutionInput): Promise<Execution> {
     const now = this.clock().toISOString();
@@ -87,6 +102,18 @@ export class SqliteExecutionStore implements ExecutionStore {
       .where(eq(executions.id, input.id))
       .run();
     if (res.changes === 0) throw new Error(`execution ${input.id} not found`);
+
+    // Terminal transition → notify the outbound-webhook host (best-effort).
+    if ((input.status === 'done' || input.status === 'error') && this.onFinished) {
+      const row = this.db.select().from(executions).where(eq(executions.id, input.id)).get();
+      if (row) {
+        try {
+          this.onFinished(rowToExecution(row));
+        } catch {
+          /* a broken listener must never break the save */
+        }
+      }
+    }
   }
 
   async checkpoint(id: string, state: ExecutionState): Promise<void> {

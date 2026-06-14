@@ -395,6 +395,75 @@ export const ApiSendMessageBodySchema = z.object({
 export type ApiSendMessageBody = z.infer<typeof ApiSendMessageBodySchema>;
 
 // ---------------------------------------------------------------------------
+// Outbound instance webhooks (P4-T4, PROTOCOL.md §Outbound)
+// ---------------------------------------------------------------------------
+
+/** The set of events an instance webhook can subscribe to. */
+export const OUTBOUND_EVENTS = [
+  'execution.finished',
+  'execution.failed',
+  'user.first_seen',
+] as const;
+export const OutboundEventNameSchema = z.enum(OUTBOUND_EVENTS);
+export type OutboundEventName = z.infer<typeof OutboundEventNameSchema>;
+
+/**
+ * The envelope CTB POSTs to a subscribed URL. Frozen in PROTOCOL.md §Outbound.
+ * `flow_id` / `execution_id` / `chat_id` are present for execution.* events and
+ * null for user.first_seen; `data` carries the event-specific payload.
+ */
+export interface OutboundEvent {
+  event: OutboundEventName;
+  bot_id: string;
+  flow_id: string | null;
+  execution_id: string | null;
+  chat_id: number | null;
+  /** ISO timestamp the event was emitted. */
+  at: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Create an instance webhook (admin-only). `secret` (optional) enables an
+ * `X-CTB-Signature: sha256=<hex>` HMAC over the raw body. `botId` scopes it to
+ * one bot; omit for all bots. At least one event must be subscribed.
+ */
+export const CreateInstanceWebhookBodySchema = z.object({
+  name: z.string().min(1).max(120),
+  url: z.string().url().max(2048),
+  secret: z.string().min(1).max(512).nullish(),
+  events: z.array(OutboundEventNameSchema).min(1),
+  botId: z.string().min(1).nullish(),
+  active: z.boolean().optional(),
+});
+export type CreateInstanceWebhookBody = z.infer<typeof CreateInstanceWebhookBodySchema>;
+
+/** Partial update — every field optional; events (if given) must be non-empty. */
+export const UpdateInstanceWebhookBodySchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  url: z.string().url().max(2048).optional(),
+  secret: z.string().min(1).max(512).nullish(),
+  events: z.array(OutboundEventNameSchema).min(1).optional(),
+  botId: z.string().min(1).nullish(),
+  active: z.boolean().optional(),
+});
+export type UpdateInstanceWebhookBody = z.infer<typeof UpdateInstanceWebhookBodySchema>;
+
+/** Public projection of an instance webhook — `hasSecret` instead of the secret (I7). */
+export interface InstanceWebhookPublic {
+  id: string;
+  name: string;
+  url: string;
+  hasSecret: boolean;
+  events: OutboundEventName[];
+  botId: string | null;
+  active: boolean;
+  createdAt: string;
+  lastFiredAt: string | null;
+  lastError: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // error envelope (shared shape of every non-2xx body)
 // ---------------------------------------------------------------------------
 

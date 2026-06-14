@@ -14,6 +14,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from 'zod';
 import type BetterSqlite3 from 'better-sqlite3';
 import { registerApiTokensApi } from './api/api-tokens';
+import { registerInstanceWebhooksApi } from './api/instance-webhooks';
 import { registerBotsApi, type BotsApiDeps } from './api/bots';
 import { registerCollectionsApi } from './api/collections';
 import { registerCredentialsApi } from './api/credentials';
@@ -197,6 +198,8 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     registerNodeTypesApi(app, opts.engine.registry);
     // P4-T3: API-token management (admin-only, panel cookie auth).
     registerApiTokensApi(app, { db: opts.db });
+    // P4-T4: outbound instance-webhook management (admin-only, panel cookie auth).
+    registerInstanceWebhooksApi(app, { db: opts.db });
     registerWebhookRoute(app, opts.engine.gateway);
     // P4-T1: inbound Webhook Trigger route (public, outside /api/).
     registerWebhookTriggerRoute(app, {

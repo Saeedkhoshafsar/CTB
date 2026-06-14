@@ -178,6 +178,32 @@ export const apiTokens = sqliteTable(
   (t) => [uniqueIndex('api_tokens_hash_unique').on(t.tokenHash)],
 );
 
+/**
+ * Outbound instance webhooks (P4-T4, PROTOCOL.md §Outbound). A subscription:
+ * when a matching event fires (execution.finished / execution.failed /
+ * user.first_seen), CTB POSTs the event envelope to `url`, optionally signed
+ * with `secret` (HMAC-SHA256 over the raw body). Scoped per-bot or instance-wide.
+ */
+export const instanceWebhooks = sqliteTable('instance_webhooks', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** Destination URL CTB POSTs the event envelope to. */
+  url: text('url').notNull(),
+  /** Optional HMAC signing key; when set, requests carry X-CTB-Signature. */
+  secret: text('secret'),
+  /** JSON array of subscribed event names (e.g. ["execution.finished"]). */
+  events: text('events', { mode: 'json' }).$type<string[]>().notNull(),
+  /** Optional bot scope: null = all bots; else only this bot's events. */
+  botId: text('bot_id').references(() => bots.id, { onDelete: 'cascade' }),
+  /** Disabled subscriptions are kept but never fire. */
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull(),
+  /** Last time a delivery was attempted (null = never). */
+  lastFiredAt: text('last_fired_at'),
+  /** Last delivery error (null = last attempt OK or never fired). */
+  lastError: text('last_error'),
+});
+
 // ---------- Collections layer (ARCHITECTURE §13) ----------
 
 export const collections = sqliteTable(

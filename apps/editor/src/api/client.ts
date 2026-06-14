@@ -11,6 +11,7 @@
 import {
   type ApiErrorBody,
   type BotPublic,
+  type CollectionPackInfo,
   type CollectionPublic,
   type CreateBotBody,
   CreateBotBodySchema,
@@ -329,6 +330,28 @@ export class ApiClient {
 
   async deleteCollection(id: string): Promise<void> {
     await this.request<{ ok: true }>('DELETE', `/api/collections/${id}`);
+  }
+
+  // -- starter packs (P3.5-T6) ------------------------------------------------
+
+  /** List the shipped starter packs (gallery rows — no heavy schema/graph). */
+  async listCollectionPacks(): Promise<CollectionPackInfo[]> {
+    return (await this.request<{ packs: CollectionPackInfo[] }>('GET', '/api/collection-packs'))
+      .packs;
+  }
+
+  /** Import a pack onto a bot: creates its collections (skipping existing slugs)
+   *  + its flows as drafts in one call. Returns what was created/skipped. */
+  async importCollectionPack(
+    botId: string,
+    packId: string,
+  ): Promise<{
+    pack: string;
+    collections: CollectionPublic[];
+    skippedCollections: string[];
+    flows: { id: string; name: string }[];
+  }> {
+    return this.request('POST', '/api/collection-packs/import', { botId, packId });
   }
 
   // -- records (auto-generated CRUD panel, P3.5-T3/T4) ------------------------

@@ -5,7 +5,7 @@
  * registry does at runtime — so tests validate the schema too).
  */
 import { runInSandbox } from '@ctb/sandbox';
-import type { CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
+import type { CollectionRecord, CtbUser, FlowItem, NodeCtx, NodeDef } from '@ctb/shared';
 
 export interface SentMessage {
   opts: Record<string, unknown>;
@@ -38,6 +38,10 @@ export interface FakeCtx extends NodeCtx {
   chatActions: Record<string, unknown>[];
   /** data.userProfile (P3-T5): in-memory user store keyed by tgUserId. */
   usersBag: Map<number, CtbUser>;
+  /** data.collection (P3.5-T5): in-memory records keyed by `${slug}` → id → record. */
+  collectionsBag: Map<string, Map<string, CollectionRecord>>;
+  /** data.collection: recorded write events (for suppress_events assertions). */
+  recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[];
 }
 
 export function makeCtx(
@@ -77,6 +81,12 @@ export function makeCtx(
     users?: null;
     /** Seed the in-memory user store before the run. */
     seedUsers?: CtbUser[];
+    /** Pass `null` to simulate an instance with no collection store (ctx.collections === null). */
+    collections?: null;
+    /** Seed the in-memory collection store: slug → array of record docs (id auto-assigned if absent). */
+    seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
+    /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
+    knownCollections?: string[];
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -92,6 +102,21 @@ export function makeCtx(
   const logs: { level: string; message: string }[] = [];
   const subflowCalls: { flowId: string; items: FlowItem[] }[] = [];
   const usersBag = new Map<number, CtbUser>();
+  const collectionsBag = new Map<string, Map<string, CollectionRecord>>();
+  const recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[] = [];
+  let nextRecordId = 1;
+  const knownSlugs = new Set<string>(
+    overrides.knownCollections ?? Object.keys(overrides.seedCollections ?? {}),
+  );
+  for (const [slug, recs] of Object.entries(overrides.seedCollections ?? {})) {
+    knownSlugs.add(slug);
+    const map = new Map<string, CollectionRecord>();
+    for (const r of recs) {
+      const id = r.id ?? `rec${nextRecordId++}`;
+      map.set(id, { id, data: { ...r.data }, createdAt: '2026-06-11T10:00:00.000Z', updatedAt: '2026-06-11T10:00:00.000Z' });
+    }
+    collectionsBag.set(slug, map);
+  }
   let nextMessageId = 100;
   let httpIdx = 0;
   const now = overrides.now ?? new Date('2026-06-11T10:00:00.000Z');
@@ -134,6 +159,8 @@ export function makeCtx(
     logs,
     subflowCalls,
     usersBag,
+    collectionsBag,
+    recordEvents,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -281,8 +308,143 @@ export function makeCtx(
               return { ...u };
             },
           },
+    // data.collection (P3.5-T5): in-memory collection store; `collections: null`
+    // drops it. Slugs must be "known" (seeded or in knownCollections) or ops
+    // throw — mirroring the real store's CollectionNotFoundError.
+    collections:
+      overrides.collections === null
+        ? null
+        : {
+            async find(slug, filter) {
+              const map = requireCollection(slug);
+              let recs = [...map.values()].filter((r) => matchesWhere(r.data, filter.where ?? []));
+              recs = sortRecords(recs, filter.sort ?? []);
+              const total = recs.length;
+              const offset = filter.offset ?? 0;
+              const end = filter.limit !== undefined ? offset + filter.limit : undefined;
+              return { records: recs.slice(offset, end).map(cloneRec), total };
+            },
+            async get(slug, recordId) {
+              const map = requireCollection(slug);
+              const r = map.get(recordId);
+              return r ? cloneRec(r) : null;
+            },
+            async count(slug, filter) {
+              const map = requireCollection(slug);
+              return [...map.values()].filter((r) => matchesWhere(r.data, filter.where ?? [])).length;
+            },
+            async insert(slug, data, opts) {
+              const map = requireCollection(slug);
+              const id = `rec${nextRecordId++}`;
+              const rec: CollectionRecord = { id, data: { ...data }, createdAt: nowIso, updatedAt: nowIso };
+              map.set(id, rec);
+              if (!opts?.suppressEvents) recordEvents.push({ event: 'created', slug, recordId: id });
+              return cloneRec(rec);
+            },
+            async update(slug, recordId, patch, opts) {
+              const map = requireCollection(slug);
+              const cur = map.get(recordId);
+              if (!cur) throw new Error(`record not found: ${recordId}`);
+              const data = opts?.mode === 'replace' ? { ...patch } : { ...cur.data, ...patch };
+              const rec: CollectionRecord = { ...cur, data, updatedAt: nowIso };
+              map.set(recordId, rec);
+              if (!opts?.suppressEvents) recordEvents.push({ event: 'updated', slug, recordId });
+              return cloneRec(rec);
+            },
+            async delete(slug, target, opts) {
+              const map = requireCollection(slug);
+              let ids: string[];
+              if (target.recordId !== undefined) {
+                ids = map.has(target.recordId) ? [target.recordId] : [];
+              } else {
+                ids = [...map.values()]
+                  .filter((r) => matchesWhere(r.data, target.filter?.where ?? []))
+                  .map((r) => r.id);
+                if (ids.length > 1 && !opts?.confirmMany) {
+                  throw new Error(`refusing to delete ${ids.length} records without confirmMany`);
+                }
+              }
+              for (const id of ids) {
+                map.delete(id);
+                if (!opts?.suppressEvents) recordEvents.push({ event: 'deleted', slug, recordId: id });
+              }
+              return ids.length;
+            },
+          },
   };
+
+  function requireCollection(slug: string): Map<string, CollectionRecord> {
+    if (!knownSlugs.has(slug)) throw new Error(`collection not found: ${slug}`);
+    let map = collectionsBag.get(slug);
+    if (!map) {
+      map = new Map();
+      collectionsBag.set(slug, map);
+    }
+    return map;
+  }
+
   return ctx;
+}
+
+/** Deep-ish clone a record so callers can't mutate the store. */
+function cloneRec(r: CollectionRecord): CollectionRecord {
+  return { ...r, data: structuredClone(r.data) };
+}
+
+/** Evaluate AND-combined where rows against a record's data (mirrors store ops). */
+function matchesWhere(
+  data: Record<string, unknown>,
+  where: { field: string; op: string; value?: unknown }[],
+): boolean {
+  return where.every((row) => {
+    const actual = readPath(data, row.field);
+    switch (row.op) {
+      case 'eq':
+        return actual === row.value;
+      case 'ne':
+        return actual !== row.value;
+      case 'gt':
+        return Number(actual) > Number(row.value);
+      case 'gte':
+        return Number(actual) >= Number(row.value);
+      case 'lt':
+        return Number(actual) < Number(row.value);
+      case 'lte':
+        return Number(actual) <= Number(row.value);
+      case 'contains':
+        return String(actual ?? '').includes(String(row.value ?? ''));
+      case 'in':
+        return Array.isArray(row.value) ? row.value.includes(actual) : false;
+      case 'exists':
+        return row.value === false ? actual === undefined || actual === null : actual !== undefined && actual !== null;
+      default:
+        return false;
+    }
+  });
+}
+
+function sortRecords(recs: CollectionRecord[], sort: { field: string; dir?: 'asc' | 'desc' }[]): CollectionRecord[] {
+  if (sort.length === 0) return recs;
+  return [...recs].sort((a, b) => {
+    for (const s of sort) {
+      const av = readPath(a.data, s.field);
+      const bv = readPath(b.data, s.field);
+      if (av === bv) continue;
+      const cmp = (av as number) < (bv as number) ? -1 : 1;
+      return s.dir === 'desc' ? -cmp : cmp;
+    }
+    return 0;
+  });
+}
+
+/** Read a dotted path from a record's data. */
+function readPath(data: Record<string, unknown>, path: string): unknown {
+  let cur: unknown = data;
+  for (const part of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null) return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
 }
 
 /** Parse raw params through the node's schema — like NodeRegistry.parseParams. */

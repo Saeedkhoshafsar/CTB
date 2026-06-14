@@ -24,10 +24,18 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { SessionRole } from '../lib/session';
 import { RecordNotFoundError, type SqliteCollectionStore } from '../collections/store';
 import { FileNotFoundError, fileToPublic, type SqliteFileStore } from '../collections/file-store';
+import type { RecordEventBus } from '../engine/record-events';
 
 export interface RecordsApiDeps {
   store: SqliteCollectionStore;
   fileStore: SqliteFileStore;
+  /**
+   * Record-write event bus (P3.5-T5) — fires `collection.recordChanged` triggers
+   * after a panel/API write. Optional: omitted in tests that only exercise CRUD,
+   * or when no engine is wired. Writes from the panel/API carry source 'panel'
+   * (admin/operator UI) and no originFlowId (so they always reach matching flows).
+   */
+  recordEventBus?: RecordEventBus;
 }
 
 /** Who performed the write — provenance for the recordChanged trigger (§13.6). */
@@ -44,6 +52,25 @@ const UploadBodySchema = z.object({
 
 export function registerRecordsApi(app: FastifyInstance, deps: RecordsApiDeps): void {
   const { store, fileStore } = deps;
+
+  /** Fire the recordChanged bus for a panel/API write (best-effort, never blocks the response). */
+  const emit = async (
+    collectionId: string,
+    kind: 'created' | 'updated' | 'deleted',
+    record: Record<string, unknown>,
+    recordId: string,
+    previous?: Record<string, unknown>,
+  ): Promise<void> => {
+    if (!deps.recordEventBus) return;
+    await deps.recordEventBus.emit({
+      collectionId,
+      kind,
+      record,
+      recordId,
+      source: 'panel',
+      ...(previous !== undefined ? { previous } : {}),
+    });
+  };
 
   const requireCollection = (collectionId: string) => store.get(collectionId);
 
@@ -108,6 +135,7 @@ export function registerRecordsApi(app: FastifyInstance, deps: RecordsApiDeps): 
       }
       throw e;
     }
+    await emit(collectionId, 'created', rec.data, rec.id);
     return reply.code(201).send({ record: rec });
   });
 
@@ -127,6 +155,7 @@ export function registerRecordsApi(app: FastifyInstance, deps: RecordsApiDeps): 
         mode: parsed.data.mode,
         updatedBy: provenance(req),
       });
+      await emit(collectionId, 'updated', rec.data, rec.id, existing.data);
       return { record: rec };
     } catch (e) {
       if (e instanceof RecordValidationError) {
@@ -145,6 +174,7 @@ export function registerRecordsApi(app: FastifyInstance, deps: RecordsApiDeps): 
       return reply.code(404).send({ error: 'not_found' });
     }
     store.deleteRecord(id);
+    await emit(collectionId, 'deleted', existing.data, existing.id);
     return { ok: true };
   });
 

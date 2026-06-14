@@ -301,6 +301,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.flow.return.label': 'Return',
   'nodes.flow.loop.label': 'Loop Over Items',
   'nodes.flow.merge.label': 'Merge',
+  'nodes.data.collection.label': 'Collection (Data)',
+  'nodes.collection.recordChanged.label': 'Record Changed (Trigger)',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -325,6 +327,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.tg.answerCallback': 'Acknowledges a button click — stops the loading spinner and optionally shows a toast or alert. Uses the current click’s id by default.',
   'nodeDesc.tg.chatAction': 'Shows a “typing…” / “uploading…” indicator in the chat for a few seconds. Items pass through unchanged.',
   'nodeDesc.data.userProfile': 'Reads or updates a user’s profile and tags — a lightweight, generic CRM. Targets the current execution’s user by default; give a user id to address someone else.',
+  'nodeDesc.data.collection': 'Reads or writes structured records in one of this bot’s Collections (find, get, insert, update, delete, count). Works against any schema you define — CTB stays domain-agnostic.',
+  'nodeDesc.collection.recordChanged': 'Starts this flow when a record is created, updated, or deleted in a Collection — from the admin panel, the API, or another flow. Filter by changed field or a condition.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -364,6 +368,28 @@ export const en: Record<keyof typeof fa, string> = {
   'form.flowRef.none': '— Select a flow —',
   'form.flowRef.missing': '⚠ Selected flow no longer available',
   'form.credentialRef.missing': '⚠ Selected credential no longer available',
+  'form.collectionRef.none': '— Select a collection —',
+  'form.collectionRef.missing': '⚠ Selected collection no longer available',
+
+  // ── starter packs (P3.5-T6) ──
+  'packs.use': 'Use starter pack',
+  'packs.title': 'Starter packs',
+  'packs.intro':
+    'A starter pack installs a few ready-made collections plus the flows that operate on them. Flows arrive as drafts — review and activate them. Existing collections are never overwritten.',
+  'packs.import': 'Install',
+  'packs.importing': 'Installing…',
+  'packs.imported': 'Installed: {created} collection(s), {skipped} skipped, {flows} draft flow(s).',
+  'packs.shop.label': 'Shop: browse → order → notify',
+  'packs.shop.desc':
+    'A catalog + orders demo: customers browse items and place orders in chat; flipping an order’s status notifies the customer.',
+  'packs.shop.catalog.label': 'Catalog',
+  'packs.shop.catalog.desc': 'Items with a name, price, stock, size and availability.',
+  'packs.shop.orders.label': 'Orders',
+  'packs.shop.orders.desc': 'Orders pointing at a catalog item, with quantity, customer and status.',
+  'packs.shop.browse.label': 'Browse & order',
+  'packs.shop.browse.desc': '/shop → pick item → pick size → quantity → places an order.',
+  'packs.shop.notify.label': 'Notify on status change',
+  'packs.shop.notify.desc': 'When an order’s status changes, DMs the customer.',
 
   // ── param panel ──
   'panel.enabled': 'Enabled',

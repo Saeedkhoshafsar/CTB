@@ -8,12 +8,17 @@
  * `shipping_methods` / `orders` collections are created here entirely in the UI,
  * and the resulting schema JSON is exactly what validates against CollectionSchema.
  */
-import type { CollectionPublic, CreateCollectionBody, UpdateCollectionBody } from '@ctb/shared';
+import type {
+  CollectionPackInfo,
+  CollectionPublic,
+  CreateCollectionBody,
+  UpdateCollectionBody,
+} from '@ctb/shared';
 import { labelText } from '@ctb/shared';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { useI18n } from '../i18n';
+import { useI18n, type MessageKey } from '../i18n';
 import { useCollections } from '../stores/collections';
 import { RecordsPanel } from './collections/RecordsPanel';
 import { SchemaBuilder } from './collections/SchemaBuilder';
@@ -21,6 +26,7 @@ import { SchemaBuilder } from './collections/SchemaBuilder';
 type Mode =
   | { kind: 'list' }
   | { kind: 'new' }
+  | { kind: 'gallery' }
   | { kind: 'edit'; collection: CollectionPublic }
   | { kind: 'records'; collection: CollectionPublic };
 
@@ -31,6 +37,9 @@ export function CollectionsPage() {
     useCollections();
   const [botName, setBotName] = useState('');
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  const [packs, setPacks] = useState<CollectionPackInfo[]>([]);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [packMsg, setPackMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void load(botId);
@@ -39,6 +48,37 @@ export function CollectionsPage() {
       .then((b) => setBotName(b.name))
       .catch(() => setBotName(botId));
   }, [botId, load]);
+
+  const openGallery = async () => {
+    setPackMsg(null);
+    setMode({ kind: 'gallery' });
+    try {
+      setPacks(await api.listCollectionPacks());
+    } catch (err) {
+      setPackMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const importPack = async (packId: string) => {
+    setImporting(packId);
+    setPackMsg(null);
+    try {
+      const res = await api.importCollectionPack(botId, packId);
+      await load(botId);
+      setPackMsg(
+        t('packs.imported', {
+          created: res.collections.length,
+          skipped: res.skippedCollections.length,
+          flows: res.flows.length,
+        }),
+      );
+      setMode({ kind: 'list' });
+    } catch (err) {
+      setPackMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(null);
+    }
+  };
 
   const relationTargets = collections
     .map((c) => c.slug)
@@ -82,9 +122,12 @@ export function CollectionsPage() {
         </h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {mode.kind === 'list' && (
-            <button className="primary" onClick={() => setMode({ kind: 'new' })}>
-              {t('collections.new')}
-            </button>
+            <>
+              <button className="primary" onClick={() => setMode({ kind: 'new' })}>
+                {t('collections.new')}
+              </button>
+              <button onClick={() => void openGallery()}>{t('packs.use')}</button>
+            </>
           )}
           <Link className="btn ghost" to="/bots">
             {t('collections.back')}
@@ -93,6 +136,52 @@ export function CollectionsPage() {
       </div>
 
       {error && <div className="alert">{error}</div>}
+      {packMsg && <div className="alert info">{packMsg}</div>}
+
+      {mode.kind === 'gallery' && (
+        <div className="pack-gallery">
+          <div className="page-head">
+            <h2>{t('packs.title')}</h2>
+            <button className="btn ghost" onClick={() => setMode({ kind: 'list' })}>
+              {t('collections.back')}
+            </button>
+          </div>
+          <p className="sub">{t('packs.intro')}</p>
+          {packs.length === 0 ? (
+            <div className="empty">{t('app.loading')}</div>
+          ) : (
+            <div className="row-list">
+              {packs.map((p) => (
+                <div className="row" key={p.id}>
+                  <div className="grow">
+                    <div className="title">{t(p.labelKey as MessageKey)}</div>
+                    <div className="sub">{t(p.descriptionKey as MessageKey)}</div>
+                    <div className="badges" style={{ marginTop: '0.25rem' }}>
+                      {p.collectionSlugs.map((s) => (
+                        <span className="badge" key={s} dir="ltr">
+                          {s}
+                        </span>
+                      ))}
+                      {p.flowNames.map((n) => (
+                        <span className="badge ghost" key={n}>
+                          {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    className="primary"
+                    disabled={importing !== null}
+                    onClick={() => void importPack(p.id)}
+                  >
+                    {importing === p.id ? t('packs.importing') : t('packs.import')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mode.kind === 'new' && (
         <SchemaBuilder

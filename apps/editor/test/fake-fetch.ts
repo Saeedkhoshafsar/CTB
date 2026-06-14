@@ -4,10 +4,12 @@
  * closely enough to exercise the typed client and stores without a server.
  */
 import {
+  CollectionParamsSchema,
   CreateCollectionBodySchema,
   CreateRecordBodySchema,
   DataKvParamsSchema,
   DataSetFieldsParamsSchema,
+  RecordChangedParamsSchema,
   FLOW_TEMPLATES,
   FlowExportSchema,
   FlowGraphSchema,
@@ -100,6 +102,8 @@ export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
   { type: 'http.request', category: 'data', meta: { labelKey: 'nodes.http.request.label', icon: 'globe' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(HttpRequestParamsSchema) },
   { type: 'data.kv', category: 'data', meta: { labelKey: 'nodes.data.kv.label', icon: 'database' }, ports: { inputs: ['main'], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(DataKvParamsSchema) },
   { type: 'flow.manualTrigger', category: 'trigger', meta: { labelKey: 'nodes.flow.manualTrigger.label', icon: 'play' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(FlowManualTriggerParamsSchema) },
+  { type: 'data.collection', category: 'data', meta: { labelKey: 'nodes.data.collection.label', icon: 'database' }, ports: { inputs: ['main'], outputs: ['main', 'empty'] }, paramsJsonSchema: toParamsJsonSchema(CollectionParamsSchema) },
+  { type: 'collection.recordChanged', category: 'trigger', meta: { labelKey: 'nodes.collection.recordChanged.label', icon: 'database' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(RecordChangedParamsSchema) },
 ];
 
 interface FlowVersionRow {

@@ -16,3 +16,4 @@ export * from './flow-validate';
 export * from './flow-export';
 export * from './flow-templates';
 export * from './collection';
+export * from './collection-templates';

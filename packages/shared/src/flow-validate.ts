@@ -20,7 +20,13 @@ import type { FlowGraph } from './flow';
 const EXPR_MARK = '{{';
 
 /** Node types that anchor a flow's entry point (activation requires one). */
-const TRIGGER_TYPES: ReadonlySet<string> = new Set(['tg.trigger', 'flow.manualTrigger']);
+const TRIGGER_TYPES: ReadonlySet<string> = new Set([
+  'tg.trigger',
+  'flow.manualTrigger',
+  // P3.5-T5: a record-write trigger is a flow entry point too — the event bus
+  // starts the flow at this node (chatId=null) when a matching record changes.
+  'collection.recordChanged',
+]);
 
 /** Walk a Zod issue path into the raw params object (tolerant of misses). */
 function valueAtPath(root: unknown, path: ReadonlyArray<PropertyKey>): unknown {

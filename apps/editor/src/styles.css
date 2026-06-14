@@ -96,6 +96,11 @@ h1 { font-size: 20px; margin: 0 0 1rem; }
 .badge.active { color: var(--ok); border-color: var(--ok); }
 .badge.error { color: var(--danger); border-color: var(--danger); }
 .badge.draft { color: var(--warn); border-color: var(--warn); }
+.badge.ghost { opacity: 0.75; border-style: dashed; }
+
+/* starter-pack gallery (P3.5-T6) */
+.pack-gallery .sub { margin: 0 0 0.75rem; }
+.alert.info { color: var(--text); border-color: var(--accent); }
 
 button, .btn {
   font: inherit;

@@ -126,6 +126,15 @@ export interface ExecutorServices {
    * "the current user" without learning the chat→user mapping itself.
    */
   users?: (botId: string, defaultTgUserId: number | null) => NonNullable<NodeCtx['users']>;
+  /**
+   * Collections data layer for data.collection (P3.5-T5) — optional: ctx.collections
+   * is null without it. A per-bot factory (one executor serves many bots, DL #15).
+   * It also receives the calling flow id so the host's record-write event bus can
+   * stamp writes with their origin flow and apply the depth-1 loop guard (a flow's
+   * own writes never re-trigger the flow that started it). The node never learns
+   * the schema, validation or the event bus — invariant I6 keeps it host-side.
+   */
+  collections?: (botId: string, flowId: string) => NonNullable<NodeCtx['collections']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -500,6 +509,9 @@ export class Executor {
         : null,
       users: executor.services.users
         ? executor.services.users(exec.botId, parseTgUserId(exec.userId))
+        : null,
+      collections: executor.services.collections
+        ? executor.services.collections(exec.botId, flow.id)
         : null,
     };
   }

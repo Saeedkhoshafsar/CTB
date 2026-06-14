@@ -11,7 +11,9 @@
  */
 import type { NodeRegistry } from '@ctb/core';
 import type { NodeDef } from '@ctb/shared';
+import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
+import { dataCollection } from './data/collection';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
 import { dataUserProfile } from './data/user-profile';
@@ -34,7 +36,9 @@ import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
 
+export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
+export { dataCollection } from './data/collection';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
 export { dataUserProfile } from './data/user-profile';
@@ -64,6 +68,7 @@ export { buildSendPayload, keyboardToMarkup } from './lib/telegram';
 export const builtinNodes: NodeDef<never>[] = [
   tgTrigger,
   flowManualTrigger,
+  collectionRecordChanged,
   tgSendMessage,
   tgWaitForReply,
   tgMenu,
@@ -78,6 +83,7 @@ export const builtinNodes: NodeDef<never>[] = [
   dataKv,
   dataCode,
   dataUserProfile,
+  dataCollection,
   httpRequest,
   flowLoop,
   flowMerge,

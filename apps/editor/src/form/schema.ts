@@ -45,7 +45,8 @@ export type WidgetKind =
   | 'conditions' // IF condition rows (structural detect)
   | 'code' // CodeMirror JS editor (ctbWidget annotation, data.code P2-T7)
   | 'flowRef' // sibling-flow selector (ctbWidget annotation, flow.executeSubFlow P3-T1)
-  | 'credentialRef'; // stored-credential selector (ctbWidget annotation, http.request P3-T4)
+  | 'credentialRef' // stored-credential selector (ctbWidget annotation, http.request P3-T4)
+  | 'collectionRef'; // collection-slug selector (ctbWidget annotation, data.collection + recordChanged P3.5-T5)
 
 export interface FieldSpec {
   /** property key inside the parent object ('' for the root / union branch). */
@@ -100,6 +101,7 @@ export function resolveWidget(key: string, s: JsonSchema): WidgetKind {
   if (s.ctbWidget === 'code') return 'code';
   if (s.ctbWidget === 'flowRef') return 'flowRef';
   if (s.ctbWidget === 'credentialRef') return 'credentialRef';
+  if (s.ctbWidget === 'collectionRef') return 'collectionRef';
   if (isKeyboardSchema(s)) return 'keyboard';
   if (isConditionsSchema(s)) return 'conditions';
   if (Array.isArray(s.enum)) return 'select';

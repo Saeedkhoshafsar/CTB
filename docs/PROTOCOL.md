@@ -90,17 +90,65 @@ DELETE /api/api-tokens/:id             → 204 (404 if unknown)
   `limit`/`offset`. Returns
   `{ users: [{ id, botId, tgUserId, profile, tags, firstSeen, lastSeen, displayName }] }`.
 
-## Outbound: instance webhooks
+## Outbound: instance webhooks ✅ P4-T4
 
-Configurable per instance/bot; CTB POSTs:
+CTB POSTs an event envelope to subscribed URLs when something happens. A
+subscription (`instance_webhooks`) is admin-managed from the panel and scoped
+per-bot or instance-wide.
 
-```json
+```
+POST <your url>
+Content-Type: application/json
+X-CTB-Event: execution.finished
+X-CTB-Signature: sha256=<hex>     # only when the subscription has a secret
+
 {
   "event": "execution.finished | execution.failed | user.first_seen",
-  "bot_id": "...", "flow_id": "...", "execution_id": "...",
-  "chat_id": 123, "data": { }
+  "bot_id": "...",
+  "flow_id": "..." | null,        // null for user.first_seen
+  "execution_id": "..." | null,   // null for user.first_seen
+  "chat_id": 123 | null,
+  "at": "2026-06-14T00:00:00.000Z",
+  "data": { }                     // event-specific payload
 }
 ```
+
+### Events
+
+| Event | Fires when | `data` |
+|---|---|---|
+| `execution.finished` | a flow run reaches status `done` | `{ status, error, user_id, steps }` |
+| `execution.failed` | a flow run reaches status `error` | `{ status, error, user_id, steps }` |
+| `user.first_seen` | a brand-new end user is first observed | `{ tg_user_id, profile, first_seen }` |
+
+### Subscriptions
+
+Managed (admin only) via `/api/instance-webhooks`:
+
+```
+GET    /api/instance-webhooks            → { webhooks: InstanceWebhookPublic[] }
+POST   /api/instance-webhooks            { name, url, secret?, events[], botId?, active? } → 201
+PATCH  /api/instance-webhooks/:id        { …any subset… }   → { webhook }
+DELETE /api/instance-webhooks/:id        → { ok:true }       (404 if unknown)
+```
+
+- `events` is a non-empty subset of the three event names above.
+- `botId` is optional: `null`/omitted ⇒ all bots; a non-null id (must reference
+  an existing bot, else `400 unknown_bot`) ⇒ only that bot's events.
+- `secret` is **write-only** — accepted on create/update, never returned; the
+  public projection exposes only `hasSecret` (I7). When set, every delivery
+  carries `X-CTB-Signature: sha256=HMAC-SHA256(rawBody, secret)`.
+- `active:false` keeps the subscription but suppresses delivery.
+
+### Delivery semantics
+
+- **Fire-and-forget:** an event source (a run finishing, a user being seen) is
+  never blocked or failed by a slow/broken endpoint.
+- **Retry:** up to 3 attempts with linear backoff on a transport error or a
+  `5xx`/`408`/`429`; a `4xx` is treated as a bad request and not retried.
+- Each attempt stamps `last_fired_at`; the last error (or `null` on success) is
+  stored in `last_error` and surfaced in `InstanceWebhookPublic`.
+- A `2xx` from your endpoint is success. Verify `X-CTB-Signature` to authenticate.
 
 ## n8n recipes (to be documented with screenshots in Phase 4)
 

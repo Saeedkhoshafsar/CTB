@@ -42,11 +42,27 @@ function rowToUser(row: UserRow): CtbUser {
   };
 }
 
+/** Fired exactly once per user, on the insert path of `touch()` (P4-T4). */
+export type FirstSeenListener = (botId: string, user: CtbUser) => void;
+
 export class SqliteUserStore {
+  /** Set by the host AFTER construction (avoids a wire ordering cycle). */
+  private onFirstSeen: FirstSeenListener | null = null;
+
   constructor(
     private readonly db: Db,
     private readonly clock: () => Date = () => new Date(),
   ) {}
+
+  /**
+   * Register a callback fired the FIRST time a given (bot, user) is touched —
+   * i.e. when the router upserts a brand-new end user. Drives the outbound
+   * `user.first_seen` instance webhook (P4-T4). Best-effort: a throwing or slow
+   * listener must never break the upsert, so it runs guarded + out-of-band.
+   */
+  setFirstSeenListener(fn: FirstSeenListener | null): void {
+    this.onFirstSeen = fn;
+  }
 
   private now(): string {
     return this.clock().toISOString();
@@ -92,7 +108,15 @@ export class SqliteUserStore {
         lastSeen: ts,
       };
       this.db.insert(users).values(row).run();
-      return rowToUser(row);
+      const user = rowToUser(row);
+      if (this.onFirstSeen) {
+        try {
+          this.onFirstSeen(botId, user);
+        } catch {
+          /* a broken listener must never break the upsert */
+        }
+      }
+      return user;
     }
     // Re-mirror identity (author keys win on collision is unnecessary — these
     // are reserved keys) and bump last_seen.

@@ -35,6 +35,7 @@ import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
 import { SqliteUserStore } from './user-store';
 import { Scheduler } from '../triggers/schedule';
+import { WebhookDispatcher } from './webhook-dispatcher';
 
 export interface WireOptions {
   db: Db;
@@ -93,6 +94,12 @@ export interface Engine {
    * `reconcile()` is re-run whenever a flow is activated/deactivated/edited.
    */
   scheduler: Scheduler;
+  /**
+   * Outbound instance-webhook dispatcher (P4-T4). Always present; fires
+   * `execution.finished`/`execution.failed` (from the execution store) and
+   * `user.first_seen` (from the user store) to subscribed `instance_webhooks`.
+   */
+  webhookDispatcher: WebhookDispatcher;
 }
 
 /** DB-backed kv capability. Scope ids: user→tg user (set per-ctx later), flow→flowId, bot→''. */
@@ -601,6 +608,47 @@ export function wireEngine(opts: WireOptions): Engine {
   // and the flows API re-runs reconcile() on activate/deactivate/edit.
   const scheduler = new Scheduler({ db: opts.db, flowSource, router, userStore, log, clock });
 
+  // Outbound instance webhooks (P4-T4). The dispatcher owns delivery; the two
+  // event sources (execution store + user store) hand it built envelopes via
+  // listeners attached here so neither store imports the dispatcher.
+  const webhookDispatcher = new WebhookDispatcher({
+    db: opts.db,
+    log,
+    clock,
+    ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+  });
+  store.setFinishedListener((execution) => {
+    webhookDispatcher.dispatch({
+      event: execution.status === 'error' ? 'execution.failed' : 'execution.finished',
+      bot_id: execution.botId,
+      flow_id: execution.flowId,
+      execution_id: execution.id,
+      chat_id: execution.chatId,
+      at: clock().toISOString(),
+      data: {
+        status: execution.status,
+        error: execution.error,
+        user_id: execution.userId,
+        steps: execution.state.steps,
+      },
+    });
+  });
+  userStore.setFirstSeenListener((botId, user) => {
+    webhookDispatcher.dispatch({
+      event: 'user.first_seen',
+      bot_id: botId,
+      flow_id: null,
+      execution_id: null,
+      chat_id: user.tgUserId,
+      at: clock().toISOString(),
+      data: {
+        tg_user_id: user.tgUserId,
+        profile: user.profile,
+        first_seen: user.firstSeen,
+      },
+    });
+  });
+
   return {
     gateway,
     router,
@@ -610,6 +658,7 @@ export function wireEngine(opts: WireOptions): Engine {
     flowSource,
     userStore,
     scheduler,
+    webhookDispatcher,
     ...(collectionStore ? { collectionStore } : {}),
     ...(recordEventBus ? { recordEventBus } : {}),
   };

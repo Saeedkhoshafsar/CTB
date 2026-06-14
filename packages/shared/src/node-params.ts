@@ -792,6 +792,36 @@ export const FlowRespondToWebhookParamsSchema = z.object({
 });
 export type FlowRespondToWebhookParams = z.infer<typeof FlowRespondToWebhookParamsSchema>;
 
+// ── schedule.trigger (P4-T2) ─────────────────────────────────────────────────
+
+/**
+ * schedule.trigger — time-based entry point (NODES.md §Schedule Trigger). The
+ * HOST runs a cron job per active `schedule.trigger` node (apps/server/src/
+ * triggers/schedule.ts); when it fires it starts the flow and builds the first
+ * item, so the node itself is a pure pass-through (like tg.trigger / webhook).
+ *
+ * Every param here is a HOST-side directive consumed by the Scheduler, NOT a
+ * runtime template:
+ * - `cron`: a 5- or 6-field cron expression (croner). Evaluated in `timezone`.
+ * - `timezone`: IANA tz name (e.g. `Asia/Tehran`); empty = the server's local tz.
+ * - `for_each_user`: when true the schedule fans out — one run per KNOWN bot
+ *   user (each run's chat = that user's tg id) instead of a single chatless run.
+ * - `rate_per_min`: fan-out throttle (runs started per minute) so a big user
+ *   base doesn't hammer Telegram all at once. Ignored when `for_each_user` is
+ *   false. 0 = unlimited.
+ * - `target_chat`: doc/UX-only expression naming which chat the Telegram nodes
+ *   talk to for a NON-fan-out schedule (e.g. an admin channel id); resolved by
+ *   those nodes, never by the scheduler — a raw param the executor leaves alone.
+ */
+export const ScheduleTriggerParamsSchema = z.object({
+  cron: z.string().min(1).default('0 9 * * *'),
+  timezone: z.string().default(''),
+  for_each_user: z.boolean().default(false),
+  rate_per_min: z.number().int().min(0).max(6000).default(60),
+  target_chat: z.string().optional(),
+});
+export type ScheduleTriggerParams = z.infer<typeof ScheduleTriggerParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

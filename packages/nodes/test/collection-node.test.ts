@@ -28,7 +28,7 @@ describe('registry (P3.5-T5)', () => {
     expect(reg.has('data.collection')).toBe(true);
     expect(reg.has('collection.recordChanged')).toBe(true);
     // +2 in P4-T1: webhook.trigger + flow.respondToWebhook.
-    expect(builtinNodes.length).toBe(26);
+    expect(builtinNodes.length).toBe(27);
   });
 
   it('data.collection has main + empty ports; recordChanged is a trigger', () => {

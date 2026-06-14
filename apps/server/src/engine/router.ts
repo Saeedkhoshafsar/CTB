@@ -400,6 +400,58 @@ export class UpdateRouter {
     }
   }
 
+  /**
+   * Start a flow from a `schedule.trigger` (P4-T2). The host-side Scheduler has
+   * already decided this flow's cron fired; we just enter at the trigger node
+   * with the pre-built item. A plain schedule has NO implicit chat (chatId null
+   * — the flow resolves a chat itself, like recordChanged/webhook); a
+   * `for_each_user` fan-out run carries that user's chatId + userId so the
+   * Telegram nodes default to messaging them. Never throws — a scheduled run's
+   * failure must not stop the Scheduler from firing the next one.
+   */
+  async fireSchedule(input: {
+    flow: RouterFlow;
+    entryNodeId: string;
+    botId: string;
+    item: FlowItem;
+    chatId?: number | null;
+    userId?: string | null;
+  }): Promise<void> {
+    const chatId = input.chatId ?? null;
+    const userId = input.userId ?? null;
+    const run = async (): Promise<void> => {
+      const executionId = this.newId();
+      try {
+        const result = await this.deps.executor.start({
+          executionId,
+          flow: { id: input.flow.id, name: input.flow.name },
+          graph: input.flow.graph,
+          botId: input.botId,
+          chatId,
+          userId,
+          entry: { nodeId: input.entryNodeId, items: { main: [input.item] } },
+        });
+        this.log(
+          'info',
+          `schedule started execution ${executionId} (${input.flow.id}${chatId === null ? '' : `, chat ${chatId}`}) → ${result.status}`,
+        );
+        // Post-run hooks (error-handler + queue drain) need a chat slot — they
+        // run only for a `for_each_user` per-user run. A chatless schedule run
+        // has no per-chat queue and no chat for an error-handler to message
+        // (same as the recordChanged path), so its failures are logged only.
+        if (chatId !== null) {
+          await this.afterRun(input.flow, input.botId, chatId, executionId, result.status, result.error);
+        }
+      } catch (err) {
+        this.log('error', `schedule start failed for ${input.flow.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    };
+    // A per-user run owns that (bot, chat) slot, so serialize it through the
+    // same chat lock the Telegram router uses; a chatless run runs free.
+    if (chatId === null) await run();
+    else await this.withChatLock(`${input.botId}:${chatId}`, run);
+  }
+
   /** Start a flow execution from a trigger entry, then run post-run hooks. */
   private async startFlow(
     flow: RouterFlow,

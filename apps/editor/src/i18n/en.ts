@@ -304,6 +304,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.data.collection.label': 'Collection (Data)',
   'nodes.collection.recordChanged.label': 'Record Changed (Trigger)',
   'nodes.webhook.trigger.label': 'Webhook (Trigger)',
+  'nodes.schedule.trigger.label': 'Schedule (Trigger)',
   'nodes.flow.respondToWebhook.label': 'Respond to Webhook',
 
   // ── node descriptions (param-panel header) ──
@@ -333,6 +334,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.collection.recordChanged': 'Starts this flow when a record is created, updated, or deleted in a Collection — from the admin panel, the API, or another flow. Filter by changed field or a condition.',
   'nodeDesc.webhook.trigger': 'Starts this flow from an inbound HTTP POST (e.g. from n8n or any service). The request body, headers and query become $json. Async replies 202 immediately; sync waits for a Respond to Webhook node. The URL carries an unguessable per-flow secret; optional HMAC signature check.',
   'nodeDesc.flow.respondToWebhook': 'Sends the HTTP response back to a synchronous Webhook Trigger: status, headers and body (as JSON or text). Items pass through so the flow can keep going after replying.',
+  'nodeDesc.schedule.trigger': 'Starts this flow on a schedule (cron expression, evaluated in a chosen timezone). Optional "for each user" mode fans out one run per known bot user — each run defaults to that user\'s chat — rate-limited so a large user base is paced. $json carries the fire time and cron.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

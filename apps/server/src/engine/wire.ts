@@ -34,6 +34,7 @@ import { RecordEventBus } from './record-events';
 import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
 import { SqliteUserStore } from './user-store';
+import { Scheduler } from '../triggers/schedule';
 
 export interface WireOptions {
   db: Db;
@@ -86,6 +87,12 @@ export interface Engine {
   collectionStore?: SqliteCollectionStore;
   /** Record-write event bus (P3.5-T5) — present only when `sqlite` was passed. */
   recordEventBus?: RecordEventBus;
+  /**
+   * Cron scheduler (P4-T2) — runs `schedule.trigger` nodes of active flows.
+   * Always present; `start()`/`stop()` are driven by the server lifecycle and
+   * `reconcile()` is re-run whenever a flow is activated/deactivated/edited.
+   */
+  scheduler: Scheduler;
 }
 
 /** DB-backed kv capability. Scope ids: user→tg user (set per-ctx later), flow→flowId, bot→''. */
@@ -589,6 +596,11 @@ export function wireEngine(opts: WireOptions): Engine {
     : undefined;
   recordEventBusRef = recordEventBus ?? null;
 
+  // Cron scheduler (P4-T2) — runs `schedule.trigger` nodes of active flows.
+  // Not started here; the server lifecycle calls scheduler.start() after boot
+  // and the flows API re-runs reconcile() on activate/deactivate/edit.
+  const scheduler = new Scheduler({ db: opts.db, flowSource, router, userStore, log, clock });
+
   return {
     gateway,
     router,
@@ -597,6 +609,7 @@ export function wireEngine(opts: WireOptions): Engine {
     registry,
     flowSource,
     userStore,
+    scheduler,
     ...(collectionStore ? { collectionStore } : {}),
     ...(recordEventBus ? { recordEventBus } : {}),
   };

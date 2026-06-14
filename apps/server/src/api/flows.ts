@@ -81,12 +81,22 @@ export interface FlowsApiDeps {
   ctbSecret?: string;
   /** Public base URL — builds the absolute webhook URL the editor shows (P4-T1). */
   publicUrl?: string;
+  /**
+   * Called after any change that affects which flows are active or what their
+   * graphs contain (activate / deactivate / edit / delete). The server wires
+   * this to `scheduler.reconcile()` so cron `schedule.trigger` jobs track the
+   * live flow set (P4-T2). Decoupled by design — the flows API never imports
+   * the Scheduler.
+   */
+  onFlowsChanged?: () => void;
   clock?: () => Date;
 }
 
 export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void {
   const { db } = deps;
   const now = (): string => (deps.clock ?? (() => new Date()))().toISOString();
+  /** Notify the host that the active-flow set / graphs changed (P4-T2). */
+  const flowsChanged = (): void => deps.onFlowsChanged?.();
   // type → Zod params schema, built once — registry defs are static per process.
   const paramSchemas: ReadonlyMap<string, ZodType> = new Map(
     (deps.registry?.list() ?? []).map((def) => [def.type, def.paramsSchema]),
@@ -172,13 +182,17 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
     }
     db.update(flows).set(patch).where(eq(flows.id, id)).run();
     const updated = db.select().from(flows).where(eq(flows.id, id)).get()!;
+    // An edit to an ACTIVE flow's graph can change its schedule.trigger set.
+    if (updated.status === 'active' && parsed.data.graph !== undefined) flowsChanged();
     return { flow: toPublic(updated) };
   });
 
   app.delete('/api/flows/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const wasActive = db.select().from(flows).where(eq(flows.id, id)).get()?.status === 'active';
     const res = db.delete(flows).where(eq(flows.id, id)).run();
     if (res.changes === 0) return reply.code(404).send({ error: 'not_found' });
+    if (wasActive) flowsChanged();
     return { ok: true };
   });
 
@@ -198,6 +212,7 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
         .send({ error: 'not_activatable', problems: problemStrings(nodeProblems), nodeProblems });
     }
     db.update(flows).set({ status: 'active', updatedAt: now() }).where(eq(flows.id, id)).run();
+    flowsChanged();
     return { ok: true, status: 'active' };
   });
 
@@ -406,6 +421,8 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
     if (res.changes === 0) {
       const exists = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!exists) return reply.code(404).send({ error: 'not_found' });
+    } else {
+      flowsChanged();
     }
     return { ok: true, status: 'draft' };
   });

@@ -41,6 +41,11 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodType } from 'zod';
 import type { Db } from '../db/index';
 import { bots, flowVersions, flows } from '../db/schema';
+import {
+  flowWebhookHmacKey,
+  flowWebhookSecret,
+  flowWebhookUrl,
+} from '../triggers/webhook';
 
 // Body schemas live in @ctb/shared (P2-T1) so the editor's typed client
 // validates against the exact same contract (invariant I5).
@@ -72,6 +77,10 @@ export interface FlowsApiDeps {
   registry?: NodeRegistry;
   /** Engine executor — powers POST /:id/run (manual test runs, P2-T7). */
   executor?: Executor;
+  /** CTB_SECRET — derives the per-flow webhook secret/HMAC key (P4-T1). */
+  ctbSecret?: string;
+  /** Public base URL — builds the absolute webhook URL the editor shows (P4-T1). */
+  publicUrl?: string;
   clock?: () => Date;
 }
 
@@ -368,6 +377,23 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       entry: { nodeId: trigger.id, items: { main: [] } },
     });
     return { executionId, status: result.status, error: result.error };
+  });
+
+  // Webhook Trigger connection info (P4-T1). Returns the unguessable URL +
+  // HMAC key the editor shows so a user can wire n8n / curl to the flow. The
+  // secrets are DERIVED from CTB_SECRET (no DB column); 503 if not configured.
+  app.get('/api/flows/:id/webhook', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!deps.ctbSecret) return reply.code(503).send({ error: 'webhook_secret_not_configured' });
+    const row = db.select().from(flows).where(eq(flows.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    return {
+      flowId: id,
+      path: `/hooks/flow/${id}/${flowWebhookSecret(id, deps.ctbSecret)}`,
+      url: flowWebhookUrl(id, deps.ctbSecret, deps.publicUrl),
+      hmacKey: flowWebhookHmacKey(id, deps.ctbSecret),
+      signatureHeader: 'X-CTB-Signature',
+    };
   });
 
   app.post('/api/flows/:id/deactivate', async (req, reply) => {

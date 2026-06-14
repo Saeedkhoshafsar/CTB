@@ -303,6 +303,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.flow.merge.label': 'Merge',
   'nodes.data.collection.label': 'Collection (Data)',
   'nodes.collection.recordChanged.label': 'Record Changed (Trigger)',
+  'nodes.webhook.trigger.label': 'Webhook (Trigger)',
+  'nodes.flow.respondToWebhook.label': 'Respond to Webhook',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -329,6 +331,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.data.userProfile': 'Reads or updates a user’s profile and tags — a lightweight, generic CRM. Targets the current execution’s user by default; give a user id to address someone else.',
   'nodeDesc.data.collection': 'Reads or writes structured records in one of this bot’s Collections (find, get, insert, update, delete, count). Works against any schema you define — CTB stays domain-agnostic.',
   'nodeDesc.collection.recordChanged': 'Starts this flow when a record is created, updated, or deleted in a Collection — from the admin panel, the API, or another flow. Filter by changed field or a condition.',
+  'nodeDesc.webhook.trigger': 'Starts this flow from an inbound HTTP POST (e.g. from n8n or any service). The request body, headers and query become $json. Async replies 202 immediately; sync waits for a Respond to Webhook node. The URL carries an unguessable per-flow secret; optional HMAC signature check.',
+  'nodeDesc.flow.respondToWebhook': 'Sends the HTTP response back to a synchronous Webhook Trigger: status, headers and body (as JSON or text). Items pass through so the flow can keep going after replying.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

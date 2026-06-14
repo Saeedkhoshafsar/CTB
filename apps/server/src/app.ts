@@ -29,6 +29,7 @@ import type { Env } from './lib/env';
 import { deriveKey } from './lib/crypto';
 import { createSessionToken, safeEqual, verifySessionToken, type SessionRole } from './lib/session';
 import { registerWebhookRoute } from './telegram/gateway';
+import { registerWebhookTriggerRoute } from './triggers/webhook';
 
 export const SESSION_COOKIE = 'ctb_session';
 
@@ -180,12 +181,21 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       db: opts.db,
       registry: opts.engine.registry,
       executor: opts.engine.executor,
+      ctbSecret: env.CTB_SECRET,
+      ...(env.CTB_PUBLIC_URL ? { publicUrl: env.CTB_PUBLIC_URL } : {}),
     });
     registerExecutionsApi(app, { db: opts.db });
     registerCredentialsApi(app, { db: opts.db, key });
     registerUsersApi(app, { userStore: opts.engine.userStore });
     registerNodeTypesApi(app, opts.engine.registry);
     registerWebhookRoute(app, opts.engine.gateway);
+    // P4-T1: inbound Webhook Trigger route (public, outside /api/).
+    registerWebhookTriggerRoute(app, {
+      db: opts.db,
+      executor: opts.engine.executor,
+      store: opts.engine.store,
+      ctbSecret: env.CTB_SECRET,
+    });
 
     // Collections layer (P3.5-T2 + P3.5-T5). Needs the raw sqlite handle for
     // json_extract queries + computed-index DDL. Definitions are admin-only;

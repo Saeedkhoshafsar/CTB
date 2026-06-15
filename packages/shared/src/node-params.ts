@@ -1021,6 +1021,103 @@ export const AiMcpClientParamsSchema = z
   });
 export type AiMcpClientParams = z.infer<typeof AiMcpClientParamsSchema>;
 
+// ── ai.agent (P5-T4) ─────────────────────────────────────────────────────────
+
+/**
+ * AI Agent (NODES.md §AI Agent, PLAN P5-T4). An LLM that can CALL TOOLS in a
+ * multi-turn loop: the model decides which tool(s) to invoke, the node runs
+ * each one and feeds the result back, and the loop repeats until the model
+ * produces a final text answer or a budget cap is hit.
+ *
+ * Two kinds of tool can be attached (invariant I2 — both are generic primitives,
+ * nothing domain-specific):
+ *  - `mcp`     — every tool an MCP server advertises (via `ctx.mcp`, the P5-T3
+ *                capability). The author picks one `mcpServer` credential; the
+ *                agent fetches its tool list and exposes them all to the model.
+ *  - `subflow` — another flow OF THE SAME BOT, exposed as a single named tool
+ *                (n8n's "Workflow Tool"). The model's JSON arguments become the
+ *                sub-flow's entry `$json`; the sub-flow's returned items (via
+ *                `flow.return`) become the tool result. Runs through `ctx.subflow`
+ *                (P3-T1) so the same-bot + recursion-depth guards apply.
+ *
+ * Budget caps are MANDATORY safety rails on an autonomous loop:
+ *  - `max_steps`       — hard cap on assistant↔tool round-trips (default 6).
+ *  - `max_tool_calls`  — hard cap on TOTAL tool invocations across the run.
+ *  - `max_tokens_total`— stop once cumulative reported usage exceeds this.
+ *  - the host also enforces a per-LLM-call wall-clock timeout (60s) and the
+ *    sub-flow depth cap; on any cap the loop stops and returns the best answer so far.
+ *
+ * Like the other AI nodes it runs ONCE per node run (an agent loop is expensive
+ * external work targeting the resolved `user_prompt`, a single value). The
+ * result lands on EVERY output item under `$json.<save_as>` (default `agent`)
+ * as `{ reply, steps, toolCalls, usage, stopReason }`.
+ */
+export const AgentToolSourceTypeSchema = z.enum(['mcp', 'subflow']);
+export type AgentToolSourceType = z.infer<typeof AgentToolSourceTypeSchema>;
+
+export const AgentToolSourceSchema = z
+  .object({
+    /** mcp = expose all tools of an MCP server; subflow = expose one flow as a tool. */
+    type: AgentToolSourceTypeSchema.default('mcp'),
+    /**
+     * For `mcp`: an `mcpServer` credential id (host resolves it — I7). For
+     * `subflow`: this field is unused.
+     */
+    credentialId: z.string().default(''),
+    /** For `subflow`: the flow id to expose as a tool (editor renders a flow picker). */
+    flow_id: z.string().default('').meta({ ctbWidget: 'flowRef' }),
+    /**
+     * For `subflow`: the tool name the model sees (a valid function name). When
+     * blank the node derives one from the flow id.
+     */
+    tool_name: z.string().default(''),
+    /** For `subflow`: what the tool does — the model reads this to decide when to call it. */
+    description: z.string().default(''),
+  })
+  .superRefine((s, ctx) => {
+    if (s.type === 'mcp' && s.credentialId.trim() === '') {
+      ctx.addIssue({ code: 'custom', message: 'an MCP credential is required for an mcp tool', path: ['credentialId'] });
+    }
+    if (s.type === 'subflow') {
+      if (s.flow_id.trim() === '') {
+        ctx.addIssue({ code: 'custom', message: 'a flow is required for a subflow tool', path: ['flow_id'] });
+      }
+      if (s.tool_name.trim() !== '' && !/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/.test(s.tool_name.trim())) {
+        ctx.addIssue({ code: 'custom', message: 'tool_name must be a valid function name', path: ['tool_name'] });
+      }
+    }
+  });
+export type AgentToolSource = z.infer<typeof AgentToolSourceSchema>;
+
+export const AiAgentParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key) for the agent's LLM; host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Model name as the provider expects it (must support tool/function calling). */
+  model: z.string().min(1).default('gpt-4o-mini'),
+  /** System prompt steering the agent's behaviour (expression-aware). */
+  system_prompt: z.string().default('You are a helpful assistant. Use the available tools when they help answer the user.'),
+  /** The user's request to the agent (expression-aware — usually `{{ $json.text }}`). */
+  user_prompt: z.string().min(1),
+  /** Tools the agent may call. May be empty (then it behaves like a plain chat). */
+  tools: z.array(AgentToolSourceSchema).default([]),
+  /** Sampling temperature 0–2 (provider default when omitted). */
+  temperature: z.coerce.number().min(0).max(2).optional(),
+  /** Per-LLM-call response token cap (provider default when omitted). */
+  max_tokens: z.coerce.number().int().min(1).max(32_000).optional(),
+  /** Hard cap on assistant↔tool round-trips before stopping (safety). */
+  max_steps: z.coerce.number().int().min(1).max(25).default(6),
+  /** Hard cap on TOTAL tool invocations across the whole run (safety). */
+  max_tool_calls: z.coerce.number().int().min(0).max(50).default(12),
+  /** Stop once cumulative reported token usage exceeds this (0 = no token cap). */
+  max_tokens_total: z.coerce.number().int().min(0).max(2_000_000).default(0),
+  /** Where the `{ reply, steps, toolCalls, usage, stopReason }` result lands (default `agent`). */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('agent'),
+});
+export type AiAgentParams = z.infer<typeof AiAgentParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

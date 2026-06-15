@@ -11,6 +11,7 @@
  */
 import type { NodeRegistry } from '@ctb/core';
 import type { NodeDef } from '@ctb/shared';
+import { aiAgent } from './ai/agent';
 import { aiClassify } from './ai/classify';
 import { aiExtract } from './ai/extract';
 import { aiLlmChat } from './ai/llm-chat';
@@ -43,6 +44,7 @@ import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
 
+export { aiAgent, parseToolArguments, type AgentStopReason } from './ai/agent';
 export { aiClassify } from './ai/classify';
 export { aiExtract } from './ai/extract';
 export { aiLlmChat, AI_MEMORY_KEY_PREFIX } from './ai/llm-chat';
@@ -115,6 +117,7 @@ export const builtinNodes: NodeDef<never>[] = [
   aiClassify,
   aiExtract,
   aiMcpClient,
+  aiAgent,
 ] as NodeDef<never>[];
 
 /** Register every built-in node on a registry (server boot, tests). */

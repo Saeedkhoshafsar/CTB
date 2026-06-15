@@ -104,7 +104,15 @@ export function makeCtx(
      * repeats). Pass `null` to simulate an instance with no AI service
      * (ctx.ai === null). Omit → a default echo reply.
      */
-    aiResponses?: { reply: string; usage?: Record<string, number>; model?: string }[] | null;
+    aiResponses?:
+      | {
+          reply: string;
+          usage?: Record<string, number>;
+          model?: string;
+          /** ai.agent (P5-T4): tool calls the model requests this turn. */
+          toolCalls?: { id: string; name: string; argumentsJson: string }[];
+        }[]
+      | null;
     /**
      * P5-T3: scripted MCP behaviour for ctx.mcp. Pass `null` to simulate an
      * instance with no MCP service (ctx.mcp === null). Omit → a default that
@@ -432,7 +440,12 @@ export function makeCtx(
                 return { reply: `echo: ${last?.content ?? ''}`, usage: {} };
               }
               const r = scripted[Math.min(aiIdx++, scripted.length - 1)]!;
-              return { reply: r.reply, usage: r.usage ?? {}, ...(r.model ? { model: r.model } : {}) };
+              return {
+                reply: r.reply,
+                usage: r.usage ?? {},
+                ...(r.model ? { model: r.model } : {}),
+                ...(r.toolCalls ? { toolCalls: r.toolCalls } : {}),
+              };
             },
           },
     // ai.mcpClient (P5-T3): records requests; `mcp: null` simulates an instance

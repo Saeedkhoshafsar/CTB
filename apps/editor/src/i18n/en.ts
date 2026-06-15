@@ -316,6 +316,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.ai.classify.label': 'AI Classify',
   'nodes.ai.extract.label': 'AI Extract',
   'nodes.ai.mcpClient.label': 'MCP Client',
+  'nodes.ai.agent.label': 'AI Agent',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -349,6 +350,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.ai.classify': 'A Switch powered by an LLM: the model reads the input text and picks ONE of your categories, then the items leave through that category\'s output port. Add a category for each intent (e.g. order, support, refund) and wire each port to its branch. Anything that doesn\'t fit leaves through the "other" port.',
   'nodeDesc.ai.extract': 'Pulls structured data out of free text: define the fields you want (name, type, description) and the model returns a JSON object, which lands in $json (default "extracted"). It re-asks automatically if the reply isn\'t valid JSON or a required field is missing.',
   'nodeDesc.ai.mcpClient': 'Talks to a remote MCP (Model Context Protocol) server selected by an MCP credential. "List tools" returns the tools the server offers; "Call tool" invokes one by name with JSON arguments and puts the result in $json. The server\'s URL and key stay on the server — this node only references the credential.',
+  'nodeDesc.ai.agent': 'An LLM that can call "tools": the model decides which tool to run and with what arguments, the node runs the tool and feeds the result back to the model, and this loop continues until the model produces a final answer. Tools come from two sources: all tools of an MCP server, and other flows in this bot (each flow becomes one tool). Safety caps (max steps, max tool calls, max tokens) prevent runaway loops. The result (reply, step count, tool-call count, usage, stop reason) lands in $json.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
@@ -584,6 +586,11 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.ai.mcpClient.action': '"List tools" returns what the MCP server offers; "Call tool" invokes one tool by name.',
   'paramDesc.tool_name': 'The exact tool name as advertised by the MCP server (required when calling a tool).',
   'paramDesc.arguments_json': 'Arguments for the tool as a JSON object — expression-aware, e.g. {"city":"{{ $json.city }}"}.',
+  // ai.agent params (P5-T4)
+  'paramDesc.ai.agent.tools': 'The tools made available to the model. Each row is either "all tools of an MCP server" or "another flow in this bot exposed as a single tool". A good description helps the model know what each tool does.',
+  'paramDesc.ai.agent.max_steps': 'Maximum number of conversation rounds with the model (each round = one model call). Prevents infinite loops. Default 6.',
+  'paramDesc.ai.agent.max_tool_calls': 'Maximum total tool calls across the whole run. 0 means no tool may run (direct answer only). Default 12.',
+  'paramDesc.ai.agent.max_tokens_total': 'Cap on total tokens consumed across the loop; once exceeded, the loop stops. 0 = no cap. Default 0.',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -634,6 +641,8 @@ export const en: Record<keyof typeof fa, string> = {
   'option.type.boolean': 'Yes/No',
   'option.ai.mcpClient.action.list_tools': 'List tools',
   'option.ai.mcpClient.action.call_tool': 'Call tool',
+  'option.ai.agent.type.mcp': 'MCP server (all tools)',
+  'option.ai.agent.type.subflow': 'Another flow (as a tool)',
   'option.expect.text': 'Text',
   'option.expect.number': 'Number',
   'option.expect.photo': 'Photo',

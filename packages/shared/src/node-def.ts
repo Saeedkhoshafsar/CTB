@@ -275,10 +275,44 @@ export interface McpToolCallResult {
   isError: boolean;
 }
 
-/** One message in an LLM conversation (OpenAI chat-completions shape). */
+/**
+ * One message in an LLM conversation (OpenAI chat-completions shape).
+ *
+ * The `tool` role and the assistant `toolCalls` field support the ai.agent
+ * tool-calling loop (P5-T4) — they're additive and optional, so ai.llmChat
+ * (which never sets them) is unaffected. An assistant turn that requests tools
+ * carries `toolCalls`; the node then appends one `role:'tool'` message per call
+ * (linked by `toolCallId`) carrying the tool's result, and asks the model again.
+ */
 export interface AiChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Tool calls the assistant requested (assistant turns only, P5-T4). */
+  toolCalls?: AiToolCall[];
+  /** The id of the tool call this message answers (`role:'tool'` only, P5-T4). */
+  toolCallId?: string;
+}
+
+/**
+ * A tool the agent may call (P5-T4). The shape mirrors an OpenAI
+ * function-tool: a name, a human/model-readable description, and a JSON Schema
+ * of the parameters. The host translates this into the provider's `tools` array.
+ */
+export interface AiToolSpec {
+  name: string;
+  description?: string;
+  /** JSON Schema of the tool's arguments (defaults to an open object). */
+  parameters?: Record<string, unknown>;
+}
+
+/** One tool call the model requested in an assistant turn (P5-T4). */
+export interface AiToolCall {
+  /** Provider-assigned id, echoed back on the matching `role:'tool'` message. */
+  id: string;
+  /** The tool's name (must match a provided AiToolSpec.name). */
+  name: string;
+  /** Raw JSON arguments string as the model produced it (parsed by the node). */
+  argumentsJson: string;
 }
 
 /** What ai.llmChat asks the host to run (the secret credential is resolved host-side). */
@@ -289,6 +323,8 @@ export interface AiChatRequest {
   messages: AiChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  /** Tools the model may call (ai.agent, P5-T4). Omitted → a plain chat call. */
+  tools?: AiToolSpec[];
 }
 
 /** Token-usage figures as returned by an OpenAI-compatible API (best-effort). */
@@ -300,12 +336,14 @@ export interface AiChatUsage {
 
 /** The host's reply to an AiChatRequest. */
 export interface AiChatResult {
-  /** The assistant's text reply (first choice). */
+  /** The assistant's text reply (first choice; empty when it only called tools). */
   reply: string;
   /** Token usage, when the provider reports it. */
   usage: AiChatUsage;
   /** The model the provider actually used (echoed back when present). */
   model?: string;
+  /** Tool calls the model requested this turn (ai.agent, P5-T4). Empty/absent → none. */
+  toolCalls?: AiToolCall[];
 }
 
 /** A record as seen by data.collection (the host's RecordPublic, minus host-only ids). */

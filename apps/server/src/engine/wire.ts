@@ -15,8 +15,10 @@ import { getDefaultSandboxPool, type SandboxPool } from '@ctb/sandbox';
 import { randomUUID } from 'node:crypto';
 import {
   credentialAuthHeaders,
+  type AiChatMessage,
   type AiChatRequest,
   type AiChatResult,
+  type AiToolCall,
   type CollectionFilter,
   type CredentialData,
   type FlowItem,
@@ -195,10 +197,23 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
       const url = `${data.baseUrl.replace(/\/+$/, '')}/chat/completions`;
       const payload: Record<string, unknown> = {
         model: req.model,
-        messages: req.messages,
+        // Translate CTB messages into the OpenAI wire shape (tool calls/results
+        // use OpenAI's `tool_calls` / `tool_call_id` field names).
+        messages: req.messages.map(toWireMessage),
       };
       if (req.temperature !== undefined) payload.temperature = req.temperature;
       if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+      // Tools (ai.agent, P5-T4): expose each spec as an OpenAI function tool.
+      if (req.tools && req.tools.length > 0) {
+        payload.tools = req.tools.map((t) => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            ...(t.description !== undefined ? { description: t.description } : {}),
+            parameters: t.parameters ?? { type: 'object', additionalProperties: true },
+          },
+        }));
+      }
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 60_000);
@@ -232,20 +247,62 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
   };
 }
 
-/** Extract reply + usage from an OpenAI-compatible chat-completions response. */
+/**
+ * Translate a CTB AiChatMessage into the OpenAI chat-completions wire shape.
+ * Assistant tool-call turns become `{ role:'assistant', tool_calls:[…] }`;
+ * tool results become `{ role:'tool', tool_call_id, content }`.
+ */
+function toWireMessage(m: AiChatMessage): Record<string, unknown> {
+  const wire: Record<string, unknown> = { role: m.role, content: m.content };
+  if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+    wire.tool_calls = m.toolCalls.map((c) => ({
+      id: c.id,
+      type: 'function',
+      function: { name: c.name, arguments: c.argumentsJson },
+    }));
+  }
+  if (m.role === 'tool' && m.toolCallId !== undefined) {
+    wire.tool_call_id = m.toolCallId;
+  }
+  return wire;
+}
+
+/** Extract reply + usage + tool calls from an OpenAI-compatible response. */
 function parseChatCompletion(body: unknown): AiChatResult {
   const b = (body ?? {}) as {
-    choices?: { message?: { content?: unknown } }[];
+    choices?: {
+      message?: {
+        content?: unknown;
+        tool_calls?: { id?: unknown; function?: { name?: unknown; arguments?: unknown } }[];
+      };
+    }[];
     usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown };
     model?: unknown;
   };
-  const content = b.choices?.[0]?.message?.content;
+  const message = b.choices?.[0]?.message;
+  const content = message?.content;
   const reply = typeof content === 'string' ? content : '';
   const usage: AiChatResult['usage'] = {};
   if (typeof b.usage?.prompt_tokens === 'number') usage.promptTokens = b.usage.prompt_tokens;
   if (typeof b.usage?.completion_tokens === 'number') usage.completionTokens = b.usage.completion_tokens;
   if (typeof b.usage?.total_tokens === 'number') usage.totalTokens = b.usage.total_tokens;
-  return { reply, usage, ...(typeof b.model === 'string' ? { model: b.model } : {}) };
+
+  const toolCalls: AiToolCall[] = [];
+  for (const tc of message?.tool_calls ?? []) {
+    const name = tc?.function?.name;
+    if (typeof name !== 'string' || name === '') continue;
+    const args = tc?.function?.arguments;
+    toolCalls.push({
+      id: typeof tc.id === 'string' && tc.id !== '' ? tc.id : `call_${toolCalls.length}`,
+      name,
+      argumentsJson: typeof args === 'string' ? args : args === undefined ? '{}' : JSON.stringify(args),
+    });
+  }
+
+  const result: AiChatResult = { reply, usage };
+  if (typeof b.model === 'string') result.model = b.model;
+  if (toolCalls.length > 0) result.toolCalls = toolCalls;
+  return result;
 }
 
 /**

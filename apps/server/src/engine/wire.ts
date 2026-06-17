@@ -89,6 +89,11 @@ export interface WireOptions {
    * so tests provide a fake (no socket). Omitted ⇒ the real `pg`-backed factory.
    */
   dbPoolFactory?: DbPoolFactory;
+  /**
+   * MySQL pool factory for the `db.mysql` capability (PB-T3) — injectable so
+   * tests provide a fake (no socket). Omitted ⇒ the real `mysql2`-backed factory.
+   */
+  mysqlPoolFactory?: MysqlPoolFactory;
 }
 
 /** Default sub-flow recursion-depth cap (PLAN.md P3-T1 "recursion depth cap"). */
@@ -498,8 +503,8 @@ export interface DbPool {
   end(): Promise<void>;
 }
 
-/** Factory that turns a resolved `postgres` credential into a pool. */
-export type DbPoolFactory = (cfg: {
+/** A resolved DB connection config (postgres OR mysql — same discrete fields). */
+export interface DbPoolConfig {
   connectionString?: string;
   host?: string;
   port?: number;
@@ -507,29 +512,40 @@ export type DbPoolFactory = (cfg: {
   user?: string;
   password?: string;
   ssl: boolean;
-}) => DbPool;
+}
+
+/** Factory that turns a resolved `postgres` credential into a pool. */
+export type DbPoolFactory = (cfg: DbPoolConfig) => DbPool;
+
+/** Factory that turns a resolved `mysql` credential into a pool (PB-T3). */
+export type MysqlPoolFactory = (cfg: DbPoolConfig) => DbPool;
 
 /**
- * Postgres capability for `db.postgres` (PB-T2). The HOST owns the `pg`
- * connection pool (invariant I3 — the driver lives only here); the node passes
- * a `credentialId` + a fully parameterized statement and never sees the
- * decrypted DSN (invariants I6/I7). One pool per credentialId, lazily created
- * and cached so repeated runs reuse connections; `closeAll()` drains them at
- * shutdown. The statement text + bound params come straight from the node —
- * we only execute, so SQL-injection safety lives in the node (values are
- * always bound, identifiers validated+quoted before they reach the SQL text).
+ * SQL capability for `db.postgres` (PB-T2) and `db.mysql` (PB-T3). The HOST owns
+ * the `pg` / `mysql2` connection pool (invariant I3 — the driver lives only
+ * here); the node passes a `credentialId` + a dialect + a fully parameterized
+ * statement and never sees the decrypted DSN (invariants I6/I7). One pool per
+ * credentialId, lazily created and cached so repeated runs reuse connections;
+ * `closeAll()` drains them at shutdown. The statement text + bound params come
+ * straight from the node — we only execute, so SQL-injection safety lives in
+ * the node (values are always bound, identifiers validated+quoted before they
+ * reach the SQL text).
  *
- * `poolFactory` is injectable: production passes a `pg.Pool`-backed factory,
- * tests pass a fake so `npm run verify` opens no sockets.
+ * The node's requested `dialect` (default `postgres`) MUST match the resolved
+ * credential's type — so a flow can't aim a Postgres node at a MySQL credential
+ * or vice versa. Both pool factories are injectable: production passes
+ * `pg.Pool` / `mysql2` backed factories, tests pass fakes so `npm run verify`
+ * opens no sockets.
  */
 function makeDb(
   db: Db,
   key: Buffer,
-  poolFactory: DbPoolFactory,
+  pgFactory: DbPoolFactory,
+  mysqlFactory: MysqlPoolFactory,
 ): { capability: NonNullable<NodeCtx['db']>; closeAll: () => Promise<void> } {
   const pools = new Map<string, DbPool>();
 
-  function resolvePool(credentialId: string): DbPool {
+  function resolvePool(credentialId: string, dialect: 'postgres' | 'mysql'): DbPool {
     const existing = pools.get(credentialId);
     if (existing) return existing;
     const row = db
@@ -544,17 +560,19 @@ function makeDb(
     } catch {
       throw new Error(`credential "${credentialId}" could not be decrypted`);
     }
-    if (data.type !== 'postgres') {
-      throw new Error(`credential "${credentialId}" is not a Postgres credential`);
+    if (data.type !== dialect) {
+      throw new Error(
+        `credential "${credentialId}" is not a ${dialect === 'mysql' ? 'MySQL' : 'Postgres'} credential`,
+      );
     }
-    const cfg: Parameters<DbPoolFactory>[0] = { ssl: data.ssl };
+    const cfg: DbPoolConfig = { ssl: data.ssl };
     if (data.connectionString !== undefined) cfg.connectionString = data.connectionString;
     if (data.host !== undefined) cfg.host = data.host;
     if (data.port !== undefined) cfg.port = data.port;
     if (data.database !== undefined) cfg.database = data.database;
     if (data.user !== undefined) cfg.user = data.user;
     if (data.password !== undefined) cfg.password = data.password;
-    const pool = poolFactory(cfg);
+    const pool = dialect === 'mysql' ? mysqlFactory(cfg) : pgFactory(cfg);
     pools.set(credentialId, pool);
     return pool;
   }
@@ -562,7 +580,8 @@ function makeDb(
   return {
     capability: {
       async query(req) {
-        const pool = resolvePool(req.credentialId);
+        const dialect = req.dialect ?? 'postgres';
+        const pool = resolvePool(req.credentialId, dialect);
         const res = await pool.query(req.sql, req.params);
         return { rows: res.rows, rowCount: res.rowCount ?? res.rows.length };
       },
@@ -581,7 +600,7 @@ function makeDb(
  * runs (which inject a fake factory) never touch it. `pg.Pool` already exposes
  * `query(text, params)` and `end()`, so it satisfies `DbPool` directly.
  */
-function pgPoolFactory(cfg: Parameters<DbPoolFactory>[0]): DbPool {
+function pgPoolFactory(cfg: DbPoolConfig): DbPool {
   // This is an ESM module (`type: module`), so bare `require` is absent at
   // runtime — build one off this module's URL. The `pg` driver is CJS; a
   // synchronous require keeps the factory non-async and is only reached when a
@@ -596,6 +615,57 @@ function pgPoolFactory(cfg: Parameters<DbPoolFactory>[0]): DbPool {
   if (cfg.user !== undefined) opts.user = cfg.user;
   if (cfg.password !== undefined) opts.password = cfg.password;
   return new Pool(opts) as unknown as DbPool;
+}
+
+/**
+ * Default pool factory backed by the real `mysql2` driver (PB-T3). Lazily
+ * required like `pgPoolFactory` so the driver only loads when a MySQL
+ * credential is actually used. `mysql2`'s callback pool is wrapped in a thin
+ * `DbPool` adapter: `pool.promise().query(sql, params)` returns
+ * `[rows, fields]` where `rows` is either result rows (SELECT) or an OK packet
+ * (write). We normalize: SELECT → the row array; a write → one synthetic row
+ * `{ insertId?, affectedRows }` so the node's `rows`/`single` modes behave like
+ * Postgres' `RETURNING` (which MySQL lacks).
+ */
+function mysqlPoolFactory(cfg: DbPoolConfig): DbPool {
+  const require = createRequire(import.meta.url);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mysql = require('mysql2') as any;
+  const opts: Record<string, unknown> = {};
+  if (cfg.ssl) opts.ssl = { rejectUnauthorized: false };
+  if (cfg.connectionString !== undefined) opts.uri = cfg.connectionString;
+  if (cfg.host !== undefined) opts.host = cfg.host;
+  if (cfg.port !== undefined) opts.port = cfg.port;
+  if (cfg.database !== undefined) opts.database = cfg.database;
+  if (cfg.user !== undefined) opts.user = cfg.user;
+  if (cfg.password !== undefined) opts.password = cfg.password;
+  // `createPool` accepts a uri or discrete fields. The promise wrapper gives us
+  // an async query() we can adapt to the DbPool contract.
+  const rawPool =
+    cfg.connectionString !== undefined
+      ? mysql.createPool(cfg.connectionString)
+      : mysql.createPool(opts);
+  const pool = rawPool.promise();
+  return {
+    async query(sql: string, params: unknown[]) {
+      const [result] = await pool.query(sql, params);
+      if (Array.isArray(result)) {
+        // SELECT (or a query node returning rows): RowDataPacket[].
+        return { rows: result as Record<string, unknown>[], rowCount: result.length };
+      }
+      // Write OK packet: { affectedRows, insertId, ... }. Surface a single row
+      // so the node's `rows` mode emits something useful and `single` reports a
+      // sensible rowCount.
+      const ok = result as { affectedRows?: number; insertId?: number };
+      const affected = ok.affectedRows ?? 0;
+      const row: Record<string, unknown> = { affectedRows: affected };
+      if (ok.insertId !== undefined && ok.insertId !== 0) row.insertId = ok.insertId;
+      return { rows: [row], rowCount: affected };
+    },
+    async end() {
+      await pool.end();
+    },
+  };
 }
 
 /** Host matches an allow-list entry (exact, or dot-prefixed suffix). */
@@ -751,9 +821,16 @@ export function wireEngine(opts: WireOptions): Engine {
   // `collections` capability closes over it lazily — same forward-ref pattern.
   let recordEventBusRef: RecordEventBus | null = null;
   const maxSubFlowDepth = opts.maxSubFlowDepth ?? DEFAULT_MAX_SUBFLOW_DEPTH;
-  // Postgres capability (db.postgres, PB-T2). The host owns the pool(s) keyed by
-  // credentialId; `closeAll` drains them at shutdown (exposed as closeDbPools).
-  const dbCapability = makeDb(opts.db, credentialKey, opts.dbPoolFactory ?? pgPoolFactory);
+  // SQL capability (db.postgres PB-T2 + db.mysql PB-T3). The host owns the
+  // pool(s) keyed by credentialId; `closeAll` drains them at shutdown (exposed
+  // as closeDbPools). One capability serves both dialects — the credential
+  // type + the node's requested dialect pick the driver.
+  const dbCapability = makeDb(
+    opts.db,
+    credentialKey,
+    opts.dbPoolFactory ?? pgPoolFactory,
+    opts.mysqlPoolFactory ?? mysqlPoolFactory,
+  );
   const services: ExecutorServices = {
     kv: (botId) => {
       let kv = kvCache.get(botId);

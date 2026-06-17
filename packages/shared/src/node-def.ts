@@ -339,14 +339,23 @@ export interface NodeCtx {
 }
 
 /**
- * What db.postgres asks the host to run (the secret credential is resolved
- * host-side, PB-T2). The SQL carries `$1,$2,…` placeholders; `params` are the
- * already-resolved bind values, bound by the driver (never concatenated).
+ * What a SQL node asks the host to run (the secret credential is resolved
+ * host-side, PB-T2/PB-T3). `params` are the already-resolved bind values, bound
+ * by the driver (never concatenated). The `dialect` tells the host which driver
+ * to expect: a `db.postgres` node emits `$1,$2,…` placeholders + `RETURNING *`,
+ * a `db.mysql` node emits `?` placeholders + no `RETURNING`. The host verifies
+ * the resolved credential's type matches the requested dialect so a flow can't
+ * point a Postgres node at a MySQL credential (or vice versa).
  */
 export interface DbQueryRequest {
-  /** Stored credential id (postgres). The host turns it into a pooled connection. */
+  /** Stored credential id (postgres/mysql). The host turns it into a pooled connection. */
   credentialId: string;
-  /** Parameterized SQL with `$1,$2,…` placeholders. */
+  /**
+   * Which SQL dialect the `sql` is written for. Defaults to `'postgres'` when
+   * absent so the original PB-T2 node keeps working unchanged.
+   */
+  dialect?: 'postgres' | 'mysql';
+  /** Parameterized SQL (`$1,$2,…` for postgres, `?` for mysql). */
   sql: string;
   /** Bind values for the placeholders, in order. */
   params: unknown[];

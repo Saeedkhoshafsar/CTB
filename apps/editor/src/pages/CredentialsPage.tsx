@@ -21,6 +21,7 @@ const TYPES: CredentialType[] = [
   'openAiApi',
   'mcpServer',
   'postgres',
+  'mysql',
 ];
 
 export function CredentialsPage() {
@@ -47,6 +48,13 @@ export function CredentialsPage() {
   const [pgUser, setPgUser] = useState('postgres');
   const [pgPassword, setPgPassword] = useState('');
   const [pgSsl, setPgSsl] = useState(false);
+  // MySQL / MariaDB: either a single connectionString OR discrete fields (PB-T3).
+  const [myHost, setMyHost] = useState('localhost');
+  const [myPort, setMyPort] = useState('3306');
+  const [myDatabase, setMyDatabase] = useState('');
+  const [myUser, setMyUser] = useState('root');
+  const [myPassword, setMyPassword] = useState('');
+  const [mySsl, setMySsl] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -72,6 +80,12 @@ export function CredentialsPage() {
     setPgUser('postgres');
     setPgPassword('');
     setPgSsl(false);
+    setMyHost('localhost');
+    setMyPort('3306');
+    setMyDatabase('');
+    setMyUser('root');
+    setMyPassword('');
+    setMySsl(false);
   };
 
   const buildData = (): CredentialData => {
@@ -98,6 +112,17 @@ export function CredentialsPage() {
         if (pgDatabase.trim() !== '') data.database = pgDatabase.trim();
         if (pgUser.trim() !== '') data.user = pgUser.trim();
         if (pgPassword !== '') data.password = pgPassword;
+        return data;
+      }
+      case 'mysql': {
+        // Mirror of the postgres form (PB-T3). Blank fields omitted so the
+        // server applies mysql2's own defaults; ssl is an explicit toggle.
+        const data: CredentialData = { type, ssl: mySsl };
+        if (myHost.trim() !== '') data.host = myHost.trim();
+        if (myPort.trim() !== '') data.port = Number(myPort);
+        if (myDatabase.trim() !== '') data.database = myDatabase.trim();
+        if (myUser.trim() !== '') data.user = myUser.trim();
+        if (myPassword !== '') data.password = myPassword;
         return data;
       }
     }
@@ -328,6 +353,67 @@ export function CredentialsPage() {
                   onChange={(e) => setPgSsl(e.target.checked)}
                 />
                 <span className="label-text">{t('credentials.field.pgSsl')}</span>
+              </label>
+            </>
+          )}
+
+          {type === 'mysql' && (
+            <>
+              <label>
+                <span className="label-text">{t('credentials.field.myHost')}</span>
+                <input
+                  dir="ltr"
+                  value={myHost}
+                  onChange={(e) => setMyHost(e.target.value)}
+                  placeholder="localhost"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.myPort')}</span>
+                <input
+                  dir="ltr"
+                  type="number"
+                  value={myPort}
+                  onChange={(e) => setMyPort(e.target.value)}
+                  placeholder="3306"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.myDatabase')}</span>
+                <input
+                  dir="ltr"
+                  value={myDatabase}
+                  onChange={(e) => setMyDatabase(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.myUser')}</span>
+                <input
+                  dir="ltr"
+                  value={myUser}
+                  onChange={(e) => setMyUser(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.myPassword')}</span>
+                <input
+                  dir="ltr"
+                  type="password"
+                  value={myPassword}
+                  onChange={(e) => setMyPassword(e.target.value)}
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <input
+                  type="checkbox"
+                  checked={mySsl}
+                  onChange={(e) => setMySsl(e.target.checked)}
+                />
+                <span className="label-text">{t('credentials.field.mySsl')}</span>
               </label>
             </>
           )}

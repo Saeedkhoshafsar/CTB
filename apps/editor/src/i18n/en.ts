@@ -51,6 +51,7 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.type.openAiApi': 'OpenAI-compatible API',
   'credentials.type.mcpServer': 'MCP Server',
   'credentials.type.postgres': 'Postgres Database',
+  'credentials.type.mysql': 'MySQL / MariaDB Database',
   'credentials.field.headerName': 'Header name',
   'credentials.field.headerValue': 'Header value',
   'credentials.field.token': 'Token',
@@ -66,6 +67,12 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.field.pgUser': 'User',
   'credentials.field.pgPassword': 'Password',
   'credentials.field.pgSsl': 'Use SSL',
+  'credentials.field.myHost': 'Host',
+  'credentials.field.myPort': 'Port',
+  'credentials.field.myDatabase': 'Database',
+  'credentials.field.myUser': 'User',
+  'credentials.field.myPassword': 'Password',
+  'credentials.field.mySsl': 'Use SSL',
   'credentials.secret.hint':
     'The secret value is sent once and stored encrypted; it is never shown again. To change it, delete and recreate.',
   'credentials.create': 'Create credential',
@@ -335,6 +342,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.ai.mcpClient.label': 'MCP Client',
   'nodes.ai.agent.label': 'AI Agent',
   'nodes.db.postgres.label': 'Postgres (Database)',
+  'nodes.db.mysql.label': 'MySQL (Database)',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -381,6 +389,9 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.ai.agent': 'An LLM that can call "tools": the model decides which tool to run and with what arguments, the node runs the tool and feeds the result back to the model, and this loop continues until the model produces a final answer. Tools come from two sources: all tools of an MCP server, and other flows in this bot (each flow becomes one tool). Safety caps (max steps, max tool calls, max tokens) prevent runaway loops. The result (reply, step count, tool-call count, usage, stop reason) lands in $json.',
   'nodeDesc.db.postgres': 'Runs SQL against a Postgres database selected by a Postgres credential. Pick an operation — raw Query, or Select/Insert/Update/Delete helpers that build the statement for you. Values are ALWAYS sent as bound parameters (never glued into the SQL text), so expressions like {{ $json.id }} can\'t inject SQL. Returns one item per result row, or merges {rows, rowCount} onto each item. The connection details stay on the server — this node only references the credential.',
 
+  'nodeDesc.db.mysql':
+    'Runs SQL against a MySQL or MariaDB database selected by a MySQL credential. Identical to the Postgres node except the connection. Pick an operation — raw Query, or Select/Insert/Update/Delete helpers that build the statement for you. Values are ALWAYS sent as bound parameters (never glued into the SQL text), so expressions like {{ $json.id }} cannot inject SQL. Returns one item per result row (a write returns affectedRows and insertId), or merges {rows, rowCount} onto each item. The connection details stay on the server — this node only references the credential.',
+
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'Operation',
   'param.db.postgres.query': 'SQL',
@@ -415,6 +426,49 @@ export const en: Record<keyof typeof fa, string> = {
   'option.db.postgres.order_dir.desc': 'Descending',
   'option.db.postgres.return_mode.rows': 'Rows (one item per row)',
   'option.db.postgres.return_mode.single': 'Single (merge rows + rowCount)',
+
+  // ── db.mysql params (PB-T3) ──
+  'param.db.mysql.operation': 'Operation',
+  'param.db.mysql.query': 'SQL',
+  'param.db.mysql.params': 'Parameters (JSON array)',
+  'param.db.mysql.table': 'Table',
+  'param.db.mysql.where': 'Where (all must match)',
+  'param.db.mysql.values': 'Values',
+  'param.db.mysql.order_by': 'Order by',
+  'param.db.mysql.order_dir': 'Direction',
+  'param.db.mysql.limit': 'Limit',
+  'param.db.mysql.confirm_many': 'Allow multi-row write',
+  'param.db.mysql.return_mode': 'Return mode',
+  'param.db.mysql.save_as': 'Save result as',
+  'paramDesc.db.mysql.operation':
+    'Raw "Query", or a Select/Insert/Update/Delete helper that builds the parameterized statement for you.',
+  'paramDesc.db.mysql.query':
+    'Parameterized SQL using ? placeholders. Bind values via the Parameters field below — never paste values into this string.',
+  'paramDesc.db.mysql.params':
+    'A JSON array of bind values for the ? placeholders, e.g. ["{{ $json.id }}", 42]. Leave blank for none.',
+  'paramDesc.db.mysql.table':
+    'Table name (an identifier; may be schema-qualified like app.users). Validated and backtick-quoted before it reaches the SQL.',
+  'paramDesc.db.mysql.where':
+    'Conditions ANDed together. Each row binds its value as a parameter; "in" splits a comma list, "is null"/"not null" take no value.',
+  'paramDesc.db.mysql.values':
+    'Column = value rows for Insert/Update. Each value is bound as a parameter (null, true/false and numeric literals are auto-detected).',
+  'paramDesc.db.mysql.order_by': 'Optional column to ORDER BY (Select only).',
+  'paramDesc.db.mysql.order_dir': 'Sort direction for Order by.',
+  'paramDesc.db.mysql.limit': 'Maximum rows to return (Select only).',
+  'paramDesc.db.mysql.confirm_many':
+    'Required when an Update/Delete WHERE may match more than one row — a guard against accidental mass writes.',
+  'paramDesc.db.mysql.return_mode':
+    '"Rows" emits one item per returned row (a write emits affectedRows + insertId); "Single" merges {rows, rowCount} onto each input item.',
+  'paramDesc.db.mysql.save_as': 'Field name the {rows, rowCount} result lands under when Return mode is "Single".',
+  'option.db.mysql.operation.query': 'Query (raw SQL)',
+  'option.db.mysql.operation.select': 'Select',
+  'option.db.mysql.operation.insert': 'Insert',
+  'option.db.mysql.operation.update': 'Update',
+  'option.db.mysql.operation.delete': 'Delete',
+  'option.db.mysql.order_dir.asc': 'Ascending',
+  'option.db.mysql.order_dir.desc': 'Descending',
+  'option.db.mysql.return_mode.rows': 'Rows (one item per row)',
+  'option.db.mysql.return_mode.single': 'Single (merge rows + rowCount)',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

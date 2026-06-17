@@ -27,7 +27,7 @@ describe('registry (P5-T2)', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.classify')).toBe(true);
     expect(reg.has('ai.extract')).toBe(true);
-    expect(builtinNodes.length).toBe(43);
+    expect(builtinNodes.length).toBe(44);
   });
 
   it('ai.classify is an `ai` node with dynamic ports; ai.extract main → main', () => {

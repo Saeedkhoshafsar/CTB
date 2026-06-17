@@ -1604,6 +1604,87 @@ export const DbPostgresParamsSchema = z
   });
 export type DbPostgresParams = z.infer<typeof DbPostgresParamsSchema>;
 
+/**
+ * db.mysql — a GENERIC MySQL / MariaDB node (NODES.md §Database connectors,
+ * PLAN2 PB-T3). The exact same shape + behaviour as `db.postgres`, only the
+ * credential type differs (`mysql` instead of `postgres`) so a flow looks
+ * identical except the connection — the node speaks SQL through the SAME
+ * injected `ctx.db` capability (invariants I2/I3/I6/I7). The node emits the
+ * MySQL dialect (`?` placeholders, backtick-quoted identifiers, no `RETURNING`);
+ * the host runs it through the `mysql2` driver that lives only in `apps/server`.
+ *
+ * Operations mirror db.postgres exactly:
+ *  - `query`  → a raw parameterized SQL string with `?` placeholders + a JSON
+ *               array `params`. NEVER string-concatenated.
+ *  - `select` → `SELECT * FROM <table>` + optional `where`/`order_by`/`limit`.
+ *  - `insert` → `INSERT INTO <table>(…) VALUES(…)` (returns `{ insertId, affectedRows }`).
+ *  - `update` → `UPDATE <table> SET … WHERE …` (returns `{ affectedRows }`).
+ *  - `delete` → `DELETE FROM <table> WHERE …` (guarded by `confirm_many`).
+ */
+export const DbMysqlParamsSchema = z
+  .object({
+    /** A `mysql` credential (host/port/db/user/pass/ssl); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'mysql' }),
+    operation: DbOperationSchema.default('query'),
+    /**
+     * operation=query: raw parameterized SQL. Use `?` placeholders bound from
+     * `params`. NEVER interpolate values into this string yourself.
+     */
+    query: z.string().default(''),
+    /**
+     * operation=query: the bind values, as a JSON ARRAY string (expression-aware,
+     * e.g. `["{{ $json.id }}", 42]`). Empty/blank → no params.
+     */
+    params: z.string().default(''),
+    /** operation=select|insert|update|delete: the table name (SQL identifier). */
+    table: z.string().default(''),
+    /** select/update/delete: where rows (ANDed). */
+    where: z.array(DbWhereRowSchema).default([]),
+    /** insert/update: column=value mapping rows. */
+    values: z.array(DbValueRowSchema).default([]),
+    /** select: `ORDER BY` column (validated identifier) — optional. */
+    order_by: z.string().default(''),
+    /** select: ascending|descending for `order_by`. */
+    order_dir: z.enum(['asc', 'desc']).default('asc'),
+    /** select: max rows (positive int) — optional. */
+    limit: z.coerce.number().int().positive().max(10000).optional(),
+    /** update/delete: refuse to touch more than one row unless set. */
+    confirm_many: z.boolean().default(false),
+    /** rows = one item per result row; single = merge {rows,rowCount} per item. */
+    return_mode: z.enum(['rows', 'single']).default('rows'),
+    /** return_mode=single: where the result lands on each output item (default `db`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('db'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.operation === 'query') {
+      if (p.query.trim() === '') {
+        ctx.addIssue({ code: 'custom', message: 'op "query" requires a SQL string', path: ['query'] });
+      }
+      return;
+    }
+    if (p.table.trim() === '') {
+      ctx.addIssue({ code: 'custom', message: `op "${p.operation}" requires a table`, path: ['table'] });
+    }
+    if (p.operation === 'insert' && p.values.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "insert" requires at least one value', path: ['values'] });
+    }
+    if (p.operation === 'update') {
+      if (p.values.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one value', path: ['values'] });
+      }
+      if (p.where.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one where row', path: ['where'] });
+      }
+    }
+    if (p.operation === 'delete' && p.where.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "delete" requires at least one where row', path: ['where'] });
+    }
+  });
+export type DbMysqlParams = z.infer<typeof DbMysqlParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

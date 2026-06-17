@@ -22,7 +22,7 @@ describe('registry (P5-T3)', () => {
   it('registers ai.mcpClient; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.mcpClient')).toBe(true);
-    expect(builtinNodes.length).toBe(43);
+    expect(builtinNodes.length).toBe(44);
   });
 
   it('ai.mcpClient is an `ai` node, main → main', () => {

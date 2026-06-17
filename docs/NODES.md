@@ -284,8 +284,19 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
 - **Runs ONCE per node run** (one SQL round-trip — a query is execution-external work that targets the resolved params, like the AI/MCP nodes). The result is mapped per `return_mode`.
 - Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `postgres` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
 
-### MySQL `+PB` (`db.mysql`) *(planned PB-T3)*
-- Same shape and `ctx.db` contract over MySQL/MariaDB (`mysql2` driver, `mysql` credential). Placeholder style is `?` rather than `$1`; otherwise flows look identical except the credential.
+### MySQL `+PB` (`db.mysql`)
+- **In:** 1 → **Out:** 1 (`main`) — the node maps result rows back onto items.
+- The MySQL/MariaDB mirror of `db.postgres`: same shape, same `ctx.db` capability contract, same `operation`/`return_mode`/`confirm_many`/`save_as` semantics. A flow author sees an identical node — only the credential type and the SQL dialect differ. The host owns the `mysql2` connection pool (the node never imports `mysql2`); the node passes a `credentialId` + a `dialect: 'mysql'` marker so the host routes to the MySQL factory and refuses a non-`mysql` credential.
+- **Parameters:**
+  - `credentialId`: a `mysql` credential (host/port[default 3306]/database/user/password/ssl), resolved host-side (invariant I3/I6/I7).
+  - `operation`: `query | select | insert | update | delete`.
+  - `query` (operation=`query`): a raw parameterized SQL string. Bind values are supplied as `params` rows (a JSON array, expression-aware) and referenced by **`?` placeholders** (the MySQL convention) — values are bound by the driver, NEVER string-concatenated, so this is SQL-injection-safe.
+  - `table` (operation=`select|insert|update|delete`): the table name (validated as a SQL identifier — letters/digits/`_`, optionally schema-qualified `schema.table`) and **backtick-quoted** (`` `col` ``) rather than double-quoted.
+  - `select`: optional `where` (field · op · value-expression) rows, `limit`, `order_by`. Emits one item per row.
+  - `insert` / `update` / `delete`: same builders as Postgres, but **without `RETURNING *`** (MySQL has none). A write returns the driver's OK packet, which the host normalizes to a synthetic row `{ affectedRows, insertId? }` so the `rows`/`single` return modes still behave sensibly.
+  - `return_mode`: `rows` (default — one output item per result row; a write emits the normalized `{ affectedRows, insertId? }` row) | `single` (merge `{ rows, rowCount }` onto every input item under `save_as`, default `db`).
+- **Runs ONCE per node run** (one SQL round-trip). The result is mapped per `return_mode`.
+- Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `mysql` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
 
 ---
 

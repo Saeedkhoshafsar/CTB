@@ -62,12 +62,30 @@ describe('nodeTypeInfos (P2-T2)', () => {
 
   // ── typed sub-connection surface (PB-T1) ────────────────────────────────
   it('omits role/inputSlots/provides for plain data nodes (Phase-A back-compat)', () => {
-    // Every builtin today is a role:'data' node with no slots, so the palette
-    // payload must NOT carry any of the new keys — byte-identical to before.
+    // A plain data node (no slots, no provider role) must NOT carry any of the
+    // new keys — its palette payload stays byte-identical to before PB-T1. The
+    // ONLY builtins that opt in today are the PB-T4 memory providers, which we
+    // assert separately below; every other node here is still a plain data node.
+    const memoryProviders = new Set(['ai.memoryKv', 'ai.memoryPostgres']);
     for (const info of infos) {
+      if (memoryProviders.has(info.type)) continue;
       expect(info).not.toHaveProperty('role');
       expect(info).not.toHaveProperty('inputSlots');
       expect(info).not.toHaveProperty('provides');
+    }
+  });
+
+  it('surfaces role:provider + provides:ai:memory for the PB-T4 memory providers', () => {
+    for (const type of ['ai.memoryKv', 'ai.memoryPostgres']) {
+      const info = infos.find((i) => i.type === type)!;
+      expect(info).toBeDefined();
+      expect(info.role).toBe('provider');
+      expect(info.provides).toBe('ai:memory');
+      // providers take no data input and emit only the dashed provider wire
+      expect(info.ports.inputs).toEqual([]);
+      expect(info.ports.outputs).toEqual(['provider']);
+      // a provider exposes no consumer slots
+      expect(info).not.toHaveProperty('inputSlots');
     }
   });
 

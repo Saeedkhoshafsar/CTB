@@ -316,6 +316,33 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
 ### AI Agent (tools)
 - LLM with tool-calling; tools = selected MCP server tools and/or other flows exposed as tools. Multi-turn loop with budget caps.
 
+### Chat memory providers `+PB` (`ai.memoryKv`, `ai.memoryPostgres`) — PB-T4
+- **Role:** `provider`, **provides:** `ai:memory`. These are *sub-nodes* (no data
+  ports — a single dashed `provider` wire), attached to an AI Agent's `ai:memory`
+  slot to give it a **rolling conversation memory** (the n8n "Chat Memory"
+  nodes). Generic infrastructure (I2 — memory is a capability, never a domain).
+- **`ai.memoryKv`** — the **default**. Persists the rolling window in the
+  built-in KV store (`ctx.kv`, scope `user`, key `__ai_mem__:<session>`), exactly
+  like `ai.llmChat`'s `memory:'conversation'` — so a bot with **no database**
+  still remembers the last N turns. Params: `session_key` (blank → keyed per
+  node+chat), `memory_window` (turns, default 10).
+- **`ai.memoryPostgres`** — the n8n "Postgres Chat Memory". Persists turns as
+  rows in a Postgres table via the injected `ctx.db` (the `pg` pool lives in the
+  host, I3; the decrypted secret never reaches node code, I7). Params:
+  `credentialId` (a `postgres` credential), `table` (validated SQL identifier,
+  default `ctb_chat_memory`), `session_key`, `memory_window`, `auto_create`
+  (issues `CREATE TABLE IF NOT EXISTS` before first use).
+- **Shared runtime (`chat-memory.ts`, I5):** a provider is never executed; the
+  consumer resolves its params into a `ChatMemoryConfig` (`{kind:'kv'|'postgres',
+  …}`) and drives `loadChatHistory()` (replay the rolling window before a model
+  turn) + `appendChatTurn()` (persist the new user+assistant pair after). Both
+  operate **only** through the injected `ctx.kv` / `ctx.db` capabilities. SQL
+  values are **always** bound (`$1,$2,…`), never concatenated; the table
+  identifier is validated against `/^[A-Za-z_][A-Za-z0-9_]*$/` per dot-segment
+  and double-quoted (`quotePgIdent`) — a hostile table name throws loudly. Fails
+  loud when the needed capability (`ctx.kv` for kv, `ctx.db` for postgres) is
+  absent. **Consumed by the AI Agent in PB-T5.**
+
 ### MCP Client
 - credential: MCP server (SSE/stdio-over-http); action: list tools | call tool (name, args expression) → `$json.result`.
 

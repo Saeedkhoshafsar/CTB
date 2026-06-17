@@ -340,6 +340,8 @@ export const fa = {
   'nodes.ai.agent.label': 'ایجنت هوش مصنوعی',
   'nodes.db.postgres.label': 'پاستگرس (پایگاه‌داده)',
   'nodes.db.mysql.label': 'مای‌اس‌کیوال (پایگاه‌داده)',
+  'nodes.ai.memoryKv.label': 'حافظه گفتگو (KV)',
+  'nodes.ai.memoryPostgres.label': 'حافظه گفتگوی پاستگرس',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -388,6 +390,10 @@ export const fa = {
   'nodeDesc.db.postgres': 'دستورات SQL را روی یک پایگاه‌داده Postgres که با یک اعتبارنامه Postgres انتخاب شده اجرا می‌کند. یک عملیات انتخاب کنید — Query خام، یا کمک‌کننده‌های Select/Insert/Update/Delete که دستور را برای شما می‌سازند. مقادیر همیشه به‌صورت پارامترهای bind ارسال می‌شوند (هرگز داخل متن SQL چسبانده نمی‌شوند)، پس عباراتی مانند {{ $json.id }} نمی‌توانند SQL تزریق کنند. به ازای هر سطر نتیجه یک آیتم برمی‌گرداند، یا {rows, rowCount} را روی هر آیتم ادغام می‌کند. جزئیات اتصال روی سرور می‌ماند — این نود فقط به اعتبارنامه ارجاع می‌دهد.',
 
   'nodeDesc.db.mysql': 'دستورات SQL را روی یک پایگاه‌داده MySQL یا MariaDB که با یک اعتبارنامه MySQL انتخاب شده اجرا می‌کند. مانند نود Postgres است، فقط اتصال فرق می‌کند. یک عملیات انتخاب کنید — Query خام، یا کمک‌کننده‌های Select/Insert/Update/Delete که دستور را برای شما می‌سازند. مقادیر همیشه به‌صورت پارامترهای bind ارسال می‌شوند (هرگز داخل متن SQL چسبانده نمی‌شوند)، پس عباراتی مانند {{ $json.id }} نمی‌توانند SQL تزریق کنند. به ازای هر سطر نتیجه یک آیتم برمی‌گرداند (یک نوشتن، affectedRows و insertId را برمی‌گرداند)، یا {rows, rowCount} را روی هر آیتم ادغام می‌کند. جزئیات اتصال روی سرور می‌ماند — این نود فقط به اعتبارنامه ارجاع می‌دهد.',
+  'nodeDesc.ai.memoryKv':
+    'به یک «دستیار هوش مصنوعی» حافظهٔ گفتگوی غلتان می‌دهد، بدون نیاز به پایگاه‌داده — چند نوبت آخر گفتگو در حافظهٔ کلید-مقدار داخلی و به‌ازای هر چت ذخیره می‌شود. آن را به اسلات «حافظه» دستیار (سیم خط‌چین) وصل کنید. این تأمین‌کنندهٔ پیش‌فرض حافظه است.',
+  'nodeDesc.ai.memoryPostgres':
+    'به یک «دستیار هوش مصنوعی» حافظهٔ گفتگو می‌دهد که در یک جدول Postgres ذخیره می‌شود (همان نود «Postgres Chat Memory» در n8n) و با یک اعتبارنامهٔ Postgres انتخاب می‌شود. آن را به اسلات «حافظه» دستیار وصل کنید. جدول می‌تواند خودکار ساخته شود؛ هر نوبت گفتگو به‌صورت سطرهایی با کلید نشست، نقش و محتوا ذخیره می‌شود. جزئیات اتصال روی سرور می‌ماند — این نود فقط به اعتبارنامه ارجاع می‌دهد.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'عملیات',
@@ -458,6 +464,22 @@ export const fa = {
   'option.db.mysql.order_dir.desc': 'نزولی',
   'option.db.mysql.return_mode.rows': 'Rows (یک آیتم به ازای هر سطر)',
   'option.db.mysql.return_mode.single': 'Single (ادغام rows + rowCount)',
+
+  // ── ai.memory.* تأمین‌کننده‌های حافظهٔ گفتگو (PB-T4) ──
+  'param.ai.memoryKv.session_key': 'کلید نشست',
+  'param.ai.memoryKv.memory_window': 'پنجرهٔ حافظه (نوبت)',
+  'paramDesc.ai.memoryKv.session_key': 'نحوهٔ گروه‌بندی حافظه در حافظهٔ کلید-مقدار. خالی بگذارید تا به‌ازای هر چت (و هر نود) کلید بخورد. عبارت‌پذیر، مثلاً {{ $json.userId }}.',
+  'paramDesc.ai.memoryKv.memory_window': 'چند نوبت قبلی (یک جفت کاربر + دستیار) به خاطر سپرده و بازپخش شود. محدود است تا پرامپت کوچک بماند.',
+  'param.ai.memoryPostgres.credentialId': 'اعتبارنامهٔ Postgres',
+  'param.ai.memoryPostgres.table': 'جدول',
+  'param.ai.memoryPostgres.session_key': 'کلید نشست',
+  'param.ai.memoryPostgres.memory_window': 'پنجرهٔ حافظه (نوبت)',
+  'param.ai.memoryPostgres.auto_create': 'ساخت خودکار جدول',
+  'paramDesc.ai.memoryPostgres.credentialId': 'اتصال Postgres که برای ذخیرهٔ نوبت‌های گفتگو استفاده می‌شود. میزبان آن را resolve می‌کند — این نود فقط به اعتبارنامه ارجاع می‌دهد.',
+  'paramDesc.ai.memoryPostgres.table': 'جدولی که نوبت‌های گفتگو را ذخیره می‌کند (یک شناسه؛ می‌تواند با اسکیما مانند app.chat_memory باشد). پیش از رسیدن به SQL اعتبارسنجی و quote می‌شود.',
+  'paramDesc.ai.memoryPostgres.session_key': 'نحوهٔ گروه‌بندی سطرها در یک گفتگو. خالی بگذارید تا به‌ازای هر چت (و هر نود) کلید بخورد. عبارت‌پذیر، مثلاً {{ $json.userId }}.',
+  'paramDesc.ai.memoryPostgres.memory_window': 'چند نوبت قبلی (یک جفت کاربر + دستیار) بازپخش شود. محدود است تا پرامپت کوچک بماند.',
+  'paramDesc.ai.memoryPostgres.auto_create': 'وقتی روشن باشد، جدول پیش از اولین استفاده با CREATE TABLE IF NOT EXISTS ساخته می‌شود. اگر خودتان اسکیما را مدیریت می‌کنید آن را خاموش کنید.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',

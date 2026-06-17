@@ -343,6 +343,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.ai.agent.label': 'AI Agent',
   'nodes.db.postgres.label': 'Postgres (Database)',
   'nodes.db.mysql.label': 'MySQL (Database)',
+  'nodes.ai.memoryKv.label': 'Chat Memory (KV)',
+  'nodes.ai.memoryPostgres.label': 'Postgres Chat Memory',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -391,6 +393,10 @@ export const en: Record<keyof typeof fa, string> = {
 
   'nodeDesc.db.mysql':
     'Runs SQL against a MySQL or MariaDB database selected by a MySQL credential. Identical to the Postgres node except the connection. Pick an operation — raw Query, or Select/Insert/Update/Delete helpers that build the statement for you. Values are ALWAYS sent as bound parameters (never glued into the SQL text), so expressions like {{ $json.id }} cannot inject SQL. Returns one item per result row (a write returns affectedRows and insertId), or merges {rows, rowCount} onto each item. The connection details stay on the server — this node only references the credential.',
+  'nodeDesc.ai.memoryKv':
+    'Gives an AI Agent a rolling conversation memory with no database required — the last few turns are stored in the built-in key-value store, per chat. Attach it to the Agent\'s Memory slot (the dashed wire). This is the default memory provider.',
+  'nodeDesc.ai.memoryPostgres':
+    'Gives an AI Agent a conversation memory persisted in a Postgres table (the n8n "Postgres Chat Memory" node), selected by a Postgres credential. Attach it to the Agent\'s Memory slot. The table can be created automatically; each turn is stored as rows with the session key, role and content. The connection details stay on the server — this node only references the credential.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'Operation',
@@ -469,6 +475,22 @@ export const en: Record<keyof typeof fa, string> = {
   'option.db.mysql.order_dir.desc': 'Descending',
   'option.db.mysql.return_mode.rows': 'Rows (one item per row)',
   'option.db.mysql.return_mode.single': 'Single (merge rows + rowCount)',
+
+  // ── ai.memory.* chat-memory providers (PB-T4) ──
+  'param.ai.memoryKv.session_key': 'Session key',
+  'param.ai.memoryKv.memory_window': 'Memory window (turns)',
+  'paramDesc.ai.memoryKv.session_key': 'How memory is grouped within the key-value store. Leave blank to key per chat (per node). Expression-aware, e.g. {{ $json.userId }}.',
+  'paramDesc.ai.memoryKv.memory_window': 'How many prior turns (a user + assistant pair) to remember and replay. Bounded so the prompt stays small.',
+  'param.ai.memoryPostgres.credentialId': 'Postgres credential',
+  'param.ai.memoryPostgres.table': 'Table',
+  'param.ai.memoryPostgres.session_key': 'Session key',
+  'param.ai.memoryPostgres.memory_window': 'Memory window (turns)',
+  'param.ai.memoryPostgres.auto_create': 'Create table automatically',
+  'paramDesc.ai.memoryPostgres.credentialId': 'The Postgres connection used to store chat turns. The host resolves it — this node only references the credential.',
+  'paramDesc.ai.memoryPostgres.table': 'Table that stores chat turns (an identifier; may be schema-qualified like app.chat_memory). Validated and quoted before it reaches the SQL.',
+  'paramDesc.ai.memoryPostgres.session_key': 'How rows are grouped into a conversation. Leave blank to key per chat (per node). Expression-aware, e.g. {{ $json.userId }}.',
+  'paramDesc.ai.memoryPostgres.memory_window': 'How many prior turns (a user + assistant pair) to replay. Bounded so the prompt stays small.',
+  'paramDesc.ai.memoryPostgres.auto_create': 'When on, the table is created with CREATE TABLE IF NOT EXISTS before first use. Turn off if you manage the schema yourself.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

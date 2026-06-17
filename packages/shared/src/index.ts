@@ -9,6 +9,7 @@ export * from './flow';
 export * from './execution';
 export * from './node-def';
 export * from './node-params';
+export * from './chat-memory';
 export * from './errors';
 export * from './api';
 export * from './credentials';

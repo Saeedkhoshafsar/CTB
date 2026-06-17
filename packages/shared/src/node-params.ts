@@ -1685,6 +1685,85 @@ export const DbMysqlParamsSchema = z
   });
 export type DbMysqlParams = z.infer<typeof DbMysqlParamsSchema>;
 
+// ── ai.memory.* chat-memory providers (PB-T4) ───────────────────────────────
+//
+// Memory PROVIDERS are `role:'provider'` sub-nodes (PB-T1) that attach to an
+// `ai:memory` slot. They are never run as a data step; the consumer (the future
+// `ai.agent`, PB-T5) resolves the attached provider's params into a
+// `ChatMemoryConfig` and uses the shared chat-memory runtime (chat-memory.ts) to
+// load the rolling history before a turn and append the new turn pair after it.
+//
+// Two backings, same contract:
+//  - `ai.memoryKv`        — the DEFAULT. Persists the rolling window in the
+//                           existing KV store (`ctx.kv`), exactly like
+//                           `ai.llmChat`'s `memory:'conversation'` did, so a bot
+//                           with no database still gets conversation memory.
+//  - `ai.memoryPostgres`  — persists turns as rows in a Postgres table via the
+//                           injected `ctx.db` capability (the n8n "Postgres Chat
+//                           Memory" node). The table + a `postgres` credential
+//                           are chosen by the author; the host owns the pool (I3).
+
+/**
+ * How many PRIOR turns (a turn = one user + one assistant message) a memory
+ * provider replays. Bounded so the prompt — and the stored row/table — stay
+ * small. Shared default keeps the two providers consistent.
+ */
+export const ChatMemoryWindowSchema = z.coerce.number().int().min(1).max(100).default(10);
+
+/**
+ * ai.memoryKv params (PB-T4). The default chat-memory provider, backed by the
+ * KV store. `session_key` lets the author scope memory (default: per-CHAT — the
+ * runtime falls back to the chat id when blank); it is expression-aware so a
+ * flow can key memory by user, topic, etc.
+ */
+export const AiMemoryKvParamsSchema = z.object({
+  /**
+   * How the rolling window is keyed within KV (scope is always `user`). Blank →
+   * the runtime keys by the node id + chat id (per-chat, per-node isolation,
+   * matching the old ai.llmChat behavior). Expression-aware.
+   */
+  session_key: z.string().default(''),
+  /** Number of prior turns to replay / retain. */
+  memory_window: ChatMemoryWindowSchema,
+});
+export type AiMemoryKvParams = z.infer<typeof AiMemoryKvParamsSchema>;
+
+/**
+ * ai.memoryPostgres params (PB-T4). Persists chat turns in a Postgres table the
+ * author names; the host resolves the `postgres` credential to a pooled
+ * connection (I3/I7 — the node only carries the id). The table is created
+ * on-demand by the runtime if `auto_create` is set, otherwise the author owns
+ * its schema. The table identifier is validated like the db.postgres node's
+ * identifiers (no injection through the table name).
+ */
+export const AiMemoryPostgresParamsSchema = z.object({
+  /** A `postgres` credential; the host resolves it to a pooled connection (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'postgres' }),
+  /**
+   * The table that stores chat turns. Validated as a SQL identifier
+   * (`schema.table` allowed). Default `ctb_chat_memory`.
+   */
+  table: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/, 'must be a valid SQL table identifier')
+    .default('ctb_chat_memory'),
+  /**
+   * How rows are grouped into a conversation. Blank → the runtime keys by the
+   * node id + chat id (per-chat). Expression-aware (e.g. `{{ $json.userId }}`).
+   */
+  session_key: z.string().default(''),
+  /** Number of prior turns to replay / retain. */
+  memory_window: ChatMemoryWindowSchema,
+  /**
+   * When set, the runtime issues a `CREATE TABLE IF NOT EXISTS` for the chosen
+   * table before first use so a fresh database "just works". Off → the author
+   * must have created the table with the expected columns.
+   */
+  auto_create: z.boolean().default(true),
+});
+export type AiMemoryPostgresParams = z.infer<typeof AiMemoryPostgresParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

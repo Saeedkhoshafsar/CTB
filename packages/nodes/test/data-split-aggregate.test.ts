@@ -19,7 +19,7 @@ describe('data.splitOut + data.aggregate — registry', () => {
     expect(reg.has('data.aggregate')).toBe(true);
     expect(dataSplitOut.category).toBe('data');
     expect(dataAggregate.category).toBe('data');
-    expect(builtinNodes.length).toBe(44);
+    expect(builtinNodes.length).toBe(46);
   });
 
   it('splitOut ports: inputs=[main], outputs=[main,empty]', () => {

@@ -142,6 +142,55 @@ A richer sibling of Set Fields, labelled **"Edit Fields (Set)"** so n8n users fi
 - **In:** 1 → **Out:** 1 (passthrough, edited). Dotted names create nested objects (`user.level` → `{user:{level}}`).
 - **Fails loudly** on a `value_mode:'json'` value that isn't valid JSON, or a `rename` with an empty destination (validated up front, before any item is touched).
 
+### Split Out `+PA` (`data.splitOut`)
+Splits one item that contains an **array field** into one item per element (n8n "Split Out"). The inverse of `data.aggregate`.
+
+- **In:** many → **Out:** `main` (one item per array element) + `empty` (original item when the array is empty/missing).
+- **Parameters:** `field` (dotted path to the array field, e.g. `"tags"` or `"result.items"`) · `include` (`selected_field_only` | `all_fields`, default `all_fields`; `selected_field_only` → output `$json` contains only the extracted element, `all_fields` → full original item with the field replaced by the element).
+- When `field` resolves to a non-array value, treats it as a single-element array (same as n8n).
+- Items are never mutated; original array field is replaced by the element in `all_fields` mode.
+
+### Aggregate `+PA` (`data.aggregate`)
+Merges many items into **one** by collecting a field (or all fields) into an array (n8n "Aggregate"). The inverse of `data.splitOut`.
+
+- **In:** many → **Out:** 1 (single item with the aggregated array).
+- **Parameters:** `mode` (`aggregate_individual_fields` | `aggregate_all_items`, default `aggregate_individual_fields`):
+  - `aggregate_individual_fields`: for each row in `fields`, collect the value of that dotted `field` across all items into `dest` (also a dotted path); additional fields from the first item are carried through.
+  - `aggregate_all_items`: wrap the entire `$json` of each item into an array under `dest_field` (default `"data"`).
+- Empty input emits a single item with an empty array.
+
+### Filter `+PA` (`data.filter`)
+Passes each item through the `kept` port if its conditions hold, or the `discarded` port otherwise. Reuses the **`flow.if` condition engine** exactly — same operators, same AND/OR combine logic — so a flow author who knows IF already knows Filter.
+
+- **In:** many → **Out:** `kept` (passing items) + `discarded` (failing items). Both ports are always emitted (possibly empty) so downstream branches always exist.
+- **Parameters:** `conditions` (≥1 condition rows, each `{ value1, operator, value2? }` — same schema as `flow.if`; operators: equals, notEquals, contains, regex, gt, gte, lt, lte, exists, is_empty) · `combine` (and | or, default and).
+- Each item is evaluated independently; items are never mutated.
+- Differs from `flow.if` in intent and output names: IF **branches the whole batch** at a decision point; Filter **partitions items** and keeps both sets in the same pipeline.
+
+### Sort `+PA` (`data.sort`)
+Orders items by one or more keys (n8n "Sort"). Pure, stable, multi-key.
+
+- **In:** many → **Out:** `main` (same items, new order).
+- **Parameters:** `fields` (≥1 rows, each `{ field, order }` — `field` is a dotted path, `order` is `asc` | `desc`, default `asc`). The first row is the primary key; later rows break ties.
+- **Comparison:** if both values are numbers (or numeric strings) they compare numerically; otherwise they compare as locale-aware strings. A missing/null/empty value always sorts **last**, regardless of direction (n8n-compatible). The sort is stable, so equal keys preserve input order.
+- Items are never mutated — only the output order changes.
+
+### Limit `+PA` (`data.limit`)
+Keeps only the first or last N items (n8n "Limit"). Pure, tiny, high-value.
+
+- **In:** many → **Out:** `main` (the surviving items, original relative order).
+- **Parameters:** `max_items` (integer ≥ 0; `0` = no limit; coerced from a string) · `keep` (`first` | `last`, default `first`).
+- When `max_items` is `0` or ≥ the input length, everything passes through unchanged. Items are never mutated.
+
+### Remove Duplicates `+PA` (`data.removeDuplicates`)
+Drops repeated items, keeping the **first** occurrence (n8n "Remove Duplicates").
+
+- **In:** many → **Out:** `main` (de-duplicated items, order of survivors preserved).
+- **Parameters:** `compare` (`all_fields` | `selected_fields`, default `all_fields`) · `fields` (≥1 dotted field paths, required only when `compare=selected_fields`).
+  - `all_fields`: an item is a duplicate when its **entire** `$json` is deep-equal to one already seen (compared via a stable, key-sorted serialization, so key order doesn't matter).
+  - `selected_fields`: an item is a duplicate when the combined value at the chosen `fields` matches an already-seen item. A missing field is encoded distinctly so it never collides with a literal `null`.
+- Fails loudly when `compare=selected_fields` but no `fields` are given. Items are never mutated.
+
 ### Wait / Delay `M`
 - Fixed duration (`30s`…`7d`) or until datetime (expression). Persisted — survives restarts (uses the same wait machinery).
 

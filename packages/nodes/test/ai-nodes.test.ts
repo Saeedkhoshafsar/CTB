@@ -19,10 +19,10 @@ import { AI_MEMORY_KEY_PREFIX, aiLlmChat, builtinNodes, registerBuiltinNodes } f
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P5-T1)', () => {
-  it('registers ai.llmChat; registry is 35 types', () => {
+  it('registers ai.llmChat; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.llmChat')).toBe(true);
-    expect(builtinNodes.length).toBe(35);
+    expect(builtinNodes.length).toBe(41);
   });
 
   it('is an `ai` node with main → main ports', () => {

@@ -22,6 +22,12 @@ import { dataCollection } from './data/collection';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
 import { dataEditFields } from './data/edit-fields';
+import { dataFilter } from './data/filter';
+import { dataSplitOut } from './data/split-out';
+import { dataAggregate } from './data/aggregate';
+import { dataSort } from './data/sort';
+import { dataLimit } from './data/limit';
+import { dataRemoveDuplicates } from './data/remove-duplicates';
 import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -58,6 +64,12 @@ export { dataCollection } from './data/collection';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
 export { dataEditFields } from './data/edit-fields';
+export { dataFilter } from './data/filter';
+export { dataSplitOut } from './data/split-out';
+export { dataAggregate } from './data/aggregate';
+export { dataSort } from './data/sort';
+export { dataLimit } from './data/limit';
+export { dataRemoveDuplicates } from './data/remove-duplicates';
 export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -111,6 +123,12 @@ export const builtinNodes: NodeDef<never>[] = [
   flowWait,
   dataSetFields,
   dataEditFields,
+  dataFilter,
+  dataSplitOut,
+  dataAggregate,
+  dataSort,
+  dataLimit,
+  dataRemoveDuplicates,
   dataKv,
   dataCode,
   dataUserProfile,

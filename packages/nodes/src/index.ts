@@ -40,6 +40,7 @@ import { tgChatAction } from './tg/chat-action';
 import { tgDeleteMessage } from './tg/delete-message';
 import { tgEditMessage } from './tg/edit-message';
 import { tgMenu } from './tg/menu';
+import { tgSendMedia } from './tg/send-media';
 import { tgSendMessage } from './tg/send-message';
 import { tgTrigger } from './tg/trigger';
 import { tgWaitForReply } from './tg/wait-for-reply';
@@ -77,6 +78,7 @@ export { tgChatAction } from './tg/chat-action';
 export { tgDeleteMessage } from './tg/delete-message';
 export { tgEditMessage } from './tg/edit-message';
 export { tgMenu } from './tg/menu';
+export { tgSendMedia } from './tg/send-media';
 export { tgSendMessage } from './tg/send-message';
 export { tgTrigger } from './tg/trigger';
 export { tgWaitForReply } from './tg/wait-for-reply';
@@ -92,6 +94,7 @@ export const builtinNodes: NodeDef<never>[] = [
   webhookTrigger,
   scheduleTrigger,
   tgSendMessage,
+  tgSendMedia,
   tgWaitForReply,
   tgMenu,
   tgEditMessage,

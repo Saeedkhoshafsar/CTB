@@ -23,6 +23,11 @@ export interface SentMessage {
   messageId: number;
 }
 
+export interface SentMedia {
+  opts: Record<string, unknown>;
+  messageIds: number[];
+}
+
 export interface HttpCall {
   method: string;
   url: string;
@@ -33,6 +38,8 @@ export interface HttpCall {
 
 export interface FakeCtx extends NodeCtx {
   sent: SentMessage[];
+  /** tg.sendMedia (PA-T1): recorded media/album sends. */
+  sentMedia: SentMedia[];
   edited: Record<string, unknown>[];
   varsBag: Record<string, unknown>;
   /** In-memory kv backing: keys are `${scope}:${key}`. */
@@ -131,6 +138,16 @@ export function makeCtx(
           listError?: string;
           callError?: string;
         };
+    /**
+     * PA-T1: seed the in-memory file store for ctx.files.read (tg.sendMedia
+     * `source:'file'`): fileId → { bytes, mime }. Pass `files: null` to simulate
+     * an instance with no file store (ctx.files === null). Unknown ids throw.
+     */
+    seedFiles?: Record<string, { bytes: Uint8Array; mime?: string | null }>;
+    /** Pass `null` to simulate an instance with no file store (ctx.files === null). */
+    files?: null;
+    /** tg.sendMedia: make ctx.tg.sendMedia throw this message (transport error). */
+    sendMediaError?: string;
     /** Seed the in-memory collection store: slug → array of record docs (id auto-assigned if absent). */
     seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
     /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
@@ -138,6 +155,11 @@ export function makeCtx(
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
+  const sentMedia: SentMedia[] = [];
+  const filesBag = new Map<string, { bytes: Uint8Array; mime: string | null }>();
+  for (const [id, f] of Object.entries(overrides.seedFiles ?? {})) {
+    filesBag.set(id, { bytes: f.bytes, mime: f.mime ?? null });
+  }
   const edited: Record<string, unknown>[] = [];
   const editedCaption: Record<string, unknown>[] = [];
   const editedReplyMarkup: Record<string, unknown>[] = [];
@@ -204,6 +226,7 @@ export function makeCtx(
     nodeId: overrides.nodeId ?? 'node1',
     inputsByPort: overrides.inputsByPort ?? {},
     sent,
+    sentMedia,
     edited,
     varsBag,
     kvBag,
@@ -283,6 +306,24 @@ export function makeCtx(
             },
             async sendChatAction(opts) {
               chatActions.push(opts);
+            },
+            async sendMedia(opts) {
+              if (overrides.sendMediaError) throw new Error(overrides.sendMediaError);
+              // One synthetic message id per media item (mirrors sendMediaGroup).
+              const messageIds = (opts.media as unknown[]).map(() => nextMessageId++);
+              sentMedia.push({ opts: opts as Record<string, unknown>, messageIds });
+              return { messageIds };
+            },
+          },
+    // PA-T1: file-store reader for tg.sendMedia (`source:'file'`).
+    files:
+      overrides.files === null
+        ? null
+        : {
+            async read(fileId) {
+              const f = filesBag.get(fileId);
+              if (!f) throw new Error(`file not found: ${fileId}`);
+              return { bytes: f.bytes, mime: f.mime };
             },
           },
     log: (level, message) => logs.push({ level, message }),

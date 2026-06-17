@@ -101,6 +101,93 @@ export const TgSendMessageParamsSchema = z
   });
 export type TgSendMessageParams = z.infer<typeof TgSendMessageParamsSchema>;
 
+// ── tg.sendMedia (PA-T1) ─────────────────────────────────────────────────────
+
+/**
+ * One piece of media to send. The `source` discriminates HOW the bytes are
+ * obtained — the HOST resolves each into a Telegram upload (invariants I3/I6;
+ * the node never touches a token, socket or disk):
+ *  - `url`      — a public URL Telegram fetches itself (`value` = the URL).
+ *  - `file_id`  — a Telegram file_id to re-send (`value` = the file_id).
+ *  - `file`     — a CTB Collection/file-store file id; the host reads the bytes
+ *                 from disk (`SqliteFileStore.readLocal`) and uploads them.
+ *  - `base64`   — raw bytes provided inline as base64 (`value` = the base64,
+ *                 optional `filename`/`mime` hints for the upload).
+ *
+ * `kind` is the Telegram media kind. In an album (media group) only
+ * `photo`/`video` may be mixed; `document`/`audio` must each be sent in a group
+ * of their own — enforced in send-media.ts at run time (not statically, because
+ * a single-item send accepts any kind).
+ */
+export const MediaSourceSchema = z.enum(['url', 'file_id', 'file', 'base64']);
+export type MediaSource = z.infer<typeof MediaSourceSchema>;
+
+export const MediaKindSchema = z.enum(['photo', 'video', 'document', 'audio']);
+export type MediaKind = z.infer<typeof MediaKindSchema>;
+
+export const MediaItemSchema = z
+  .object({
+    kind: MediaKindSchema.default('photo'),
+    source: MediaSourceSchema.default('url'),
+    /** URL | file_id | CTB file id | base64 string, per `source`. */
+    value: z.string().min(1),
+    /** Per-item caption (album captions show on each item). */
+    caption: z.string().optional(),
+    /** Upload hints (source=base64/file): override the stored mime / filename. */
+    filename: z.string().optional(),
+    mime: z.string().optional(),
+  })
+  .strict();
+export type MediaItem = z.infer<typeof MediaItemSchema>;
+
+/**
+ * tg.sendMedia — send one media message, OR an album (media group) of 2–10
+ * photos/videos in a single message. Unlike tg.sendMessage (URL/file_id only),
+ * this node can UPLOAD BYTES (a Collection file id or inline base64). Caption,
+ * parse-mode and (single-item only) keyboard are preserved.
+ */
+export const TgSendMediaParamsSchema = z
+  .object({
+    /** Target chat id; defaults to the execution's current chat. */
+    chat: z.union([z.number(), z.string().min(1)]).optional(),
+    /** 1 item → a single media message; 2–10 → an album (media group). */
+    media: z.array(MediaItemSchema).min(1).max(10),
+    /** Caption for the message (single) or the FIRST album item when set. */
+    caption: z.string().optional(),
+    parse_mode: ParseModeSchema.optional(),
+    /** Inline/reply keyboard — single-item sends only (Telegram forbids it on a media group). */
+    keyboard: KeyboardSchema.optional(),
+    options: z
+      .object({
+        protect_content: z.boolean().default(false),
+        reply_to: z.number().int().optional(),
+        silent: z.boolean().default(false),
+      })
+      .optional(),
+  })
+  .superRefine((p, ctx) => {
+    const isAlbum = p.media.length > 1;
+    if (isAlbum) {
+      // Albums may only carry photos/videos (Telegram rule) and no keyboard.
+      const bad = p.media.find((m) => m.kind !== 'photo' && m.kind !== 'video');
+      if (bad) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'an album (2–10 items) may only contain `photo` or `video` items',
+          path: ['media'],
+        });
+      }
+      if (p.keyboard) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a keyboard cannot be attached to an album (media group)',
+          path: ['keyboard'],
+        });
+      }
+    }
+  });
+export type TgSendMediaParams = z.infer<typeof TgSendMediaParamsSchema>;
+
 // ── tg.waitForReply ──────────────────────────────────────────────────────────
 
 /** Prompt = plain string or a mini Send Message (text + parse_mode + keyboard). */

@@ -12,10 +12,28 @@
  * in production it is bound to grammY's `bot.api.raw`.
  */
 
+import { InputFile } from 'grammy';
+import type { TgInputMedia } from '@ctb/shared';
+
 export const TG_TEXT_LIMIT = 4096;
 
 /** The transport: grammY `api.raw`-shaped — method name + flat payload. */
 export type CallApi = (method: string, payload: Record<string, unknown>) => Promise<unknown>;
+
+/** Bot-API send-method per media kind (single-item send). */
+const SINGLE_METHOD: Record<TgInputMedia['kind'], string> = {
+  photo: 'sendPhoto',
+  video: 'sendVideo',
+  document: 'sendDocument',
+  audio: 'sendAudio',
+};
+/** The payload key the file rides on per kind. */
+const FILE_FIELD: Record<TgInputMedia['kind'], string> = {
+  photo: 'photo',
+  video: 'video',
+  document: 'document',
+  audio: 'audio',
+};
 
 export interface SenderOptions {
   /** Sustained rate (tokens/second). Telegram global bot limit ≈ 30/s. */
@@ -172,5 +190,87 @@ export class TgSender {
     }
     // splitText never returns [], so last is always set.
     return { messageId: (last as { message_id: number }).message_id };
+  }
+
+  /**
+   * Send one media message OR an album (media group) of 2–10 photos/videos
+   * (tg.sendMedia, PA-T1). A single item routes to sendPhoto/Video/Document/
+   * Audio (keyboard + caption allowed); 2+ items route to sendMediaGroup (no
+   * keyboard — Telegram forbids it on a group). Each item's bytes become a
+   * grammY InputFile upload; a `ref` (URL/file_id) is passed through as-is.
+   * Returns the id of every created message (one per item for an album).
+   */
+  async sendMedia(opts: {
+    chat_id: number | string;
+    media: TgInputMedia[];
+    caption?: string;
+    parse_mode?: string;
+    reply_markup?: unknown;
+    protect_content?: boolean;
+    reply_to_message_id?: number;
+    disable_notification?: boolean;
+  }): Promise<{ messageIds: number[] }> {
+    const { chat_id, media, caption, parse_mode, reply_markup, ...rest } = opts;
+    if (media.length === 0) throw new Error('sendMedia: no media items');
+
+    const toFile = (m: TgInputMedia): InputFile | string => {
+      if (m.bytes !== undefined) {
+        return new InputFile(m.bytes, m.filename ?? `upload.${defaultExt(m)}`);
+      }
+      if (m.ref !== undefined) return m.ref;
+      throw new Error('sendMedia: media item has neither bytes nor ref');
+    };
+
+    // ── Single item → sendPhoto/sendVideo/sendDocument/sendAudio ──────────────
+    if (media.length === 1) {
+      const m = media[0]!;
+      const payload: Record<string, unknown> = {
+        chat_id,
+        [FILE_FIELD[m.kind]]: toFile(m),
+        ...rest,
+      };
+      const cap = m.caption ?? caption;
+      if (cap !== undefined) payload.caption = cap;
+      if (parse_mode !== undefined) payload.parse_mode = parse_mode;
+      if (reply_markup !== undefined) payload.reply_markup = reply_markup;
+      const res = await this.call<{ message_id: number }>(SINGLE_METHOD[m.kind], payload);
+      return { messageIds: [res.message_id] };
+    }
+
+    // ── Album → sendMediaGroup (photos/videos only; caption on first item) ────
+    const inputMedia = media.map((m, i) => {
+      const entry: Record<string, unknown> = { type: m.kind, media: toFile(m) };
+      const cap = m.caption ?? (i === 0 ? caption : undefined);
+      if (cap !== undefined) entry.caption = cap;
+      if (cap !== undefined && parse_mode !== undefined) entry.parse_mode = parse_mode;
+      return entry;
+    });
+    const res = await this.call<{ message_id: number }[]>('sendMediaGroup', {
+      chat_id,
+      media: inputMedia,
+      ...rest,
+    });
+    return { messageIds: res.map((r) => r.message_id) };
+  }
+}
+
+/** A best-effort default upload extension per media kind / mime. */
+function defaultExt(m: TgInputMedia): string {
+  if (m.mime) {
+    const sub = m.mime.split('/')[1];
+    if (sub) return sub.replace(/[^a-z0-9]/gi, '') || fallbackExt(m.kind);
+  }
+  return fallbackExt(m.kind);
+}
+function fallbackExt(kind: TgInputMedia['kind']): string {
+  switch (kind) {
+    case 'photo':
+      return 'jpg';
+    case 'video':
+      return 'mp4';
+    case 'audio':
+      return 'mp3';
+    default:
+      return 'bin';
   }
 }

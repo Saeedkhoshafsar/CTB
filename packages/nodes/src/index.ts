@@ -16,6 +16,8 @@ import { aiClassify } from './ai/classify';
 import { aiExtract } from './ai/extract';
 import { aiLlmChat } from './ai/llm-chat';
 import { aiMcpClient } from './ai/mcp-client';
+import { aiMemoryKv } from './ai/memory-kv';
+import { aiMemoryPostgres } from './ai/memory-postgres';
 import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
@@ -31,6 +33,8 @@ import { dataRemoveDuplicates } from './data/remove-duplicates';
 import { dataDateTime } from './data/date-time';
 import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
+import { dbPostgres } from './db/postgres';
+import { dbMysql } from './db/mysql';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
 import { flowIf } from './flow/if';
 import { flowLoop } from './flow/loop';
@@ -59,6 +63,8 @@ export { aiClassify } from './ai/classify';
 export { aiExtract } from './ai/extract';
 export { aiLlmChat, AI_MEMORY_KEY_PREFIX } from './ai/llm-chat';
 export { aiMcpClient } from './ai/mcp-client';
+export { aiMemoryKv } from './ai/memory-kv';
+export { aiMemoryPostgres } from './ai/memory-postgres';
 export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
@@ -74,6 +80,8 @@ export { dataRemoveDuplicates } from './data/remove-duplicates';
 export { dataDateTime, parseDate } from './data/date-time';
 export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
+export { dbPostgres } from './db/postgres';
+export { dbMysql } from './db/mysql';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
 export { flowIf } from './flow/if';
 export { flowLoop, LOOP_STATE_PREFIX } from './flow/loop';
@@ -137,6 +145,10 @@ export const builtinNodes: NodeDef<never>[] = [
   dataUserProfile,
   dataCollection,
   httpRequest,
+  dbPostgres,
+  dbMysql,
+  aiMemoryKv,
+  aiMemoryPostgres,
   flowLoop,
   flowMerge,
   flowStopError,

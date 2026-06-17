@@ -1465,6 +1465,305 @@ export const AiAgentParamsSchema = z.object({
 });
 export type AiAgentParams = z.infer<typeof AiAgentParamsSchema>;
 
+// ── db.postgres (PB-T2) ──────────────────────────────────────────────────────
+
+/**
+ * Comparison operators for a `db.postgres` `where` row. A small SQL-safe set —
+ * each maps to a fixed operator the node emits as a parameterized fragment
+ * (`field <op> $n`), so the VALUE is always bound, never concatenated. `in`
+ * takes a comma-separated list (expanded to `IN ($a,$b,…)`), `is_null`/`not_null`
+ * ignore the value.
+ */
+export const DbWhereOpSchema = z.enum([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'like',
+  'in',
+  'is_null',
+  'not_null',
+]);
+export type DbWhereOp = z.infer<typeof DbWhereOpSchema>;
+
+/**
+ * One `where` row for select/update/delete. `field` is a COLUMN name (validated
+ * as a SQL identifier by the node — letters/digits/`_`, optionally
+ * `schema.table.col`); `value` is an EXPRESSION the executor resolves before
+ * execute(), then BOUND as a parameter (never string-concatenated).
+ */
+export const DbWhereRowSchema = z.object({
+  field: z.string().min(1),
+  op: DbWhereOpSchema.default('eq'),
+  value: z.coerce.string().default(''),
+});
+export type DbWhereRow = z.infer<typeof DbWhereRowSchema>;
+
+/** One `column = value(expression)` mapping row for insert/update. */
+export const DbValueRowSchema = z.object({
+  /** Target COLUMN name — validated as a SQL identifier by the node. */
+  field: z.string().min(1),
+  /**
+   * Value expression — `{{ }}` resolved like every other param, then BOUND as a
+   * driver parameter. Coerced to a string here because the executor re-validates
+   * params AFTER resolving expressions (an expression that yields a number would
+   * otherwise fail `z.string()`); the node parses numeric/boolean/null literals
+   * back out before binding.
+   */
+  value: z.coerce.string().default(''),
+});
+export type DbValueRow = z.infer<typeof DbValueRowSchema>;
+
+/**
+ * db.postgres — a GENERIC Postgres node (NODES.md §Postgres). Infrastructure,
+ * not a domain (invariant I2). The host owns the `pg` connection pool (invariant
+ * I3 — the driver lives only in `apps/server`); the node reaches the database
+ * ONLY through the injected `ctx.db` capability and passes a `credentialId` it
+ * never decrypts (invariants I6/I7).
+ *
+ * Operations:
+ *  - `query`  → a raw parameterized SQL string with `$1,$2,…` placeholders + a
+ *               JSON-array `params` (expression-aware). NEVER string-concatenated.
+ *  - `select` → `SELECT * FROM <table>` + optional `where`/`order_by`/`limit`.
+ *  - `insert` → `INSERT INTO <table>(…) VALUES(…) RETURNING *` from `values` rows.
+ *  - `update` → `UPDATE <table> SET … WHERE … RETURNING *`.
+ *  - `delete` → `DELETE FROM <table> WHERE … RETURNING *` (guarded by `confirm_many`).
+ *
+ * `return_mode`: `rows` (default — one output item per result row, `{ json: row }`)
+ * or `single` (merge `{ rows, rowCount }` onto every input item under `save_as`).
+ *
+ * Runs ONCE per node run (one SQL round-trip targeting the resolved params).
+ */
+export const DbOperationSchema = z.enum(['query', 'select', 'insert', 'update', 'delete']);
+export type DbOperation = z.infer<typeof DbOperationSchema>;
+
+export const DbPostgresParamsSchema = z
+  .object({
+    /** A `postgres` credential (host/port/db/user/pass/ssl); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'postgres' }),
+    operation: DbOperationSchema.default('query'),
+    /**
+     * operation=query: raw parameterized SQL. Use `$1,$2,…` placeholders bound
+     * from `params`. NEVER interpolate values into this string yourself.
+     */
+    query: z.string().default(''),
+    /**
+     * operation=query: the bind values, as a JSON ARRAY string (expression-aware,
+     * e.g. `["{{ $json.id }}", 42]`). Empty/blank → no params.
+     */
+    params: z.string().default(''),
+    /** operation=select|insert|update|delete: the table name (SQL identifier). */
+    table: z.string().default(''),
+    /** select/update/delete: where rows (ANDed). */
+    where: z.array(DbWhereRowSchema).default([]),
+    /** insert/update: column=value mapping rows. */
+    values: z.array(DbValueRowSchema).default([]),
+    /** select: `ORDER BY` column (validated identifier) — optional. */
+    order_by: z.string().default(''),
+    /** select: ascending|descending for `order_by`. */
+    order_dir: z.enum(['asc', 'desc']).default('asc'),
+    /** select: max rows (positive int) — optional. */
+    limit: z.coerce.number().int().positive().max(10000).optional(),
+    /** update/delete: refuse to touch more than one row unless set. */
+    confirm_many: z.boolean().default(false),
+    /** rows = one item per result row; single = merge {rows,rowCount} per item. */
+    return_mode: z.enum(['rows', 'single']).default('rows'),
+    /** return_mode=single: where the result lands on each output item (default `db`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('db'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.operation === 'query') {
+      if (p.query.trim() === '') {
+        ctx.addIssue({ code: 'custom', message: 'op "query" requires a SQL string', path: ['query'] });
+      }
+      return;
+    }
+    // select|insert|update|delete all need a table.
+    if (p.table.trim() === '') {
+      ctx.addIssue({ code: 'custom', message: `op "${p.operation}" requires a table`, path: ['table'] });
+    }
+    if (p.operation === 'insert' && p.values.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "insert" requires at least one value', path: ['values'] });
+    }
+    if (p.operation === 'update') {
+      if (p.values.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one value', path: ['values'] });
+      }
+      if (p.where.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one where row', path: ['where'] });
+      }
+    }
+    if (p.operation === 'delete' && p.where.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "delete" requires at least one where row', path: ['where'] });
+    }
+  });
+export type DbPostgresParams = z.infer<typeof DbPostgresParamsSchema>;
+
+/**
+ * db.mysql — a GENERIC MySQL / MariaDB node (NODES.md §Database connectors,
+ * PLAN2 PB-T3). The exact same shape + behaviour as `db.postgres`, only the
+ * credential type differs (`mysql` instead of `postgres`) so a flow looks
+ * identical except the connection — the node speaks SQL through the SAME
+ * injected `ctx.db` capability (invariants I2/I3/I6/I7). The node emits the
+ * MySQL dialect (`?` placeholders, backtick-quoted identifiers, no `RETURNING`);
+ * the host runs it through the `mysql2` driver that lives only in `apps/server`.
+ *
+ * Operations mirror db.postgres exactly:
+ *  - `query`  → a raw parameterized SQL string with `?` placeholders + a JSON
+ *               array `params`. NEVER string-concatenated.
+ *  - `select` → `SELECT * FROM <table>` + optional `where`/`order_by`/`limit`.
+ *  - `insert` → `INSERT INTO <table>(…) VALUES(…)` (returns `{ insertId, affectedRows }`).
+ *  - `update` → `UPDATE <table> SET … WHERE …` (returns `{ affectedRows }`).
+ *  - `delete` → `DELETE FROM <table> WHERE …` (guarded by `confirm_many`).
+ */
+export const DbMysqlParamsSchema = z
+  .object({
+    /** A `mysql` credential (host/port/db/user/pass/ssl); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'mysql' }),
+    operation: DbOperationSchema.default('query'),
+    /**
+     * operation=query: raw parameterized SQL. Use `?` placeholders bound from
+     * `params`. NEVER interpolate values into this string yourself.
+     */
+    query: z.string().default(''),
+    /**
+     * operation=query: the bind values, as a JSON ARRAY string (expression-aware,
+     * e.g. `["{{ $json.id }}", 42]`). Empty/blank → no params.
+     */
+    params: z.string().default(''),
+    /** operation=select|insert|update|delete: the table name (SQL identifier). */
+    table: z.string().default(''),
+    /** select/update/delete: where rows (ANDed). */
+    where: z.array(DbWhereRowSchema).default([]),
+    /** insert/update: column=value mapping rows. */
+    values: z.array(DbValueRowSchema).default([]),
+    /** select: `ORDER BY` column (validated identifier) — optional. */
+    order_by: z.string().default(''),
+    /** select: ascending|descending for `order_by`. */
+    order_dir: z.enum(['asc', 'desc']).default('asc'),
+    /** select: max rows (positive int) — optional. */
+    limit: z.coerce.number().int().positive().max(10000).optional(),
+    /** update/delete: refuse to touch more than one row unless set. */
+    confirm_many: z.boolean().default(false),
+    /** rows = one item per result row; single = merge {rows,rowCount} per item. */
+    return_mode: z.enum(['rows', 'single']).default('rows'),
+    /** return_mode=single: where the result lands on each output item (default `db`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('db'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.operation === 'query') {
+      if (p.query.trim() === '') {
+        ctx.addIssue({ code: 'custom', message: 'op "query" requires a SQL string', path: ['query'] });
+      }
+      return;
+    }
+    if (p.table.trim() === '') {
+      ctx.addIssue({ code: 'custom', message: `op "${p.operation}" requires a table`, path: ['table'] });
+    }
+    if (p.operation === 'insert' && p.values.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "insert" requires at least one value', path: ['values'] });
+    }
+    if (p.operation === 'update') {
+      if (p.values.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one value', path: ['values'] });
+      }
+      if (p.where.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one where row', path: ['where'] });
+      }
+    }
+    if (p.operation === 'delete' && p.where.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "delete" requires at least one where row', path: ['where'] });
+    }
+  });
+export type DbMysqlParams = z.infer<typeof DbMysqlParamsSchema>;
+
+// ── ai.memory.* chat-memory providers (PB-T4) ───────────────────────────────
+//
+// Memory PROVIDERS are `role:'provider'` sub-nodes (PB-T1) that attach to an
+// `ai:memory` slot. They are never run as a data step; the consumer (the future
+// `ai.agent`, PB-T5) resolves the attached provider's params into a
+// `ChatMemoryConfig` and uses the shared chat-memory runtime (chat-memory.ts) to
+// load the rolling history before a turn and append the new turn pair after it.
+//
+// Two backings, same contract:
+//  - `ai.memoryKv`        — the DEFAULT. Persists the rolling window in the
+//                           existing KV store (`ctx.kv`), exactly like
+//                           `ai.llmChat`'s `memory:'conversation'` did, so a bot
+//                           with no database still gets conversation memory.
+//  - `ai.memoryPostgres`  — persists turns as rows in a Postgres table via the
+//                           injected `ctx.db` capability (the n8n "Postgres Chat
+//                           Memory" node). The table + a `postgres` credential
+//                           are chosen by the author; the host owns the pool (I3).
+
+/**
+ * How many PRIOR turns (a turn = one user + one assistant message) a memory
+ * provider replays. Bounded so the prompt — and the stored row/table — stay
+ * small. Shared default keeps the two providers consistent.
+ */
+export const ChatMemoryWindowSchema = z.coerce.number().int().min(1).max(100).default(10);
+
+/**
+ * ai.memoryKv params (PB-T4). The default chat-memory provider, backed by the
+ * KV store. `session_key` lets the author scope memory (default: per-CHAT — the
+ * runtime falls back to the chat id when blank); it is expression-aware so a
+ * flow can key memory by user, topic, etc.
+ */
+export const AiMemoryKvParamsSchema = z.object({
+  /**
+   * How the rolling window is keyed within KV (scope is always `user`). Blank →
+   * the runtime keys by the node id + chat id (per-chat, per-node isolation,
+   * matching the old ai.llmChat behavior). Expression-aware.
+   */
+  session_key: z.string().default(''),
+  /** Number of prior turns to replay / retain. */
+  memory_window: ChatMemoryWindowSchema,
+});
+export type AiMemoryKvParams = z.infer<typeof AiMemoryKvParamsSchema>;
+
+/**
+ * ai.memoryPostgres params (PB-T4). Persists chat turns in a Postgres table the
+ * author names; the host resolves the `postgres` credential to a pooled
+ * connection (I3/I7 — the node only carries the id). The table is created
+ * on-demand by the runtime if `auto_create` is set, otherwise the author owns
+ * its schema. The table identifier is validated like the db.postgres node's
+ * identifiers (no injection through the table name).
+ */
+export const AiMemoryPostgresParamsSchema = z.object({
+  /** A `postgres` credential; the host resolves it to a pooled connection (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'postgres' }),
+  /**
+   * The table that stores chat turns. Validated as a SQL identifier
+   * (`schema.table` allowed). Default `ctb_chat_memory`.
+   */
+  table: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/, 'must be a valid SQL table identifier')
+    .default('ctb_chat_memory'),
+  /**
+   * How rows are grouped into a conversation. Blank → the runtime keys by the
+   * node id + chat id (per-chat). Expression-aware (e.g. `{{ $json.userId }}`).
+   */
+  session_key: z.string().default(''),
+  /** Number of prior turns to replay / retain. */
+  memory_window: ChatMemoryWindowSchema,
+  /**
+   * When set, the runtime issues a `CREATE TABLE IF NOT EXISTS` for the chosen
+   * table before first use so a fresh database "just works". Off → the author
+   * must have created the table with the expected columns.
+   */
+  auto_create: z.boolean().default(true),
+});
+export type AiMemoryPostgresParams = z.infer<typeof AiMemoryPostgresParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

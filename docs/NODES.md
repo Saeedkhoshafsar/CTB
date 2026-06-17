@@ -265,6 +265,41 @@ Generic CRUD against user-defined Collections (ARCHITECTURE §13). As domain-agn
 
 ---
 
+## Database connectors `+PB`
+
+Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never a domain). The driver lives ONLY in `apps/server` (invariant I3); the node reaches the database through the injected `ctx.db` capability and never imports `pg`/`mysql2`. The connection is a stored, encrypted credential (invariant I7) — the node only ever passes a `credentialId`, never a host/password.
+
+### Postgres `+PB` (`db.postgres`)
+- **In:** 1 → **Out:** 1 (`main`) — the node maps result rows back onto items.
+- **Parameters:**
+  - `credentialId`: a `postgres` credential (host/port/database/user/password/ssl), resolved host-side — the host owns the connection pool (invariant I3/I6/I7).
+  - `operation`: `query | select | insert | update | delete`.
+  - `query` (operation=`query`): a raw parameterized SQL string. Bind values are supplied as `params` rows (a JSON array, expression-aware) and referenced by **`$1, $2, …` placeholders** — values are bound by the driver, NEVER string-concatenated, so this is SQL-injection-safe.
+  - `table` (operation=`select|insert|update|delete`): the table name (validated as a SQL identifier — letters/digits/`_`, optionally schema-qualified `schema.table`).
+  - `select`: optional `where` (field · op · value-expression) rows, `limit`, `order_by`. Emits one item per row.
+  - `insert`: `values` field-mapping rows (`column = value(expression)`) → `INSERT … RETURNING *`. Emits the inserted row.
+  - `update`: `values` rows + `where` rows → `UPDATE … SET … WHERE … RETURNING *`. Emits each updated row.
+  - `delete`: `where` rows + a `confirm_many` guard (refuses an unfiltered/multi-row delete unless enabled) → `DELETE … RETURNING *`. Emits each deleted row.
+  - `return_mode`: `rows` (default — one output item per result row, `{ json: row }`) | `single` (merge `{ rows, rowCount }` onto every input item under `save_as`, default `db`).
+- **Runs ONCE per node run** (one SQL round-trip — a query is execution-external work that targets the resolved params, like the AI/MCP nodes). The result is mapped per `return_mode`.
+- Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `postgres` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
+
+### MySQL `+PB` (`db.mysql`)
+- **In:** 1 → **Out:** 1 (`main`) — the node maps result rows back onto items.
+- The MySQL/MariaDB mirror of `db.postgres`: same shape, same `ctx.db` capability contract, same `operation`/`return_mode`/`confirm_many`/`save_as` semantics. A flow author sees an identical node — only the credential type and the SQL dialect differ. The host owns the `mysql2` connection pool (the node never imports `mysql2`); the node passes a `credentialId` + a `dialect: 'mysql'` marker so the host routes to the MySQL factory and refuses a non-`mysql` credential.
+- **Parameters:**
+  - `credentialId`: a `mysql` credential (host/port[default 3306]/database/user/password/ssl), resolved host-side (invariant I3/I6/I7).
+  - `operation`: `query | select | insert | update | delete`.
+  - `query` (operation=`query`): a raw parameterized SQL string. Bind values are supplied as `params` rows (a JSON array, expression-aware) and referenced by **`?` placeholders** (the MySQL convention) — values are bound by the driver, NEVER string-concatenated, so this is SQL-injection-safe.
+  - `table` (operation=`select|insert|update|delete`): the table name (validated as a SQL identifier — letters/digits/`_`, optionally schema-qualified `schema.table`) and **backtick-quoted** (`` `col` ``) rather than double-quoted.
+  - `select`: optional `where` (field · op · value-expression) rows, `limit`, `order_by`. Emits one item per row.
+  - `insert` / `update` / `delete`: same builders as Postgres, but **without `RETURNING *`** (MySQL has none). A write returns the driver's OK packet, which the host normalizes to a synthetic row `{ affectedRows, insertId? }` so the `rows`/`single` return modes still behave sensibly.
+  - `return_mode`: `rows` (default — one output item per result row; a write emits the normalized `{ affectedRows, insertId? }` row) | `single` (merge `{ rows, rowCount }` onto every input item under `save_as`, default `db`).
+- **Runs ONCE per node run** (one SQL round-trip). The result is mapped per `return_mode`.
+- Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `mysql` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
+
+---
+
 ## AI nodes `+P5`
 
 ### LLM Chat
@@ -280,6 +315,33 @@ Generic CRUD against user-defined Collections (ARCHITECTURE §13). As domain-agn
 
 ### AI Agent (tools)
 - LLM with tool-calling; tools = selected MCP server tools and/or other flows exposed as tools. Multi-turn loop with budget caps.
+
+### Chat memory providers `+PB` (`ai.memoryKv`, `ai.memoryPostgres`) — PB-T4
+- **Role:** `provider`, **provides:** `ai:memory`. These are *sub-nodes* (no data
+  ports — a single dashed `provider` wire), attached to an AI Agent's `ai:memory`
+  slot to give it a **rolling conversation memory** (the n8n "Chat Memory"
+  nodes). Generic infrastructure (I2 — memory is a capability, never a domain).
+- **`ai.memoryKv`** — the **default**. Persists the rolling window in the
+  built-in KV store (`ctx.kv`, scope `user`, key `__ai_mem__:<session>`), exactly
+  like `ai.llmChat`'s `memory:'conversation'` — so a bot with **no database**
+  still remembers the last N turns. Params: `session_key` (blank → keyed per
+  node+chat), `memory_window` (turns, default 10).
+- **`ai.memoryPostgres`** — the n8n "Postgres Chat Memory". Persists turns as
+  rows in a Postgres table via the injected `ctx.db` (the `pg` pool lives in the
+  host, I3; the decrypted secret never reaches node code, I7). Params:
+  `credentialId` (a `postgres` credential), `table` (validated SQL identifier,
+  default `ctb_chat_memory`), `session_key`, `memory_window`, `auto_create`
+  (issues `CREATE TABLE IF NOT EXISTS` before first use).
+- **Shared runtime (`chat-memory.ts`, I5):** a provider is never executed; the
+  consumer resolves its params into a `ChatMemoryConfig` (`{kind:'kv'|'postgres',
+  …}`) and drives `loadChatHistory()` (replay the rolling window before a model
+  turn) + `appendChatTurn()` (persist the new user+assistant pair after). Both
+  operate **only** through the injected `ctx.kv` / `ctx.db` capabilities. SQL
+  values are **always** bound (`$1,$2,…`), never concatenated; the table
+  identifier is validated against `/^[A-Za-z_][A-Za-z0-9_]*$/` per dot-segment
+  and double-quoted (`quotePgIdent`) — a hostile table name throws loudly. Fails
+  loud when the needed capability (`ctx.kv` for kv, `ctx.db` for postgres) is
+  absent. **Consumed by the AI Agent in PB-T5.**
 
 ### MCP Client
 - credential: MCP server (SSE/stdio-over-http); action: list tools | call tool (name, args expression) → `$json.result`.

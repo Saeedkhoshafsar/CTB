@@ -478,6 +478,62 @@ export const DataRemoveDuplicatesParamsSchema = z.object({
 });
 export type DataRemoveDuplicatesParams = z.infer<typeof DataRemoveDuplicatesParamsSchema>;
 
+// ── data.dateTime (PA-T7 — n8n "Date & Time" node, with Jalali) ───────────────
+
+/**
+ * data.dateTime — parse / format / add-subtract / diff a date (PA-T7).
+ *
+ * Pure (the Gregorian↔Jalali conversion is hand-written, no runtime dep).
+ * Runs per item. IANA timezones supported via Intl; `calendar:'jalali'` formats
+ * the date in the Persian (Solar Hijri) calendar; `digits:'persian'` maps the
+ * output digits to Persian numerals (۰۱۲۳…).
+ */
+export const DataDateTimeParamsSchema = z
+  .object({
+    operation: z.enum(['format', 'add', 'diff']).default('format'),
+    /** Where the input instant comes from. */
+    source: z.enum(['now', 'value']).default('now'),
+    /** source=value: an ISO string, epoch-millis number, or {{ }} expression. */
+    value: z.string().optional(),
+    /** IANA timezone (e.g. "Asia/Tehran"); empty = the server's local zone. */
+    timezone: z.string().default(''),
+    /** Output calendar for the `format` operation. */
+    calendar: z.enum(['gregorian', 'jalali']).default('gregorian'),
+    /** Token format pattern (YYYY MM DD HH mm ss MMMM). */
+    format: z.string().default('YYYY-MM-DD'),
+    /** Output digit set. */
+    digits: z.enum(['latin', 'persian']).default('latin'),
+    /** operation=add: amount to add (negative subtracts). */
+    amount: z.coerce.number().optional(),
+    /** operation=add: the unit `amount` is measured in. */
+    unit: z
+      .enum(['years', 'months', 'days', 'hours', 'minutes', 'seconds'])
+      .default('days'),
+    /** operation=diff: the other instant (ISO / epoch / expression). */
+    to_value: z.string().optional(),
+    /** operation=diff: the unit the difference is expressed in. */
+    diff_unit: z
+      .enum(['years', 'months', 'days', 'hours', 'minutes', 'seconds'])
+      .default('days'),
+    /** Output key merged onto each item's $json. */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'save_as must be an identifier')
+      .default('datetime'),
+  })
+  .superRefine((v, ctx) => {
+    if (v.source === 'value' && (v.value === undefined || v.value.trim() === '')) {
+      ctx.addIssue({ code: 'custom', message: 'value is required when source=value', path: ['value'] });
+    }
+    if (v.operation === 'add' && (v.amount === undefined || Number.isNaN(v.amount))) {
+      ctx.addIssue({ code: 'custom', message: 'amount is required for operation=add', path: ['amount'] });
+    }
+    if (v.operation === 'diff' && (v.to_value === undefined || v.to_value.trim() === '')) {
+      ctx.addIssue({ code: 'custom', message: 'to_value is required for operation=diff', path: ['to_value'] });
+    }
+  });
+export type DataDateTimeParams = z.infer<typeof DataDateTimeParamsSchema>;
+
 // ── flow.stopError ───────────────────────────────────────────────────────────
 
 export const FlowStopErrorParamsSchema = z.object({

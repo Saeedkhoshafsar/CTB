@@ -191,6 +191,23 @@ Drops repeated items, keeping the **first** occurrence (n8n "Remove Duplicates")
   - `selected_fields`: an item is a duplicate when the combined value at the chosen `fields` matches an already-seen item. A missing field is encoded distinctly so it never collides with a literal `null`.
 - Fails loudly when `compare=selected_fields` but no `fields` are given. Items are never mutated.
 
+### Date & Time `+PA` (`data.dateTime`)
+Parse / format / add-subtract / diff a date, with IANA timezones **and Jalali (Persian) calendar** output — our users are Iranian, so formatting `۱۴۰۴/۰۳/۲۴` is a first-class need. Pure (no runtime deps; the Gregorian↔Jalali conversion is a small hand-written algorithm). Runs **per item**.
+
+- **In:** many → **Out:** `main` (each input item with the result merged in).
+- **Parameters:**
+  - `operation` (`format` | `add` | `diff`, default `format`).
+  - `source` — where the input date comes from: `now` (the injected `ctx.now()` clock) or `value` (a dotted-path/expression value the row supplies). Default `now`.
+  - `value` — when `source=value`: an ISO-8601 string, an epoch-millis number, or a `{{ }}` expression resolving to one. Lenient parse (ISO, `YYYY-MM-DD`, `YYYY/MM/DD`, epoch).
+  - `timezone` — IANA tz (e.g. `Asia/Tehran`); empty = the server's local zone. Applied to BOTH formatting and the calendar/field math.
+  - `calendar` (`gregorian` | `jalali`, default `gregorian`) — for `format` output only. `jalali` converts the (timezone-adjusted) date to the Persian calendar before applying the format pattern.
+  - `format` — a token pattern (`YYYY MM DD HH mm ss` + `MMMM` month name in the chosen calendar/locale); default `YYYY-MM-DD`. `digits` (`latin` | `persian`, default `latin`) optionally maps output digits to Persian (`۰۱۲۳…`).
+  - `amount` + `unit` (`years|months|days|hours|minutes|seconds`) — for `operation=add` (negative `amount` subtracts).
+  - `to_value` + `diff_unit` — for `operation=diff` (difference between the source date and `to_value`, expressed in `diff_unit`; default `days`).
+  - `save_as` — output key on `$json` (default `datetime`).
+- **Output shape** merged under `save_as`: `format` → `{ formatted, iso, epoch }`; `add` → `{ iso, epoch }` (the shifted instant); `diff` → `{ diff, unit }` (a number, may be fractional).
+- Fails loudly on an unparseable input date or an invalid timezone. Items are never mutated (result is added to a clone).
+
 ### Wait / Delay `M`
 - Fixed duration (`30s`…`7d`) or until datetime (expression). Persisted — survives restarts (uses the same wait machinery).
 

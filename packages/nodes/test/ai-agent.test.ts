@@ -28,7 +28,7 @@ describe('registry (P5-T4)', () => {
   it('registers ai.agent; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.agent')).toBe(true);
-    expect(builtinNodes.length).toBe(41);
+    expect(builtinNodes.length).toBe(42);
   });
 
   it('is an `ai` node with main → main ports', () => {

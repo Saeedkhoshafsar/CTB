@@ -72,6 +72,7 @@ async function main(): Promise<void> {
     await engine.gateway.stopAll();
     await app.close();
     await destroyDefaultSandboxPool(); // Code-node workers
+    await engine.closeDbPools(); // db.postgres connection pools
     sqlite.close();
     process.exit(0);
   };

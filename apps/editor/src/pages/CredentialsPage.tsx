@@ -20,6 +20,7 @@ const TYPES: CredentialType[] = [
   'httpBasicAuth',
   'openAiApi',
   'mcpServer',
+  'postgres',
 ];
 
 export function CredentialsPage() {
@@ -39,6 +40,13 @@ export function CredentialsPage() {
   const [apiKey, setApiKey] = useState('');
   const [mcpUrl, setMcpUrl] = useState('https://mcp.example.com/mcp');
   const [mcpApiKey, setMcpApiKey] = useState('');
+  // Postgres: either a single connectionString OR discrete host/port/db/user/pass.
+  const [pgHost, setPgHost] = useState('localhost');
+  const [pgPort, setPgPort] = useState('5432');
+  const [pgDatabase, setPgDatabase] = useState('');
+  const [pgUser, setPgUser] = useState('postgres');
+  const [pgPassword, setPgPassword] = useState('');
+  const [pgSsl, setPgSsl] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -58,6 +66,12 @@ export function CredentialsPage() {
     setApiKey('');
     setMcpUrl('https://mcp.example.com/mcp');
     setMcpApiKey('');
+    setPgHost('localhost');
+    setPgPort('5432');
+    setPgDatabase('');
+    setPgUser('postgres');
+    setPgPassword('');
+    setPgSsl(false);
   };
 
   const buildData = (): CredentialData => {
@@ -75,6 +89,17 @@ export function CredentialsPage() {
         return mcpApiKey.trim() === ''
           ? { type, url: mcpUrl }
           : { type, url: mcpUrl, apiKey: mcpApiKey };
+      case 'postgres': {
+        // Discrete host/port/db/user/pass form. Blank fields are omitted so the
+        // server applies pg's own defaults; ssl is an explicit toggle.
+        const data: CredentialData = { type, ssl: pgSsl };
+        if (pgHost.trim() !== '') data.host = pgHost.trim();
+        if (pgPort.trim() !== '') data.port = Number(pgPort);
+        if (pgDatabase.trim() !== '') data.database = pgDatabase.trim();
+        if (pgUser.trim() !== '') data.user = pgUser.trim();
+        if (pgPassword !== '') data.password = pgPassword;
+        return data;
+      }
     }
   };
 
@@ -242,6 +267,67 @@ export function CredentialsPage() {
                   value={mcpApiKey}
                   onChange={(e) => setMcpApiKey(e.target.value)}
                 />
+              </label>
+            </>
+          )}
+
+          {type === 'postgres' && (
+            <>
+              <label>
+                <span className="label-text">{t('credentials.field.pgHost')}</span>
+                <input
+                  dir="ltr"
+                  value={pgHost}
+                  onChange={(e) => setPgHost(e.target.value)}
+                  placeholder="localhost"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.pgPort')}</span>
+                <input
+                  dir="ltr"
+                  type="number"
+                  value={pgPort}
+                  onChange={(e) => setPgPort(e.target.value)}
+                  placeholder="5432"
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.pgDatabase')}</span>
+                <input
+                  dir="ltr"
+                  value={pgDatabase}
+                  onChange={(e) => setPgDatabase(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.pgUser')}</span>
+                <input
+                  dir="ltr"
+                  value={pgUser}
+                  onChange={(e) => setPgUser(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.pgPassword')}</span>
+                <input
+                  dir="ltr"
+                  type="password"
+                  value={pgPassword}
+                  onChange={(e) => setPgPassword(e.target.value)}
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <input
+                  type="checkbox"
+                  checked={pgSsl}
+                  onChange={(e) => setPgSsl(e.target.checked)}
+                />
+                <span className="label-text">{t('credentials.field.pgSsl')}</span>
               </label>
             </>
           )}

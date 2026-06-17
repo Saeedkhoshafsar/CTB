@@ -1465,6 +1465,145 @@ export const AiAgentParamsSchema = z.object({
 });
 export type AiAgentParams = z.infer<typeof AiAgentParamsSchema>;
 
+// ── db.postgres (PB-T2) ──────────────────────────────────────────────────────
+
+/**
+ * Comparison operators for a `db.postgres` `where` row. A small SQL-safe set —
+ * each maps to a fixed operator the node emits as a parameterized fragment
+ * (`field <op> $n`), so the VALUE is always bound, never concatenated. `in`
+ * takes a comma-separated list (expanded to `IN ($a,$b,…)`), `is_null`/`not_null`
+ * ignore the value.
+ */
+export const DbWhereOpSchema = z.enum([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'like',
+  'in',
+  'is_null',
+  'not_null',
+]);
+export type DbWhereOp = z.infer<typeof DbWhereOpSchema>;
+
+/**
+ * One `where` row for select/update/delete. `field` is a COLUMN name (validated
+ * as a SQL identifier by the node — letters/digits/`_`, optionally
+ * `schema.table.col`); `value` is an EXPRESSION the executor resolves before
+ * execute(), then BOUND as a parameter (never string-concatenated).
+ */
+export const DbWhereRowSchema = z.object({
+  field: z.string().min(1),
+  op: DbWhereOpSchema.default('eq'),
+  value: z.coerce.string().default(''),
+});
+export type DbWhereRow = z.infer<typeof DbWhereRowSchema>;
+
+/** One `column = value(expression)` mapping row for insert/update. */
+export const DbValueRowSchema = z.object({
+  /** Target COLUMN name — validated as a SQL identifier by the node. */
+  field: z.string().min(1),
+  /**
+   * Value expression — `{{ }}` resolved like every other param, then BOUND as a
+   * driver parameter. Coerced to a string here because the executor re-validates
+   * params AFTER resolving expressions (an expression that yields a number would
+   * otherwise fail `z.string()`); the node parses numeric/boolean/null literals
+   * back out before binding.
+   */
+  value: z.coerce.string().default(''),
+});
+export type DbValueRow = z.infer<typeof DbValueRowSchema>;
+
+/**
+ * db.postgres — a GENERIC Postgres node (NODES.md §Postgres). Infrastructure,
+ * not a domain (invariant I2). The host owns the `pg` connection pool (invariant
+ * I3 — the driver lives only in `apps/server`); the node reaches the database
+ * ONLY through the injected `ctx.db` capability and passes a `credentialId` it
+ * never decrypts (invariants I6/I7).
+ *
+ * Operations:
+ *  - `query`  → a raw parameterized SQL string with `$1,$2,…` placeholders + a
+ *               JSON-array `params` (expression-aware). NEVER string-concatenated.
+ *  - `select` → `SELECT * FROM <table>` + optional `where`/`order_by`/`limit`.
+ *  - `insert` → `INSERT INTO <table>(…) VALUES(…) RETURNING *` from `values` rows.
+ *  - `update` → `UPDATE <table> SET … WHERE … RETURNING *`.
+ *  - `delete` → `DELETE FROM <table> WHERE … RETURNING *` (guarded by `confirm_many`).
+ *
+ * `return_mode`: `rows` (default — one output item per result row, `{ json: row }`)
+ * or `single` (merge `{ rows, rowCount }` onto every input item under `save_as`).
+ *
+ * Runs ONCE per node run (one SQL round-trip targeting the resolved params).
+ */
+export const DbOperationSchema = z.enum(['query', 'select', 'insert', 'update', 'delete']);
+export type DbOperation = z.infer<typeof DbOperationSchema>;
+
+export const DbPostgresParamsSchema = z
+  .object({
+    /** A `postgres` credential (host/port/db/user/pass/ssl); host resolves it (I7). */
+    credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'postgres' }),
+    operation: DbOperationSchema.default('query'),
+    /**
+     * operation=query: raw parameterized SQL. Use `$1,$2,…` placeholders bound
+     * from `params`. NEVER interpolate values into this string yourself.
+     */
+    query: z.string().default(''),
+    /**
+     * operation=query: the bind values, as a JSON ARRAY string (expression-aware,
+     * e.g. `["{{ $json.id }}", 42]`). Empty/blank → no params.
+     */
+    params: z.string().default(''),
+    /** operation=select|insert|update|delete: the table name (SQL identifier). */
+    table: z.string().default(''),
+    /** select/update/delete: where rows (ANDed). */
+    where: z.array(DbWhereRowSchema).default([]),
+    /** insert/update: column=value mapping rows. */
+    values: z.array(DbValueRowSchema).default([]),
+    /** select: `ORDER BY` column (validated identifier) — optional. */
+    order_by: z.string().default(''),
+    /** select: ascending|descending for `order_by`. */
+    order_dir: z.enum(['asc', 'desc']).default('asc'),
+    /** select: max rows (positive int) — optional. */
+    limit: z.coerce.number().int().positive().max(10000).optional(),
+    /** update/delete: refuse to touch more than one row unless set. */
+    confirm_many: z.boolean().default(false),
+    /** rows = one item per result row; single = merge {rows,rowCount} per item. */
+    return_mode: z.enum(['rows', 'single']).default('rows'),
+    /** return_mode=single: where the result lands on each output item (default `db`). */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+      .default('db'),
+  })
+  .superRefine((p, ctx) => {
+    if (p.operation === 'query') {
+      if (p.query.trim() === '') {
+        ctx.addIssue({ code: 'custom', message: 'op "query" requires a SQL string', path: ['query'] });
+      }
+      return;
+    }
+    // select|insert|update|delete all need a table.
+    if (p.table.trim() === '') {
+      ctx.addIssue({ code: 'custom', message: `op "${p.operation}" requires a table`, path: ['table'] });
+    }
+    if (p.operation === 'insert' && p.values.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "insert" requires at least one value', path: ['values'] });
+    }
+    if (p.operation === 'update') {
+      if (p.values.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one value', path: ['values'] });
+      }
+      if (p.where.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'op "update" requires at least one where row', path: ['where'] });
+      }
+    }
+    if (p.operation === 'delete' && p.where.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'op "delete" requires at least one where row', path: ['where'] });
+    }
+  });
+export type DbPostgresParams = z.infer<typeof DbPostgresParamsSchema>;
+
 // ── dynamic output ports (editor-side mirror of NodeDef.dynamicOutputs) ──────
 
 const PORT_KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;

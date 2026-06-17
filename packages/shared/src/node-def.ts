@@ -321,6 +321,43 @@ export interface NodeCtx {
     /** Invoke one tool by name with arguments (MCP `tools/call`). */
     callTool(req: McpCallToolRequest): Promise<McpToolCallResult>;
   } | null;
+  /**
+   * SQL database capability (db.postgres, PB-T2; db.mysql, PB-T3). The host
+   * resolves a stored DB credential (host/port/db/user/pass/ssl) by id, owns the
+   * connection pool (invariant I3 — the `pg`/`mysql2` driver lives only in
+   * `apps/server`), and runs the parameterized query — the node only ever passes
+   * a `credentialId`, a SQL string and BOUND parameters; the decrypted secret
+   * never crosses into node code, and values are bound by the driver, never
+   * string-concatenated (invariants I6/I7, SQL-injection-safe). Null when no DB
+   * driver is wired (unit tests) — the node then fails with a clear error.
+   * Throws on a credential miss or a database/transport error so the node can
+   * surface it.
+   */
+  db: {
+    query(req: DbQueryRequest): Promise<DbQueryResult>;
+  } | null;
+}
+
+/**
+ * What db.postgres asks the host to run (the secret credential is resolved
+ * host-side, PB-T2). The SQL carries `$1,$2,…` placeholders; `params` are the
+ * already-resolved bind values, bound by the driver (never concatenated).
+ */
+export interface DbQueryRequest {
+  /** Stored credential id (postgres). The host turns it into a pooled connection. */
+  credentialId: string;
+  /** Parameterized SQL with `$1,$2,…` placeholders. */
+  sql: string;
+  /** Bind values for the placeholders, in order. */
+  params: unknown[];
+}
+
+/** The host's reply to a DbQueryRequest. */
+export interface DbQueryResult {
+  /** Result rows (each a column→value object). Empty for a write with no RETURNING. */
+  rows: Record<string, unknown>[];
+  /** Rows affected/returned as reported by the driver (best-effort). */
+  rowCount: number;
 }
 
 /** What ai.mcpClient asks the host to list (the secret credential is resolved host-side). */

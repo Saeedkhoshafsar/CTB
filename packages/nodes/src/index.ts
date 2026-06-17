@@ -31,6 +31,7 @@ import { dataRemoveDuplicates } from './data/remove-duplicates';
 import { dataDateTime } from './data/date-time';
 import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
+import { dbPostgres } from './db/postgres';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
 import { flowIf } from './flow/if';
 import { flowLoop } from './flow/loop';
@@ -74,6 +75,7 @@ export { dataRemoveDuplicates } from './data/remove-duplicates';
 export { dataDateTime, parseDate } from './data/date-time';
 export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
+export { dbPostgres } from './db/postgres';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
 export { flowIf } from './flow/if';
 export { flowLoop, LOOP_STATE_PREFIX } from './flow/loop';
@@ -137,6 +139,7 @@ export const builtinNodes: NodeDef<never>[] = [
   dataUserProfile,
   dataCollection,
   httpRequest,
+  dbPostgres,
   flowLoop,
   flowMerge,
   flowStopError,

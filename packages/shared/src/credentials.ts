@@ -74,6 +74,30 @@ export const McpServerSchema = z.object({
 });
 export type McpServer = z.infer<typeof McpServerSchema>;
 
+/**
+ * Postgres database connection credential (PB-T2). Selected by the `db.postgres`
+ * node; the host (`ctx.db`) owns the connection pool (invariant I3 — the `pg`
+ * driver lives only in `apps/server`), so the node only ever passes a
+ * `credentialId` and never sees the host/password (invariants I6/I7). All fields
+ * are encrypted at rest. A `connectionString` (a `postgres://…` URI) may be
+ * given INSTEAD of the discrete fields; when both are present the host prefers
+ * the connection string.
+ */
+export const PostgresSchema = z.object({
+  type: z.literal('postgres'),
+  /** Full `postgres://user:pass@host:port/db` URI — wins over the discrete fields. */
+  connectionString: z.string().max(2048).optional(),
+  host: z.string().max(255).optional(),
+  /** TCP port (default 5432 applied host-side). */
+  port: z.coerce.number().int().min(1).max(65535).optional(),
+  database: z.string().max(255).optional(),
+  user: z.string().max(255).optional(),
+  password: z.string().optional(),
+  /** Require TLS to the server (default false). */
+  ssl: z.boolean().default(false),
+});
+export type Postgres = z.infer<typeof PostgresSchema>;
+
 /** The encrypted half of every credential — discriminated by `type`. */
 export const CredentialDataSchema = z.discriminatedUnion('type', [
   HttpHeaderAuthSchema,
@@ -81,6 +105,7 @@ export const CredentialDataSchema = z.discriminatedUnion('type', [
   HttpBasicAuthSchema,
   OpenAiApiSchema,
   McpServerSchema,
+  PostgresSchema,
 ]);
 export type CredentialData = z.infer<typeof CredentialDataSchema>;
 
@@ -90,6 +115,7 @@ export const CredentialTypeSchema = z.enum([
   'httpBasicAuth',
   'openAiApi',
   'mcpServer',
+  'postgres',
 ]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
@@ -143,6 +169,7 @@ export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   httpBasicAuth: 'HTTP Basic Auth',
   openAiApi: 'OpenAI-compatible API',
   mcpServer: 'MCP Server',
+  postgres: 'Postgres Database',
 };
 
 /**
@@ -166,6 +193,22 @@ export function credentialHint(data: CredentialData): string {
       return `${data.baseUrl} · ${mask(data.apiKey)}`;
     case 'mcpServer':
       return data.apiKey ? `${data.url} · ${mask(data.apiKey)}` : data.url;
+    case 'postgres': {
+      if (data.connectionString) {
+        // Show host/db when parseable; never the password.
+        try {
+          const u = new URL(data.connectionString);
+          const db = u.pathname.replace(/^\//, '');
+          return `${u.hostname}${u.port ? `:${u.port}` : ''}/${db || '?'}`;
+        } catch {
+          return 'postgres://••••';
+        }
+      }
+      const host = data.host ?? '?';
+      const port = data.port ?? 5432;
+      const db = data.database ?? '?';
+      return `${host}:${port}/${db}`;
+    }
   }
 }
 
@@ -201,5 +244,9 @@ export function credentialAuthHeaders(data: CredentialData): Record<string, stri
       return { authorization: `Bearer ${data.apiKey}` };
     case 'mcpServer':
       return data.apiKey ? { authorization: `Bearer ${data.apiKey}` } : {};
+    case 'postgres':
+      // A database connection injects no HTTP headers — it's resolved into a
+      // connection pool host-side (ctx.db), not into request headers.
+      return {};
   }
 }

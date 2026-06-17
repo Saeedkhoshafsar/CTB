@@ -9,6 +9,8 @@ import type {
   AiChatRequest,
   CollectionRecord,
   CtbUser,
+  DbQueryRequest,
+  DbQueryResult,
   FlowItem,
   McpCallToolRequest,
   McpListToolsRequest,
@@ -69,6 +71,8 @@ export interface FakeCtx extends NodeCtx {
   /** ai.mcpClient (P5-T3): recorded MCP requests by kind. */
   mcpListCalls: McpListToolsRequest[];
   mcpCallCalls: McpCallToolRequest[];
+  /** db.postgres (PB-T2): recorded SQL query requests. */
+  dbCalls: DbQueryRequest[];
 }
 
 export function makeCtx(
@@ -143,6 +147,18 @@ export function makeCtx(
           callError?: string;
         };
     /**
+     * PB-T2: scripted SQL behaviour for ctx.db. Pass `null` to simulate an
+     * instance with no DB driver (ctx.db === null). Omit → a default that
+     * returns an empty result. `result` may be a fixed DbQueryResult or a
+     * function of the request; `error` throws instead (a DB/transport error).
+     */
+    db?:
+      | null
+      | {
+          result?: DbQueryResult | ((req: DbQueryRequest) => DbQueryResult);
+          error?: string;
+        };
+    /**
      * PA-T1: seed the in-memory file store for ctx.files.read (tg.sendMedia
      * `source:'file'`): fileId → { bytes, mime }. Pass `files: null` to simulate
      * an instance with no file store (ctx.files === null). Unknown ids throw.
@@ -195,6 +211,7 @@ export function makeCtx(
   let aiIdx = 0;
   const mcpListCalls: McpListToolsRequest[] = [];
   const mcpCallCalls: McpCallToolRequest[] = [];
+  const dbCalls: DbQueryRequest[] = [];
   let nextRecordId = 1;
   const knownSlugs = new Set<string>(
     overrides.knownCollections ?? Object.keys(overrides.seedCollections ?? {}),
@@ -258,6 +275,7 @@ export function makeCtx(
     aiCalls,
     mcpListCalls,
     mcpCallCalls,
+    dbCalls,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -556,6 +574,20 @@ export function makeCtx(
               if (cr) return typeof cr === 'function' ? cr(req) : cr;
               const text = JSON.stringify(req.arguments);
               return { content: [{ type: 'text', text }], text, isError: false };
+            },
+          },
+    // db.postgres (PB-T2): records requests; `db: null` simulates an instance
+    // with no DB driver (ctx.db === null); omit → a default empty result.
+    db:
+      overrides.db === null
+        ? null
+        : {
+            async query(req) {
+              dbCalls.push(req);
+              if (overrides.db?.error) throw new Error(overrides.db.error);
+              const res = overrides.db?.result;
+              if (res) return typeof res === 'function' ? res(req) : res;
+              return { rows: [], rowCount: 0 };
             },
           },
   };

@@ -152,6 +152,16 @@ export interface ExecutorServices {
    */
   mcp?: NonNullable<NodeCtx['mcp']>;
   /**
+   * SQL database service for db.postgres (PB-T2) — optional: ctx.db is null
+   * without it. The host resolves the DB credential (host/port/db/user/pass/ssl)
+   * and owns the connection pool (invariant I3 — the `pg` driver lives only in
+   * `apps/server`); the parameterized query runs host-side so the decrypted
+   * secret never reaches node code and values are bound, never concatenated
+   * (invariants I6/I7). A simple object (not per-bot) because the credential —
+   * not the bot — selects the database.
+   */
+  db?: NonNullable<NodeCtx['db']>;
+  /**
    * File-store capability for tg.sendMedia `source:'file'` (PA-T1) + tg.getFile
    * `store:true` (PA-T2) — optional: ctx.files is null without it. The host
    * reads/writes the bytes of a CTB file id on disk so the node never touches
@@ -557,6 +567,7 @@ export class Executor {
         : null,
       ai: executor.services.ai ?? null,
       mcp: executor.services.mcp ?? null,
+      db: executor.services.db ?? null,
       files: executor.services.files ? executor.services.files(exec.botId) : null,
     };
   }

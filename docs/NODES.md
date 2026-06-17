@@ -265,6 +265,30 @@ Generic CRUD against user-defined Collections (ARCHITECTURE §13). As domain-agn
 
 ---
 
+## Database connectors `+PB`
+
+Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never a domain). The driver lives ONLY in `apps/server` (invariant I3); the node reaches the database through the injected `ctx.db` capability and never imports `pg`/`mysql2`. The connection is a stored, encrypted credential (invariant I7) — the node only ever passes a `credentialId`, never a host/password.
+
+### Postgres `+PB` (`db.postgres`)
+- **In:** 1 → **Out:** 1 (`main`) — the node maps result rows back onto items.
+- **Parameters:**
+  - `credentialId`: a `postgres` credential (host/port/database/user/password/ssl), resolved host-side — the host owns the connection pool (invariant I3/I6/I7).
+  - `operation`: `query | select | insert | update | delete`.
+  - `query` (operation=`query`): a raw parameterized SQL string. Bind values are supplied as `params` rows (a JSON array, expression-aware) and referenced by **`$1, $2, …` placeholders** — values are bound by the driver, NEVER string-concatenated, so this is SQL-injection-safe.
+  - `table` (operation=`select|insert|update|delete`): the table name (validated as a SQL identifier — letters/digits/`_`, optionally schema-qualified `schema.table`).
+  - `select`: optional `where` (field · op · value-expression) rows, `limit`, `order_by`. Emits one item per row.
+  - `insert`: `values` field-mapping rows (`column = value(expression)`) → `INSERT … RETURNING *`. Emits the inserted row.
+  - `update`: `values` rows + `where` rows → `UPDATE … SET … WHERE … RETURNING *`. Emits each updated row.
+  - `delete`: `where` rows + a `confirm_many` guard (refuses an unfiltered/multi-row delete unless enabled) → `DELETE … RETURNING *`. Emits each deleted row.
+  - `return_mode`: `rows` (default — one output item per result row, `{ json: row }`) | `single` (merge `{ rows, rowCount }` onto every input item under `save_as`, default `db`).
+- **Runs ONCE per node run** (one SQL round-trip — a query is execution-external work that targets the resolved params, like the AI/MCP nodes). The result is mapped per `return_mode`.
+- Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `postgres` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
+
+### MySQL `+PB` (`db.mysql`) *(planned PB-T3)*
+- Same shape and `ctx.db` contract over MySQL/MariaDB (`mysql2` driver, `mysql` credential). Placeholder style is `?` rather than `$1`; otherwise flows look identical except the credential.
+
+---
+
 ## AI nodes `+P5`
 
 ### LLM Chat

@@ -18,7 +18,7 @@ describe('data.editFields — registry', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.editFields')).toBe(true);
     expect(dataEditFields.category).toBe('data');
-    expect(builtinNodes.length).toBe(42);
+    expect(builtinNodes.length).toBe(43);
   });
 });
 

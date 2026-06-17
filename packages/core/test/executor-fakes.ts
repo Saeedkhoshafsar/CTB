@@ -118,6 +118,24 @@ const boomNode: NodeDef<Record<string, never>> = {
   },
 };
 
+/**
+ * test.provider — a `role:'provider'` sub-node (PB-T1). It throws if executed,
+ * so any test that reaches `end` proves the executor SKIPPED it as a data step
+ * rather than running it (providers are resolved as a consumer's config).
+ */
+const providerNode: NodeDef<Record<string, never>> = {
+  type: 'test.provider',
+  category: 'ai',
+  role: 'provider',
+  provides: 'ai:model',
+  meta: { labelKey: 'test.provider' },
+  ports: { inputs: [], outputs: [] },
+  paramsSchema: z.object({}),
+  async execute() {
+    throw new Error('provider must never run as a data step');
+  },
+};
+
 export function makeRegistry(): NodeRegistry {
   return new NodeRegistry()
     .register(emitNode)
@@ -127,7 +145,8 @@ export function makeRegistry(): NodeRegistry {
     .register(saveVarNode)
     .register(failNode)
     .register(endNode)
-    .register(boomNode);
+    .register(boomNode)
+    .register(providerNode);
 }
 
 export interface Harness {

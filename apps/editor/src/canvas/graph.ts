@@ -49,17 +49,41 @@ export function flowToRfNodes(
   }));
 }
 
-export function flowToRfEdges(graph: FlowGraph, selected: ReadonlySet<string>): RfEdge[] {
-  return graph.edges.map((e) => ({
-    id: e.id,
-    source: e.from.node,
-    sourceHandle: e.from.port,
-    target: e.to.node,
-    targetHandle: e.to.port,
-    selected: selected.has(e.id),
-    // non-default source ports get a label so branches read at a glance
-    ...(e.from.port !== 'main' ? { label: e.from.port } : {}),
-  }));
+export function flowToRfEdges(
+  graph: FlowGraph,
+  selected: ReadonlySet<string>,
+  byType?: ReadonlyMap<string, NodeTypeInfo>,
+): RfEdge[] {
+  const typeOf = (id: string): NodeTypeInfo | undefined => {
+    const n = graph.nodes.find((node) => node.id === id);
+    return n && byType ? byType.get(n.type) : undefined;
+  };
+  return graph.edges.map((e) => {
+    // A sub-connection edge lands on a typed slot port (PB-T1) — render it as a
+    // distinct dashed "provider" wire, not a solid data edge.
+    const slot = inputSlots(typeOf(e.to.node)).find((s) => s.kind === e.to.port);
+    return {
+      id: e.id,
+      source: e.from.node,
+      sourceHandle: e.from.port,
+      target: e.to.node,
+      targetHandle: e.to.port,
+      selected: selected.has(e.id),
+      ...(slot
+        ? // dashed, slot-kind-labeled, visually marked as a sub-connection
+          {
+            label: e.to.port,
+            className: 'ctb-slot-edge',
+            animated: false,
+            style: { strokeDasharray: '6 4', stroke: 'var(--node-ai)' },
+            data: { slot: true },
+          }
+        : // non-default source ports get a label so branches read at a glance
+          e.from.port !== 'main'
+          ? { label: e.from.port }
+          : {}),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +124,26 @@ export type ConnectVerdict =
         | 'selfLoop'
         | 'unknownSourcePort'
         | 'unknownTargetPort'
-        | 'duplicate';
+        | 'duplicate'
+        // PB-T1 typed sub-connection rules:
+        | 'slotKindMismatch' // a slot port fed by a non-matching / non-provider source
+        | 'providerNotAttachedToSlot' // a provider wired into a plain data port
+        | 'slotNotRepeatable'; // a single-slot already has a provider
     };
+
+/**
+ * The typed input slots a consumer node exposes (PB-T1). A slot's `kind` is
+ * ALSO the target port name a provider sub-connection edge lands on, so the
+ * canvas can treat slots as extra, type-checked input handles.
+ */
+export function inputSlots(info: NodeTypeInfo | undefined): NonNullable<NodeTypeInfo['inputSlots']> {
+  return info?.inputSlots ?? [];
+}
+
+/** True when this node TYPE is a provider sub-node (Chat Model / Memory / Tool). */
+export function isProvider(info: NodeTypeInfo | undefined): boolean {
+  return info?.role === 'provider';
+}
 
 /**
  * Validates a prospective edge against the graph + registry metadata.
@@ -128,10 +170,10 @@ export function canConnect(
   if (!sourceInfo || !effectiveOutputs(source, sourceInfo).includes(attempt.from.port)) {
     return { ok: false, reason: 'unknownSourcePort' };
   }
-  if (!targetInfo || !targetInfo.ports.inputs.includes(attempt.to.port)) {
-    return { ok: false, reason: 'unknownTargetPort' };
-  }
 
+  // Re-adding the EXACT same edge is a duplicate no-op — this verdict takes
+  // priority over slot-arity ('slotNotRepeatable'), which is reserved for a
+  // *different* provider attempting to fill an already-taken single slot.
   const dup = graph.edges.some(
     (e) =>
       e.from.node === attempt.from.node &&
@@ -140,6 +182,36 @@ export function canConnect(
       e.to.port === attempt.to.port,
   );
   if (dup) return { ok: false, reason: 'duplicate' };
+
+  // ── typed sub-connection rules (PB-T1) ──────────────────────────────────
+  // A slot edge lands on a target port that names one of the target's typed
+  // input slots (the slot's `kind`); everything else is a plain data edge.
+  const slot = inputSlots(targetInfo).find((s) => s.kind === attempt.to.port);
+  const sourceProvides = sourceInfo?.provides;
+
+  if (slot) {
+    // Slot port → source must be a provider satisfying that exact kind.
+    if (!isProvider(sourceInfo) || sourceProvides !== slot.kind) {
+      return { ok: false, reason: 'slotKindMismatch' };
+    }
+    // A non-repeatable slot accepts at most one provider (a different one — the
+    // identical-edge case already returned 'duplicate' above).
+    if (!slot.repeatable) {
+      const taken = graph.edges.some(
+        (e) => e.to.node === attempt.to.node && e.to.port === attempt.to.port,
+      );
+      if (taken) return { ok: false, reason: 'slotNotRepeatable' };
+    }
+  } else {
+    // Not a slot port. A provider may ONLY attach to a matching slot, so wiring
+    // it into a plain data input is rejected.
+    if (isProvider(sourceInfo)) {
+      return { ok: false, reason: 'providerNotAttachedToSlot' };
+    }
+    if (!targetInfo || !targetInfo.ports.inputs.includes(attempt.to.port)) {
+      return { ok: false, reason: 'unknownTargetPort' };
+    }
+  }
 
   return { ok: true };
 }

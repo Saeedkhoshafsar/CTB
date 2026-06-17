@@ -214,6 +214,171 @@ describe('dynamic ports — tg.menu / flow.switch (P2-T6)', () => {
   });
 });
 
+describe('typed sub-connections — slots/providers (PB-T1)', () => {
+  // synthetic registry: an Agent consumer + three providers, mirroring the
+  // shape PB-T5/T6 will ship. NodeTypeInfo carries the new role/slots/provides.
+  const slotTypes: NodeTypeInfo[] = [
+    ...FAKE_NODE_TYPES,
+    {
+      type: 'ai.agent',
+      category: 'ai',
+      meta: { labelKey: 'x' },
+      ports: { inputs: ['main'], outputs: ['main'] },
+      paramsJsonSchema: {},
+      role: 'data',
+      inputSlots: [
+        { kind: 'ai:model', required: true, repeatable: false },
+        { kind: 'ai:tool', required: false, repeatable: true },
+      ],
+    },
+    {
+      type: 'ai.modelOpenai',
+      category: 'ai',
+      meta: { labelKey: 'x' },
+      ports: { inputs: [], outputs: ['provider'] },
+      paramsJsonSchema: {},
+      role: 'provider',
+      provides: 'ai:model',
+    },
+    {
+      type: 'ai.memoryKv',
+      category: 'ai',
+      meta: { labelKey: 'x' },
+      ports: { inputs: [], outputs: ['provider'] },
+      paramsJsonSchema: {},
+      role: 'provider',
+      provides: 'ai:memory',
+    },
+    {
+      type: 'tool.think',
+      category: 'ai',
+      meta: { labelKey: 'x' },
+      ports: { inputs: [], outputs: ['provider'] },
+      paramsJsonSchema: {},
+      role: 'provider',
+      provides: 'ai:tool',
+    },
+  ];
+  const slotByType: ReadonlyMap<string, NodeTypeInfo> = new Map(
+    slotTypes.map((nt) => [nt.type, nt]),
+  );
+  const g = FlowGraphSchema.parse({
+    nodes: [
+      { id: 'a', type: 'ai.agent', params: {}, position: { x: 0, y: 0 } },
+      { id: 'm', type: 'ai.modelOpenai', params: {}, position: { x: 0, y: 0 } },
+      { id: 'mem', type: 'ai.memoryKv', params: {}, position: { x: 0, y: 0 } },
+      { id: 'th', type: 'tool.think', params: {}, position: { x: 0, y: 0 } },
+      { id: 's', type: 'tg.sendMessage', params: { text: 'hi' }, position: { x: 0, y: 0 } },
+    ],
+    edges: [],
+  });
+
+  it('a matching provider plugs into its slot', () => {
+    expect(
+      canConnect(
+        { from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+        g,
+        slotByType,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('a wrong-kind provider into a slot is rejected', () => {
+    expect(
+      canConnect(
+        { from: { node: 'mem', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+        g,
+        slotByType,
+      ),
+    ).toEqual({ ok: false, reason: 'slotKindMismatch' });
+  });
+
+  it('a data node into a slot is rejected (slotKindMismatch)', () => {
+    expect(
+      canConnect(
+        { from: { node: 's', port: 'main' }, to: { node: 'a', port: 'ai:model' } },
+        g,
+        slotByType,
+      ),
+    ).toEqual({ ok: false, reason: 'slotKindMismatch' });
+  });
+
+  it('a provider into a plain data port is rejected', () => {
+    expect(
+      canConnect(
+        { from: { node: 'm', port: 'provider' }, to: { node: 's', port: 'main' } },
+        g,
+        slotByType,
+      ),
+    ).toEqual({ ok: false, reason: 'providerNotAttachedToSlot' });
+  });
+
+  it('a non-repeatable slot rejects a second provider', () => {
+    const wired = FlowGraphSchema.parse({
+      nodes: g.nodes,
+      edges: [{ id: 'e1', from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } }],
+    });
+    // a second model provider (reuse 'm' via fan-out, or any model node) is denied
+    expect(
+      canConnect(
+        { from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+        wired,
+        slotByType,
+      ),
+      // same edge → duplicate first; use a distinct second model to hit arity
+    ).toEqual({ ok: false, reason: 'duplicate' });
+    const twoModels = FlowGraphSchema.parse({
+      nodes: [...g.nodes, { id: 'm2', type: 'ai.modelOpenai', params: {}, position: { x: 0, y: 0 } }],
+      edges: [{ id: 'e1', from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } }],
+    });
+    expect(
+      canConnect(
+        { from: { node: 'm2', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+        twoModels,
+        slotByType,
+      ),
+    ).toEqual({ ok: false, reason: 'slotNotRepeatable' });
+  });
+
+  it('a repeatable tool slot accepts many providers', () => {
+    const wired = FlowGraphSchema.parse({
+      nodes: [...g.nodes, { id: 'th2', type: 'tool.think', params: {}, position: { x: 0, y: 0 } }],
+      edges: [{ id: 'e1', from: { node: 'th', port: 'provider' }, to: { node: 'a', port: 'ai:tool' } }],
+    });
+    expect(
+      canConnect(
+        { from: { node: 'th2', port: 'provider' }, to: { node: 'a', port: 'ai:tool' } },
+        wired,
+        slotByType,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('flowToRfEdges marks a slot edge as a dashed sub-connection', () => {
+    const wired = FlowGraphSchema.parse({
+      nodes: g.nodes,
+      edges: [
+        { id: 'e1', from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+      ],
+    });
+    const [edge] = flowToRfEdges(wired, none, slotByType);
+    expect(edge!.className).toBe('ctb-slot-edge');
+    expect(edge!.label).toBe('ai:model');
+    expect((edge!.data as { slot?: boolean }).slot).toBe(true);
+  });
+
+  it('without byType, edges stay plain data edges (back-compat)', () => {
+    const wired = FlowGraphSchema.parse({
+      nodes: g.nodes,
+      edges: [
+        { id: 'e1', from: { node: 'm', port: 'provider' }, to: { node: 'a', port: 'ai:model' } },
+      ],
+    });
+    const [edge] = flowToRfEdges(wired, none);
+    expect(edge!.className).toBeUndefined();
+  });
+});
+
 describe('id generation', () => {
   it('node ids derive from the type local name and never collide', () => {
     expect(nextNodeId('tg.sendMessage', { nodes: [], edges: [] })).toBe('sendMessage_1');

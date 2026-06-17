@@ -330,6 +330,14 @@ export class Executor {
         // disabled nodes are skipped — items pass through "main"
         result = { kind: 'items', outputs: { main: inputItems } };
         this.log(exec.id, node.id, 'debug', `node "${node.id}" disabled — passing through`);
+      } else if (this.isProviderNode(node.type)) {
+        // Provider sub-nodes (Chat Model / Memory / Tool, PB-T1) are resolved as
+        // a consumer's CONFIG, never run as a data step. A correctly-wired graph
+        // never routes data into one (their only wire is the dashed slot edge),
+        // but if a malformed graph parks the cursor here we end this branch
+        // quietly instead of executing the provider as if it were a data node.
+        result = { kind: 'items', outputs: {} };
+        this.log(exec.id, node.id, 'debug', `provider node "${node.id}" is not a data step — skipped`);
       } else {
         try {
           result = await this.executeNode(exec, flow, node, inputItems, state);
@@ -419,6 +427,15 @@ export class Executor {
 
     await this.finalize(exec.id, state, 'done', null);
     return { status: 'done', steps: state.steps, error: null, wait: null };
+  }
+
+  /**
+   * True when a node TYPE is a provider sub-node (role `provider`, PB-T1) —
+   * resolved as a consumer's config, never executed as a data step. Tolerant of
+   * unknown types (returns false) so the normal unknown-type error path runs.
+   */
+  private isProviderNode(type: string): boolean {
+    return this.registry.has(type) && this.registry.get(type).role === 'provider';
   }
 
   private async executeNode(

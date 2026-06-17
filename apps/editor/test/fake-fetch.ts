@@ -42,6 +42,7 @@ import {
   type FilePublic,
   type FlowGraph,
   type FlowPublic,
+  type NodeSlotMeta,
   type NodeTypeInfo,
   type RecordFilter,
   type RecordPublic,
@@ -105,6 +106,23 @@ export const FAKE_NODE_TYPES: NodeTypeInfo[] = [
   { type: 'data.collection', category: 'data', meta: { labelKey: 'nodes.data.collection.label', icon: 'database' }, ports: { inputs: ['main'], outputs: ['main', 'empty'] }, paramsJsonSchema: toParamsJsonSchema(CollectionParamsSchema) },
   { type: 'collection.recordChanged', category: 'trigger', meta: { labelKey: 'nodes.collection.recordChanged.label', icon: 'database' }, ports: { inputs: [], outputs: ['main'] }, paramsJsonSchema: toParamsJsonSchema(RecordChangedParamsSchema) },
 ];
+
+/**
+ * type → typed sub-connection facts (PB-T1), mirroring the server's `nodeMeta`
+ * built from the registry. Derived from FAKE_NODE_TYPES so the fake's activate
+ * endpoint applies the SAME slot/role rules the real endpoint does (I5). Keys
+ * are omitted (not undefined) to match the server's exactOptionalPropertyTypes
+ * construction.
+ */
+const NODE_META: ReadonlyMap<string, NodeSlotMeta> = new Map(
+  FAKE_NODE_TYPES.map((info) => {
+    const m: NodeSlotMeta = {};
+    if (info.role) m.role = info.role;
+    if (info.inputSlots) m.inputSlots = info.inputSlots;
+    if (info.provides) m.provides = info.provides;
+    return [info.type, m] as const;
+  }),
+);
 
 interface FlowVersionRow {
   version: number;
@@ -427,8 +445,9 @@ export function createFakeServer(): FakeServer {
         if (!flow) return json(404, { error: 'not_found' });
         const action = flowMatch[3];
         if (action === 'activate') {
-          // same shared validator + schema map semantics as the real endpoint
-          const nodeProblems = validateFlowForActivation(flow.graph, PARAM_SCHEMAS);
+          // same shared validator + schema map + slot-meta semantics as the
+          // real endpoint (PB-T1) — slot/role facts mirror FAKE_NODE_TYPES.
+          const nodeProblems = validateFlowForActivation(flow.graph, PARAM_SCHEMAS, NODE_META);
           if (nodeProblems.length > 0) {
             return json(422, {
               error: 'not_activatable',

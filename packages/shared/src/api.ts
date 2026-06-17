@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { ExecutionStatus, WaitSpec } from './execution';
 import { FlowGraphSchema } from './flow';
 import type { FlowItem } from './item';
+import type { InputSlot, NodeRole, SlotKind } from './node-def';
 import { KeyboardSchema } from './node-params';
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,16 @@ export interface NodeTypeInfo {
   meta: { labelKey: string; descriptionKey?: string; icon?: string };
   ports: { inputs: string[]; outputs: string[] };
   paramsJsonSchema: Record<string, unknown>;
+  /**
+   * Typed sub-connection surface (PB-T1). `role` defaults to `'data'`;
+   * `inputSlots` lists the typed slots a consumer exposes (each slot's `kind`
+   * is also the target port name a provider edge lands on); `provides` is the
+   * slot kind a `role:'provider'` sub-node satisfies. Omitted/empty for every
+   * Phase-A node — the editor treats a missing `role` as `'data'`.
+   */
+  role?: NodeRole;
+  inputSlots?: InputSlot[];
+  provides?: SlotKind;
 }
 
 // ---------------------------------------------------------------------------

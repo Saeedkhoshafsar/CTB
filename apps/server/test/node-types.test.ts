@@ -6,6 +6,7 @@
 import { NodeRegistry } from '@ctb/core';
 import { registerBuiltinNodes } from '@ctb/nodes';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { nodeTypeInfos } from '../src/api/node-types';
 
 const registry = registerBuiltinNodes(new NodeRegistry());
@@ -57,5 +58,64 @@ describe('nodeTypeInfos (P2-T2)', () => {
     const send = infos.find((i) => i.type === 'tg.sendMessage')!;
     const schemaStr = JSON.stringify(send.paramsJsonSchema);
     expect(schemaStr).toContain('text');
+  });
+
+  // ── typed sub-connection surface (PB-T1) ────────────────────────────────
+  it('omits role/inputSlots/provides for plain data nodes (Phase-A back-compat)', () => {
+    // Every builtin today is a role:'data' node with no slots, so the palette
+    // payload must NOT carry any of the new keys — byte-identical to before.
+    for (const info of infos) {
+      expect(info).not.toHaveProperty('role');
+      expect(info).not.toHaveProperty('inputSlots');
+      expect(info).not.toHaveProperty('provides');
+    }
+  });
+
+  it('surfaces role/inputSlots/provides when a node opts in', () => {
+    const reg = new NodeRegistry();
+    reg.register({
+      type: 'ai.agent',
+      category: 'ai',
+      role: 'data',
+      inputSlots: [
+        { kind: 'ai:model', required: true, repeatable: false },
+        { kind: 'ai:memory', required: false, repeatable: false },
+        { kind: 'ai:tool', required: false, repeatable: true },
+      ],
+      meta: { labelKey: 'node.ai.agent' },
+      ports: { inputs: ['main'], outputs: ['main'] },
+      paramsSchema: z.object({}),
+      execute: async () => ({ kind: 'end' }),
+    });
+    reg.register({
+      type: 'ai.modelOpenai',
+      category: 'ai',
+      role: 'provider',
+      provides: 'ai:model',
+      meta: { labelKey: 'node.ai.modelOpenai' },
+      ports: { inputs: [], outputs: [] },
+      paramsSchema: z.object({}),
+      execute: async () => ({ kind: 'end' }),
+    });
+
+    const out = nodeTypeInfos(reg);
+    const agent = out.find((i) => i.type === 'ai.agent')!;
+    // consumer: role defaults to 'data' so it is OMITTED; slots are surfaced
+    expect(agent).not.toHaveProperty('role');
+    expect(agent).not.toHaveProperty('provides');
+    expect(agent.inputSlots).toEqual([
+      { kind: 'ai:model', required: true, repeatable: false },
+      { kind: 'ai:memory', required: false, repeatable: false },
+      { kind: 'ai:tool', required: false, repeatable: true },
+    ]);
+
+    const model = out.find((i) => i.type === 'ai.modelOpenai')!;
+    expect(model.role).toBe('provider');
+    expect(model.provides).toBe('ai:model');
+    expect(model).not.toHaveProperty('inputSlots');
+
+    // payload is plain JSON (slots survive a stringify round-trip)
+    const round = JSON.parse(JSON.stringify(agent.inputSlots));
+    expect(round).toEqual(agent.inputSlots);
   });
 });

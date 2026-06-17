@@ -285,6 +285,7 @@ export const fa = {
   'nodes.tg.trigger.label': 'شروع (تریگر)',
   'nodes.tg.sendMessage.label': 'ارسال پیام',
   'nodes.tg.sendMedia.label': 'ارسال رسانه',
+  'nodes.tg.getFile.label': 'دریافت فایل',
   'nodes.tg.waitForReply.label': 'انتظار پاسخ',
   'nodes.flow.if.label': 'شرط (IF)',
   'nodes.data.setFields.label': 'تنظیم فیلدها',
@@ -320,6 +321,7 @@ export const fa = {
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
   'nodeDesc.tg.sendMessage': 'یک پیام (متن، عکس، فایل و…) به کاربر می‌فرستد. در متن می‌توانید از متغیرها استفاده کنید؛ مثلاً {{ $vars.name }}.',
   'nodeDesc.tg.sendMedia': 'عکس/ویدیو/فایل/صدا را به کاربر می‌فرستد — از آدرس اینترنتی، file_id، فایلِ آپلودشده (از کالکشن) یا base64. با ۲ تا ۱۰ آیتم یک آلبوم (مدیا گروپ) می‌سازد.',
+  'nodeDesc.tg.getFile': 'یک فایل تلگرام را با file_id دانلود می‌کند (عکس/صدا/فایل که کاربر فرستاده) و می‌تواند آن را ذخیره کند تا نودهای بعدی از آن استفاده کنند.',
   'nodeDesc.tg.waitForReply': 'یک سؤال می‌پرسد و منتظر جواب کاربر می‌ماند (حتی ساعت‌ها یا روزها). جواب معتبر از خروجی reply ادامه می‌یابد.',
   'nodeDesc.flow.if': 'مسیر فلو را دوشاخه می‌کند: اگر شرط‌ها برقرار باشند از خروجی true، وگرنه از false ادامه می‌دهد.',
   'nodeDesc.data.setFields': 'مقدارهایی را در دادهٔ جاری ($json) یا متغیرهای اجرا ($vars) ذخیره یا حذف می‌کند.',
@@ -597,6 +599,10 @@ export const fa = {
   'paramDesc.tg.sendMedia.parse_mode': 'قالب‌بندی کپشن: HTML یا Markdown. خالی = متن ساده.',
   'paramDesc.tg.sendMedia.keyboard': 'دکمه‌هایی که همراه رسانه نمایش داده می‌شوند (برای آلبوم قابل استفاده نیست).',
   'paramDesc.tg.sendMedia.options': 'تنظیمات بیشتر ارسال (اختیاری).',
+  // tg.getFile params (PA-T2)
+  'paramDesc.tg.getFile.file_id': 'شناسهٔ فایل تلگرام برای دانلود. خالی = به‌صورت خودکار از آیتم ورودی خوانده می‌شود ($json.file_id و حالت‌های تو در توی رایج مثل voice.file_id).',
+  'paramDesc.tg.getFile.store': 'فایل دانلودشده را ذخیره کن و یک شناسهٔ فایل CTB بده تا نودهای بعدی (مثل ارسال رسانه) از آن استفاده کنند. خاموش = فقط آدرس موقت تلگرام و مشخصات برگردانده می‌شود.',
+  'paramDesc.tg.getFile.save_as': 'نام فیلدی در $json که نتیجه روی آن نوشته می‌شود (مثلاً file، voice_clip).',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',

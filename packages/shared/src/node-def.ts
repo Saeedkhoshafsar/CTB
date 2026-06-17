@@ -42,6 +42,18 @@ export interface TgInputMedia {
 }
 
 /**
+ * A stored file's public projection, returned by `ctx.files.write` (tg.getFile
+ * `store:true`, PA-T2). Mirrors the host's `FilePublic` shape — the CTB file
+ * `id` is what downstream nodes (tg.sendMedia `source:'file'`) reference.
+ */
+export interface TgStoredFile {
+  id: string;
+  mime: string | null;
+  size: number | null;
+  url: string;
+}
+
+/**
  * NodeResult — what a node's execute() returns to the executor (ARCHITECTURE §7).
  * Discriminated union so the executor switch is exhaustive.
  */
@@ -165,6 +177,20 @@ export interface NodeCtx {
       reply_to_message_id?: number;
       disable_notification?: boolean;
     }): Promise<{ messageIds: number[] }>;
+    /**
+     * getFile — resolve a Telegram `file_id` and DOWNLOAD its bytes (tg.getFile,
+     * PA-T2). The host calls the Bot-API `getFile` to learn the `file_path`/size,
+     * then downloads the bytes from Telegram's file endpoint using the bot token
+     * — so the node never touches the token or the network (invariants I3/I6).
+     * Returns the raw bytes plus the metadata Telegram reported. Optional:
+     * tg.getFile fails with a clear error when the host doesn't inject it.
+     */
+    getFile?(fileId: string): Promise<{
+      bytes: Uint8Array;
+      filePath: string;
+      size: number | null;
+      mime: string | null;
+    }>;
   } | null;
   /**
    * File-store reader (tg.sendMedia `source:'file'`, PA-T1). Reads the raw bytes
@@ -176,6 +202,12 @@ export interface NodeCtx {
    */
   files: {
     read(fileId: string): Promise<{ bytes: Uint8Array; mime: string | null }>;
+    /**
+     * Store raw bytes on disk and return a CTB file id + its public projection
+     * (tg.getFile `store:true`, PA-T2). The bytes are owned by THIS run's bot
+     * (the host stamps `botId`); the node never touches disk (invariant I6).
+     */
+    write(bytes: Uint8Array, mime: string | null): Promise<TgStoredFile>;
   } | null;
   /** Structured logging into exec_logs. */
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;

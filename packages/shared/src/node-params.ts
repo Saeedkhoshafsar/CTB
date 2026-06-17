@@ -188,6 +188,43 @@ export const TgSendMediaParamsSchema = z
   });
 export type TgSendMediaParams = z.infer<typeof TgSendMediaParamsSchema>;
 
+// ── tg.getFile ─────────────────────────────────────────────────────────────
+
+/**
+ * tg.getFile — download a Telegram file (PA-T2; the left half of the AI-voice
+ * screenshot, "Get a file"). Given a Telegram `file_id` (captured by the
+ * trigger from a photo/voice/document/video message), the host calls the Bot
+ * API `getFile`, downloads the bytes, and OPTIONALLY stores them in the
+ * file-store (reusing the P3.5 SqliteFileStore) so downstream nodes
+ * (tg.sendMedia `source:'file'`, future ai.speechToText) can use them.
+ *
+ * `file_id` defaults to a `$json` lookup so it drops in right after a media
+ * trigger with no config: it tries `$json.file_id`, then the common nested
+ * shapes the normalizer emits (`reply.file_id`, `photo.file_id`, …). An
+ * explicit value (literal or `{{ }}` expression) always wins.
+ */
+export const TgGetFileParamsSchema = z
+  .object({
+    /**
+     * The Telegram file_id to download. Empty ⇒ the node auto-resolves it from
+     * the incoming item (`$json.file_id` and common nested fallbacks).
+     */
+    file_id: z.string().default(''),
+    /**
+     * Store the downloaded bytes on disk (file-store) and return a CTB file id
+     * usable by tg.sendMedia. When false, only the temporary Telegram download
+     * URL + metadata are returned (no disk write).
+     */
+    store: z.boolean().default(true),
+    /** Field on $json the result object is written to. */
+    save_as: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'save_as must be a simple identifier')
+      .default('file'),
+  })
+  .strict();
+export type TgGetFileParams = z.infer<typeof TgGetFileParamsSchema>;
+
 // ── tg.waitForReply ──────────────────────────────────────────────────────────
 
 /** Prompt = plain string or a mini Send Message (text + parse_mode + keyboard). */

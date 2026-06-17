@@ -78,6 +78,17 @@ Sends photo/video/document/audio — including raw **bytes** (not just URL/`file
   - `options`: protect_content, reply_to, silent
 - **Capabilities:** requires `ctx.tg.sendMedia`; `source: file` additionally requires `ctx.files`. Fail-loud when absent (I6).
 
+### Get a File `M` — *download + store*
+The RECEIVE half of the media pair (Send Media being the SEND half). Given a Telegram `file_id` (captured by the trigger from a photo/voice/document/video the user sent), it **downloads the bytes** and optionally **stores** them so downstream nodes (Send Media `source: file`, future Speech-to-Text) can reuse them. The node never touches the token, the network, or disk: it asks `ctx.tg.getFile` for the bytes (the host calls the Bot-API `getFile`, then downloads from Telegram's file endpoint with the bot token, held host-side per I3/I6), and — when `store` is on — hands them to `ctx.files.write` (the host stamps the run's bot and writes them under the file-store).
+- **In:** 1 → **Out:** 1 (passthrough items + a result object merged under `save_as`)
+- **Result:** `{ file_id, path, url, mime, size, stored_file_id? }` — `stored_file_id` + the file-store `url` appear only when `store` is on; otherwise `url` is the temporary Telegram download URL.
+- **Parameters:**
+  - `file_id` (default `''`): empty ⇒ auto-resolved from the incoming item (`$json.file_id`, then nested `reply`/`photo`/`voice`/`document`/`audio`/`video` `.file_id`). An explicit value (literal or `{{ }}`) always wins.
+  - `store` (default `true`): store the bytes (file-store) and emit a CTB file id; `false` ⇒ URL + metadata only, no disk write
+  - `save_as` (default `file`, identifier regex): the `$json` field the result is written to
+- **Runs once per node run** (one download), merging the result onto every item.
+- **Capabilities:** requires `ctx.tg.getFile`; `store: true` additionally requires `ctx.files` (with `write`). Fail-loud when absent (I6).
+
 ### Wait for Reply `M` — *the conversation primitive*
 Pauses the execution until the user replies.
 

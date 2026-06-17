@@ -125,15 +125,26 @@ export interface Engine {
 }
 
 /**
- * File-store reader capability (PA-T1). The node passes a CTB file id; the host
- * reads the bytes from disk and returns them so `tg.sendMedia` can upload a
- * Collection/file-store file (invariant I6 — the node never touches disk).
+ * File-store capability (PA-T1 read + PA-T2 write). The node passes a CTB file
+ * id to `read` (the host returns the disk bytes so `tg.sendMedia` can upload a
+ * Collection/file-store file), or raw bytes to `write` (the host stores them on
+ * disk and returns a CTB file id so `tg.getFile` can hand a stored file to
+ * downstream nodes). Invariant I6 — the node never touches disk. A per-bot
+ * factory (DL #15): `read` ignores the bot (file ids are globally unique) but
+ * `write` stamps the run's `botId` so stored files are owned by the right bot.
  */
-function makeFiles(fileStore: SqliteFileStore): NonNullable<NodeCtx['files']> {
+function makeFiles(
+  fileStore: SqliteFileStore,
+  botId: string,
+): NonNullable<NodeCtx['files']> {
   return {
     async read(fileId) {
       const { bytes, mime } = fileStore.readLocal(fileId);
       return { bytes, mime };
+    },
+    async write(bytes, mime) {
+      const pub = fileStore.putLocal(botId, Buffer.from(bytes), mime);
+      return { id: pub.id, mime: pub.mime, size: pub.size, url: pub.url };
     },
   };
 }
@@ -669,10 +680,39 @@ export function wireEngine(opts: WireOptions): Engine {
         // TgInputMedia to the right Bot-API call and uploads bytes as InputFile.
         sendMedia: (o) =>
           handle.sender.sendMedia(o as Parameters<typeof handle.sender.sendMedia>[0]),
+        // tg.getFile (PA-T2) — resolve a file_id then DOWNLOAD its bytes. The
+        // Bot-API `getFile` (rate-limited via the sender) returns the temporary
+        // `file_path`; the bytes live at /file/bot<token>/<file_path>. Only the
+        // host holds the token, so the node never sees it (invariants I3/I6).
+        getFile: async (fileId) => {
+          const file = await handle.sender.call<{
+            file_path?: string;
+            file_size?: number;
+          }>('getFile', { file_id: fileId });
+          if (!file.file_path) {
+            throw new Error(`Telegram getFile returned no file_path for "${fileId}"`);
+          }
+          const url = `https://api.telegram.org/file/bot${handle.token}/${file.file_path}`;
+          const res = await (opts.fetchImpl ?? fetch)(url);
+          if (!res.ok) {
+            throw new Error(
+              `Telegram file download failed (${res.status} ${res.statusText}) for "${fileId}"`,
+            );
+          }
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const mime = res.headers.get('content-type');
+          return {
+            bytes,
+            filePath: file.file_path,
+            size: file.file_size ?? bytes.byteLength,
+            mime: mime && mime.length > 0 ? mime : null,
+          };
+        },
       };
     },
-    // File-store reader (PA-T1) — tg.sendMedia (`source:'file'`) uploads bytes.
-    files: makeFiles(fileStore),
+    // File-store capability (PA-T1 read + PA-T2 write) — per-bot factory so
+    // `write` (tg.getFile `store:true`) stamps the run's bot on stored files.
+    files: (botId) => makeFiles(fileStore, botId),
     // Sub-flow runner (flow.executeSubFlow, P3-T1). Loads the child flow, runs a
     // nested executor synchronously to completion, and returns the items its
     // flow.return node parked in $vars. Enforces same-bot ownership and the

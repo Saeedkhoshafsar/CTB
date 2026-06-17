@@ -12,3 +12,4 @@ build/
 /data/
 coverage/
 .DS_Store
+*.tsbuildinfo

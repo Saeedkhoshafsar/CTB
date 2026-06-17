@@ -34,6 +34,13 @@ export interface BotHandle {
   bot: Bot;
   sender: TgSender;
   mode: 'idle' | 'polling' | 'webhook';
+  /**
+   * The bot token (PA-T2). Held host-side so the engine can build the Telegram
+   * file-download URL (`/file/bot<token>/<file_path>`) for tg.getFile — the
+   * node never sees it (invariants I3/I6). grammY also exposes `bot.token`,
+   * but a custom `callApi` transport (tests) has no real Bot, so we keep it.
+   */
+  token: string;
 }
 
 /**
@@ -76,7 +83,7 @@ export class TelegramGateway {
       await this.dispatch(botId, ctx.update);
     });
 
-    const handle: BotHandle = { botId, bot, sender, mode: 'idle' };
+    const handle: BotHandle = { botId, bot, sender, mode: 'idle', token };
     this.bots.set(botId, handle);
     return handle;
   }

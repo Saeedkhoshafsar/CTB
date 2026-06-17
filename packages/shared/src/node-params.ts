@@ -348,6 +348,75 @@ export const DataEditFieldsParamsSchema = z.object({
 });
 export type DataEditFieldsParams = z.infer<typeof DataEditFieldsParamsSchema>;
 
+// ── data.filter (PA-T4 — n8n "Filter" node) ──────────────────────────────────
+
+/**
+ * data.filter — filter items using the flow.if condition engine (PA-T4).
+ *
+ * Each item is evaluated against the conditions; passing items go to `kept`,
+ * failing items go to `discarded`. Both ports are always emitted. Reuses
+ * IfConditionSchema / IfOperatorSchema so semantics are identical to flow.if.
+ */
+export const DataFilterParamsSchema = z.object({
+  conditions: z.array(IfConditionSchema).min(1),
+  combine: z.enum(['and', 'or']).default('and'),
+});
+export type DataFilterParams = z.infer<typeof DataFilterParamsSchema>;
+
+// ── data.splitOut (PA-T5 — n8n "Split Out" node) ─────────────────────────────
+
+/**
+ * data.splitOut — split an array field into one item per element (PA-T5).
+ *
+ * Ports: `main` (one item per array element) + `empty` (original item when
+ * the array is empty or missing). When `field` is not an array, treats it as
+ * a single-element array (n8n-compatible). Items are never mutated.
+ */
+export const DataSplitOutParamsSchema = z.object({
+  /** Dotted path to the array field to split (e.g. "tags" or "result.items"). */
+  field: z.string().min(1),
+  /**
+   * What ends up in the output item's $json:
+   *   - `all_fields` (default): the full original item with the array field
+   *     replaced by the current element.
+   *   - `selected_field_only`: only the extracted element (wrapped in
+   *     `{ value: element }` when the element is not an object).
+   */
+  include: z.enum(['all_fields', 'selected_field_only']).default('all_fields'),
+});
+export type DataSplitOutParams = z.infer<typeof DataSplitOutParamsSchema>;
+
+// ── data.aggregate (PA-T5 — n8n "Aggregate" node) ────────────────────────────
+
+/** One aggregation rule: collect `field` across items into `dest`. */
+export const AggregateFieldRowSchema = z.object({
+  /** Dotted path in each item's $json to collect. */
+  field: z.string().min(1),
+  /** Dotted destination path in the output $json (defaults to `field`). */
+  dest: z.string().optional(),
+});
+export type AggregateFieldRow = z.infer<typeof AggregateFieldRowSchema>;
+
+/**
+ * data.aggregate — merge many items into one (PA-T5).
+ *
+ * Two modes:
+ *   - `aggregate_individual_fields`: collect specified fields across all
+ *     items into named arrays; other fields are carried from the first item.
+ *   - `aggregate_all_items`: wrap each item's entire $json into an array
+ *     under `dest_field` (default "data").
+ */
+export const DataAggregateParamsSchema = z.object({
+  mode: z
+    .enum(['aggregate_individual_fields', 'aggregate_all_items'])
+    .default('aggregate_individual_fields'),
+  /** mode=aggregate_individual_fields: ≥1 field rows. */
+  fields: z.array(AggregateFieldRowSchema).optional(),
+  /** mode=aggregate_all_items: the output key that holds the array of all items' $json. */
+  dest_field: z.string().min(1).default('data'),
+});
+export type DataAggregateParams = z.infer<typeof DataAggregateParamsSchema>;
+
 // ── flow.stopError ───────────────────────────────────────────────────────────
 
 export const FlowStopErrorParamsSchema = z.object({

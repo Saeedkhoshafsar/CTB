@@ -19,10 +19,10 @@ import { aiMcpClient, builtinNodes, registerBuiltinNodes } from '../src/index';
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P5-T3)', () => {
-  it('registers ai.mcpClient; registry is 35 types', () => {
+  it('registers ai.mcpClient; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.mcpClient')).toBe(true);
-    expect(builtinNodes.length).toBe(35);
+    expect(builtinNodes.length).toBe(38);
   });
 
   it('ai.mcpClient is an `ai` node, main → main', () => {

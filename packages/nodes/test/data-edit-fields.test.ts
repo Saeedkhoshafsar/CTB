@@ -14,11 +14,11 @@ import { builtinNodes, dataEditFields, registerBuiltinNodes } from '@ctb/nodes';
 import { item, makeCtx, params } from './node-harness';
 
 describe('data.editFields — registry', () => {
-  it('registers data.editFields; registry is 35 types', () => {
+  it('registers data.editFields; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.editFields')).toBe(true);
     expect(dataEditFields.category).toBe('data');
-    expect(builtinNodes.length).toBe(35);
+    expect(builtinNodes.length).toBe(38);
   });
 });
 

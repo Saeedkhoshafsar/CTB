@@ -1,0 +1,146 @@
+{
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "tg.trigger",
+      "params": { "event": "command", "command": "/report" },
+      "position": { "x": 0, "y": 0 },
+      "note": "User sends /report to get a Jalali-stamped task summary built purely from Phase-A data-transform nodes."
+    },
+    {
+      "id": "seed",
+      "type": "data.editFields",
+      "params": {
+        "keep_only_set": true,
+        "fields": [
+          {
+            "name": "tasks",
+            "value_mode": "json",
+            "value": "[{\"title\":\"طراحی\",\"due\":\"2026-06-11\"},{\"title\":\"کدنویسی\",\"due\":\"2026-06-09\"},{\"title\":\"طراحی\",\"due\":\"2026-06-11\"},{\"title\":\"تست\",\"due\":\"2026-06-14\"},{\"title\":\"استقرار\",\"due\":\"2026-06-12\"}]"
+          }
+        ]
+      },
+      "position": { "x": 240, "y": 0 },
+      "note": "Seed a sample dataset (an array of tasks). JSON value-mode parses the string into a real array. In a live bot this would come from a Collection / HTTP / the user's message."
+    },
+    {
+      "id": "split",
+      "type": "data.splitOut",
+      "params": { "field": "tasks", "include": "selected_field_only" },
+      "position": { "x": 480, "y": 0 },
+      "note": "One item per task element (5 items, with one duplicate)."
+    },
+    {
+      "id": "dedupe",
+      "type": "data.removeDuplicates",
+      "params": { "compare": "selected_fields", "fields": ["title", "due"] },
+      "position": { "x": 720, "y": 0 },
+      "note": "Drop the duplicated (طراحی,2026-06-11) row, keeping the first occurrence → 4 items."
+    },
+    {
+      "id": "sort",
+      "type": "data.sort",
+      "params": { "fields": [{ "field": "due", "order": "asc" }] },
+      "position": { "x": 960, "y": 0 },
+      "note": "Order the tasks by their due date, ascending (numeric-aware string compare on ISO dates)."
+    },
+    {
+      "id": "limit",
+      "type": "data.limit",
+      "params": { "max_items": 3, "keep": "first" },
+      "position": { "x": 1200, "y": 0 },
+      "note": "Keep only the three earliest tasks."
+    },
+    {
+      "id": "aggregate",
+      "type": "data.aggregate",
+      "params": {
+        "mode": "aggregate_individual_fields",
+        "fields": [
+          { "field": "title", "dest": "titles" },
+          { "field": "due", "dest": "dues" }
+        ]
+      },
+      "position": { "x": 1440, "y": 0 },
+      "note": "Collapse the item list back into ONE item: titles[] and dues[] arrays."
+    },
+    {
+      "id": "stamp",
+      "type": "data.dateTime",
+      "params": {
+        "operation": "format",
+        "source": "now",
+        "timezone": "Asia/Tehran",
+        "calendar": "jalali",
+        "format": "YYYY/MM/DD",
+        "digits": "persian",
+        "save_as": "report_date"
+      },
+      "position": { "x": 1680, "y": 0 },
+      "note": "Stamp the report's generation date in the Jalali (Persian) calendar with Persian digits → report_date.formatted (e.g. ۱۴۰۵/۰۳/۲۱)."
+    },
+    {
+      "id": "compose",
+      "type": "data.editFields",
+      "params": {
+        "fields": [
+          { "name": "count", "value": "{{ $json.titles.length }}" },
+          {
+            "name": "text",
+            "value": "📋 گزارش کارها — {{ $json.report_date.formatted }}\n({{ $json.titles.length }} مورد، به‌ترتیب سررسید)\n• {{ $json.titles[0] }} — {{ $json.dues[0] }}\n• {{ $json.titles[1] }} — {{ $json.dues[1] }}\n• {{ $json.titles[2] }} — {{ $json.dues[2] }}"
+          }
+        ]
+      },
+      "position": { "x": 1920, "y": 0 },
+      "note": "Build the reply text from the aggregated arrays + the Jalali stamp. $json here is the single aggregated item, so the index/length expressions resolve correctly."
+    },
+    {
+      "id": "gate",
+      "type": "data.filter",
+      "params": {
+        "conditions": [{ "value1": "{{ $json.count }}", "operator": "gt", "value2": "0" }]
+      },
+      "position": { "x": 2160, "y": 0 },
+      "note": "Batch-level gate: route to the summary when there are tasks, else to the empty notice."
+    },
+    {
+      "id": "reply",
+      "type": "tg.sendMessage",
+      "params": { "type": "text", "text": "{{ $json.text }}" },
+      "position": { "x": 2400, "y": -80 }
+    },
+    {
+      "id": "reply_empty",
+      "type": "tg.sendMessage",
+      "params": { "type": "text", "text": "هیچ کاری برای گزارش نیست." },
+      "position": { "x": 2400, "y": 80 }
+    },
+    {
+      "id": "album",
+      "type": "tg.sendMedia",
+      "params": {
+        "caption": "نمودارهای گزارش 📷",
+        "media": [
+          { "kind": "photo", "source": "url", "value": "https://example.com/chart-1.png" },
+          { "kind": "photo", "source": "url", "value": "https://example.com/chart-2.png" }
+        ]
+      },
+      "position": { "x": 2640, "y": -80 },
+      "note": "Reply with a media album (2 photos) summarising the report."
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "trigger", "port": "main" }, "to": { "node": "seed", "port": "main" } },
+    { "id": "e2", "from": { "node": "seed", "port": "main" }, "to": { "node": "split", "port": "main" } },
+    { "id": "e3", "from": { "node": "split", "port": "main" }, "to": { "node": "dedupe", "port": "main" } },
+    { "id": "e4", "from": { "node": "dedupe", "port": "main" }, "to": { "node": "sort", "port": "main" } },
+    { "id": "e5", "from": { "node": "sort", "port": "main" }, "to": { "node": "limit", "port": "main" } },
+    { "id": "e6", "from": { "node": "limit", "port": "main" }, "to": { "node": "aggregate", "port": "main" } },
+    { "id": "e7", "from": { "node": "aggregate", "port": "main" }, "to": { "node": "stamp", "port": "main" } },
+    { "id": "e8", "from": { "node": "stamp", "port": "main" }, "to": { "node": "compose", "port": "main" } },
+    { "id": "e9", "from": { "node": "compose", "port": "main" }, "to": { "node": "gate", "port": "main" } },
+    { "id": "e10", "from": { "node": "gate", "port": "kept" }, "to": { "node": "reply", "port": "main" } },
+    { "id": "e11", "from": { "node": "gate", "port": "discarded" }, "to": { "node": "reply_empty", "port": "main" } },
+    { "id": "e12", "from": { "node": "reply", "port": "main" }, "to": { "node": "album", "port": "main" } }
+  ]
+}

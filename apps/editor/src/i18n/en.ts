@@ -288,6 +288,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.tg.trigger.label': 'Trigger',
   'nodes.tg.sendMessage.label': 'Send Message',
   'nodes.tg.sendMedia.label': 'Send Media',
+  'nodes.tg.getFile.label': 'Get a File',
   'nodes.tg.waitForReply.label': 'Wait for Reply',
   'nodes.flow.if.label': 'IF',
   'nodes.data.setFields.label': 'Set Fields',
@@ -323,6 +324,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
   'nodeDesc.tg.sendMessage': 'Sends a message (text, photo, file…) to the user. Use variables like {{ $vars.name }}.',
   'nodeDesc.tg.sendMedia': 'Sends a photo/video/file/audio to the user — from a URL, file_id, an uploaded file (Collection), or base64. With 2–10 items it builds an album (media group).',
+  'nodeDesc.tg.getFile': 'Downloads a Telegram file by its file_id (a photo/voice/document the user sent) and can store it so downstream nodes can use it.',
   'nodeDesc.tg.waitForReply': 'Asks a question and pauses until the user answers (even hours or days later). Valid replies continue from the reply output.',
   'nodeDesc.flow.if': 'Branches the flow: when conditions hold it continues from true, otherwise from false.',
   'nodeDesc.data.setFields': 'Sets or removes values on the current data ($json) or the execution variables ($vars).',
@@ -600,6 +602,10 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.tg.sendMedia.parse_mode': 'Caption formatting: HTML or Markdown. Empty = plain text.',
   'paramDesc.tg.sendMedia.keyboard': 'Buttons shown alongside the media (not available for albums).',
   'paramDesc.tg.sendMedia.options': 'Extra send options (optional).',
+  // tg.getFile params (PA-T2)
+  'paramDesc.tg.getFile.file_id': 'The Telegram file_id to download. Empty = auto-resolved from the incoming item ($json.file_id and common nested shapes like voice.file_id).',
+  'paramDesc.tg.getFile.store': 'Store the downloaded file and return a CTB file id so downstream nodes (e.g. Send Media) can use it. Off = only the temporary Telegram URL + metadata are returned.',
+  'paramDesc.tg.getFile.save_as': 'The $json field the result object is written to (e.g. file, voice_clip).',
 
   // ── example placeholders ──
   'ph.command': '/start',

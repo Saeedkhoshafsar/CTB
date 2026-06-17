@@ -40,6 +40,10 @@ export interface FakeCtx extends NodeCtx {
   sent: SentMessage[];
   /** tg.sendMedia (PA-T1): recorded media/album sends. */
   sentMedia: SentMedia[];
+  /** tg.getFile (PA-T2): recorded file_ids passed to ctx.tg.getFile. */
+  getFileCalls: string[];
+  /** tg.getFile (PA-T2): bytes/mime written via ctx.files.write, in order. */
+  storedFiles: { id: string; bytes: Uint8Array; mime: string | null }[];
   edited: Record<string, unknown>[];
   varsBag: Record<string, unknown>;
   /** In-memory kv backing: keys are `${scope}:${key}`. */
@@ -148,6 +152,16 @@ export function makeCtx(
     files?: null;
     /** tg.sendMedia: make ctx.tg.sendMedia throw this message (transport error). */
     sendMediaError?: string;
+    /**
+     * tg.getFile (PA-T2): the bytes/metadata ctx.tg.getFile returns for any
+     * file_id. Defaults to a small synthetic file. `mime`/`size` default to
+     * sensible values when omitted.
+     */
+    getFileResult?: { bytes?: Uint8Array; filePath?: string; size?: number | null; mime?: string | null };
+    /** tg.getFile: make ctx.tg.getFile throw this message (download error). */
+    getFileError?: string;
+    /** tg.getFile: drop ctx.tg.getFile so the node sees an instance without it. */
+    noGetFile?: boolean;
     /** Seed the in-memory collection store: slug → array of record docs (id auto-assigned if absent). */
     seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
     /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
@@ -156,6 +170,9 @@ export function makeCtx(
 ): FakeCtx {
   const sent: SentMessage[] = [];
   const sentMedia: SentMedia[] = [];
+  const getFileCalls: string[] = [];
+  const storedFiles: { id: string; bytes: Uint8Array; mime: string | null }[] = [];
+  let nextStoredFileId = 1;
   const filesBag = new Map<string, { bytes: Uint8Array; mime: string | null }>();
   for (const [id, f] of Object.entries(overrides.seedFiles ?? {})) {
     filesBag.set(id, { bytes: f.bytes, mime: f.mime ?? null });
@@ -227,6 +244,8 @@ export function makeCtx(
     inputsByPort: overrides.inputsByPort ?? {},
     sent,
     sentMedia,
+    getFileCalls,
+    storedFiles,
     edited,
     varsBag,
     kvBag,
@@ -314,6 +333,24 @@ export function makeCtx(
               sentMedia.push({ opts: opts as Record<string, unknown>, messageIds });
               return { messageIds };
             },
+            // tg.getFile (PA-T2): host-side download. Records the file_id and
+            // returns scripted bytes/metadata; `noGetFile` drops the method.
+            ...(overrides.noGetFile
+              ? {}
+              : {
+                  async getFile(fileId: string) {
+                    getFileCalls.push(fileId);
+                    if (overrides.getFileError) throw new Error(overrides.getFileError);
+                    const r = overrides.getFileResult ?? {};
+                    const bytes = r.bytes ?? new Uint8Array([1, 2, 3, 4]);
+                    return {
+                      bytes,
+                      filePath: r.filePath ?? `photos/${fileId}.jpg`,
+                      size: r.size === undefined ? bytes.byteLength : r.size,
+                      mime: r.mime === undefined ? 'image/jpeg' : r.mime,
+                    };
+                  },
+                }),
           },
     // PA-T1: file-store reader for tg.sendMedia (`source:'file'`).
     files:
@@ -324,6 +361,14 @@ export function makeCtx(
               const f = filesBag.get(fileId);
               if (!f) throw new Error(`file not found: ${fileId}`);
               return { bytes: f.bytes, mime: f.mime };
+            },
+            // PA-T2: store bytes for tg.getFile (`store:true`). Mirrors the host
+            // putLocal → FilePublic projection with a synthetic, stable id.
+            async write(bytes, mime) {
+              const id = `stored${nextStoredFileId++}`;
+              filesBag.set(id, { bytes, mime });
+              storedFiles.push({ id, bytes, mime });
+              return { id, mime, size: bytes.byteLength, url: `/api/files/${id}` };
             },
           },
     log: (level, message) => logs.push({ level, message }),

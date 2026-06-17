@@ -23,11 +23,11 @@ import { aiClassify, aiExtract, builtinNodes, registerBuiltinNodes } from '../sr
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P5-T2)', () => {
-  it('registers ai.classify + ai.extract; registry is 33 types', () => {
+  it('registers ai.classify + ai.extract; registry is 34 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.classify')).toBe(true);
     expect(reg.has('ai.extract')).toBe(true);
-    expect(builtinNodes.length).toBe(33);
+    expect(builtinNodes.length).toBe(34);
   });
 
   it('ai.classify is an `ai` node with dynamic ports; ai.extract main → main', () => {

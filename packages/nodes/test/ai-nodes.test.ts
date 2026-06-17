@@ -22,7 +22,7 @@ describe('registry (P5-T1)', () => {
   it('registers ai.llmChat; registry is 38 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.llmChat')).toBe(true);
-    expect(builtinNodes.length).toBe(41);
+    expect(builtinNodes.length).toBe(42);
   });
 
   it('is an `ai` node with main → main ports', () => {

@@ -28,6 +28,7 @@ import { dataAggregate } from './data/aggregate';
 import { dataSort } from './data/sort';
 import { dataLimit } from './data/limit';
 import { dataRemoveDuplicates } from './data/remove-duplicates';
+import { dataDateTime } from './data/date-time';
 import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -70,6 +71,7 @@ export { dataAggregate } from './data/aggregate';
 export { dataSort } from './data/sort';
 export { dataLimit } from './data/limit';
 export { dataRemoveDuplicates } from './data/remove-duplicates';
+export { dataDateTime, parseDate } from './data/date-time';
 export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -129,6 +131,7 @@ export const builtinNodes: NodeDef<never>[] = [
   dataSort,
   dataLimit,
   dataRemoveDuplicates,
+  dataDateTime,
   dataKv,
   dataCode,
   dataUserProfile,

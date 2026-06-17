@@ -23,7 +23,7 @@ const j = (it: { json: unknown }) => it.json as J;
 // ── registry ──────────────────────────────────────────────────────────────────
 
 describe('data.sort + data.limit + data.removeDuplicates — registry', () => {
-  it('registers all three nodes; registry is 41 types', () => {
+  it('registers all three nodes; registry is 42 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.sort')).toBe(true);
     expect(reg.has('data.limit')).toBe(true);
@@ -31,7 +31,7 @@ describe('data.sort + data.limit + data.removeDuplicates — registry', () => {
     expect(dataSort.category).toBe('data');
     expect(dataLimit.category).toBe('data');
     expect(dataRemoveDuplicates.category).toBe('data');
-    expect(builtinNodes.length).toBe(41);
+    expect(builtinNodes.length).toBe(42);
   });
 
   it('all three have main→main ports', () => {

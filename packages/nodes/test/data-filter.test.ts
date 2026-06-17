@@ -16,7 +16,7 @@ describe('data.filter — registry', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.filter')).toBe(true);
     expect(dataFilter.category).toBe('data');
-    expect(builtinNodes.length).toBe(41);
+    expect(builtinNodes.length).toBe(42);
   });
 
   it('has ports: inputs=[main], outputs=[kept, discarded]', () => {

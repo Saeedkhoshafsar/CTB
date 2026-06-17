@@ -167,6 +167,30 @@ Passes each item through the `kept` port if its conditions hold, or the `discard
 - Each item is evaluated independently; items are never mutated.
 - Differs from `flow.if` in intent and output names: IF **branches the whole batch** at a decision point; Filter **partitions items** and keeps both sets in the same pipeline.
 
+### Sort `+PA` (`data.sort`)
+Orders items by one or more keys (n8n "Sort"). Pure, stable, multi-key.
+
+- **In:** many → **Out:** `main` (same items, new order).
+- **Parameters:** `fields` (≥1 rows, each `{ field, order }` — `field` is a dotted path, `order` is `asc` | `desc`, default `asc`). The first row is the primary key; later rows break ties.
+- **Comparison:** if both values are numbers (or numeric strings) they compare numerically; otherwise they compare as locale-aware strings. A missing/null/empty value always sorts **last**, regardless of direction (n8n-compatible). The sort is stable, so equal keys preserve input order.
+- Items are never mutated — only the output order changes.
+
+### Limit `+PA` (`data.limit`)
+Keeps only the first or last N items (n8n "Limit"). Pure, tiny, high-value.
+
+- **In:** many → **Out:** `main` (the surviving items, original relative order).
+- **Parameters:** `max_items` (integer ≥ 0; `0` = no limit; coerced from a string) · `keep` (`first` | `last`, default `first`).
+- When `max_items` is `0` or ≥ the input length, everything passes through unchanged. Items are never mutated.
+
+### Remove Duplicates `+PA` (`data.removeDuplicates`)
+Drops repeated items, keeping the **first** occurrence (n8n "Remove Duplicates").
+
+- **In:** many → **Out:** `main` (de-duplicated items, order of survivors preserved).
+- **Parameters:** `compare` (`all_fields` | `selected_fields`, default `all_fields`) · `fields` (≥1 dotted field paths, required only when `compare=selected_fields`).
+  - `all_fields`: an item is a duplicate when its **entire** `$json` is deep-equal to one already seen (compared via a stable, key-sorted serialization, so key order doesn't matter).
+  - `selected_fields`: an item is a duplicate when the combined value at the chosen `fields` matches an already-seen item. A missing field is encoded distinctly so it never collides with a literal `null`.
+- Fails loudly when `compare=selected_fields` but no `fields` are given. Items are never mutated.
+
 ### Wait / Delay `M`
 - Fixed duration (`30s`…`7d`) or until datetime (expression). Persisted — survives restarts (uses the same wait machinery).
 

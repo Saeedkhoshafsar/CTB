@@ -417,6 +417,67 @@ export const DataAggregateParamsSchema = z.object({
 });
 export type DataAggregateParams = z.infer<typeof DataAggregateParamsSchema>;
 
+// ── data.sort (PA-T6 — n8n "Sort" node) ──────────────────────────────────────
+
+/** One sort key: order items by a dotted `field`, ascending or descending. */
+export const SortFieldRowSchema = z.object({
+  /** Dotted path in each item's $json to order by (e.g. "age" or "user.score"). */
+  field: z.string().min(1),
+  /** Sort direction for this key. */
+  order: z.enum(['asc', 'desc']).default('asc'),
+});
+export type SortFieldRow = z.infer<typeof SortFieldRowSchema>;
+
+/**
+ * data.sort — order items by one or more keys (PA-T6).
+ *
+ * Multi-key stable sort: earlier rows are primary keys, later rows break ties.
+ * Numeric values compare numerically; otherwise locale-aware string compare.
+ * Missing values sort LAST regardless of direction (n8n-compatible). The input
+ * items themselves are never mutated — only the output ORDER changes.
+ */
+export const DataSortParamsSchema = z.object({
+  fields: z.array(SortFieldRowSchema).min(1),
+});
+export type DataSortParams = z.infer<typeof DataSortParamsSchema>;
+
+// ── data.limit (PA-T6 — n8n "Limit" node) ────────────────────────────────────
+
+/**
+ * data.limit — keep only the first or last N items (PA-T6).
+ *
+ * `max_items` items survive on the `main` port: from the START (`first`,
+ * default) or the END (`last`) of the input. `max_items=0` lets everything
+ * through (no limit). Items are never mutated.
+ */
+export const DataLimitParamsSchema = z.object({
+  /** Maximum number of items to keep (0 = no limit). */
+  max_items: z.coerce.number().int().min(0).default(10),
+  /** Keep the first N or the last N items. */
+  keep: z.enum(['first', 'last']).default('first'),
+});
+export type DataLimitParams = z.infer<typeof DataLimitParamsSchema>;
+
+// ── data.removeDuplicates (PA-T6 — n8n "Remove Duplicates" node) ──────────────
+
+/**
+ * data.removeDuplicates — drop items that repeat (PA-T6).
+ *
+ * Two compare modes:
+ *   - `all_fields` (default): an item is a duplicate when its ENTIRE $json
+ *     equals one already seen (stable JSON-stringify comparison).
+ *   - `selected_fields`: an item is a duplicate when the values at the chosen
+ *     dotted `fields` all equal those of an already-seen item.
+ * The FIRST occurrence is kept (n8n keeps first); order is otherwise preserved.
+ * Items are never mutated.
+ */
+export const DataRemoveDuplicatesParamsSchema = z.object({
+  compare: z.enum(['all_fields', 'selected_fields']).default('all_fields'),
+  /** compare=selected_fields: ≥1 dotted field paths whose combined value is the dedupe key. */
+  fields: z.array(z.string().min(1)).optional(),
+});
+export type DataRemoveDuplicatesParams = z.infer<typeof DataRemoveDuplicatesParamsSchema>;
+
 // ── flow.stopError ───────────────────────────────────────────────────────────
 
 export const FlowStopErrorParamsSchema = z.object({

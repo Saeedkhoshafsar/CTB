@@ -53,6 +53,31 @@ describe('executor — linear flow', () => {
     expect(exec!.state.vars.trail).toEqual(['A']);
   });
 
+  it('provider node parked on the cursor is skipped, never run as a data step (PB-T1)', async () => {
+    const { executor, store, logs } = makeHarness();
+    // A malformed graph routes data INTO a provider (the dashed slot edge is the
+    // only legitimate wire). The executor must NOT call its execute() — which
+    // would throw — and instead end the branch quietly.
+    const g = graph(
+      [
+        { id: 'a', type: 'test.emit', params: { tag: 'A' } },
+        { id: 'model', type: 'test.provider' }, // execute() throws if reached
+        { id: 'after', type: 'test.emit', params: { tag: 'AFTER' } },
+      ],
+      [['a', 'model'], ['model', 'after']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'a', items: { main: [item({})] } },
+    });
+    // run completes cleanly (no throw); provider emitted nothing so the branch
+    // stops there — "after" is never reached.
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.status).toBe('done');
+    expect(logs.some((l) => /provider node "model" is not a data step/.test(l.message))).toBe(true);
+  });
+
   it('params with {{ }} expressions are resolved against $json before Zod', async () => {
     const { executor, store } = makeHarness();
     const g = graph(

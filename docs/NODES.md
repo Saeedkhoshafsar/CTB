@@ -292,6 +292,9 @@ Generic CRUD against user-defined Collections (ARCHITECTURE §13). As domain-agn
 export interface NodeDef<P = unknown> {
   type: string;                  // "tg.sendMessage"
   category: 'trigger'|'telegram'|'flow'|'data'|'ai';
+  role?: 'data' | 'provider';    // PB-T1; defaults to 'data' (see below)
+  inputSlots?: readonly InputSlot[]; // PB-T1; typed provider slots (consumers)
+  provides?: SlotKind;           // PB-T1; the kind a provider satisfies
   ports: { inputs: string[]; outputs: string[] };
   paramsSchema: ZodType<P>;      // → editor form + validation
   execute(ctx: NodeCtx, params: P, items: FlowItem[]):
@@ -300,3 +303,52 @@ export interface NodeDef<P = unknown> {
 ```
 
 `NodeCtx` injects capabilities: `ctx.tg` (sender), `ctx.kv`, `ctx.http`, `ctx.vars`, `ctx.log`, `ctx.eval(expr, item)` — nodes never touch globals, which keeps everything testable.
+
+---
+
+## Sub-connections — typed provider slots (PB-T1)
+
+Some nodes (an **AI Agent**, a chat node with memory) need helper nodes attached
+to them — a Chat Model, a Memory, one or more Tools — that are **not** part of
+the data flow. CTB models these as **sub-connections**: a typed wire that
+*attaches* a provider node to a consumer's input **slot**, distinct from a data
+edge. This mirrors the n8n "AI" canvas (model/memory/tool plugged in below a
+node) while staying generic (invariant I2).
+
+**Contract (shared, I5 — one Zod schema, two consumers):**
+
+- `SlotKind = 'ai:model' | 'ai:memory' | 'ai:tool'`. A slot's `kind` **doubles
+  as the target port name** the sub-connection edge lands on (`PortName` allows
+  `:`), so a sub-connection is an ordinary `FlowEdge` whose `to.port` is the
+  slot kind.
+- A consumer declares `inputSlots: { kind, required, repeatable }[]`. Its
+  `role` stays `'data'`.
+- A provider declares `role:'provider'` + `provides: SlotKind`. It has **no data
+  ports** and is wired only through the dashed slot edge.
+
+**Rules (enforced in `flow-validate.ts` `validateSubConnections` and the editor
+`canConnect`):**
+
+| Rule | Verdict / error |
+|------|-----------------|
+| a slot port must be fed by a provider of the **same** kind | `slotKindMismatch` / "slot must be fed by a `<kind>` provider" |
+| a provider may attach **only** to a matching slot, never a data port | `providerNotAttachedToSlot` / "provider can only attach to a matching slot" |
+| a `required` slot must be connected | "required slot `<kind>` is not connected" |
+| a non-`repeatable` slot accepts **one** provider | `slotNotRepeatable` / "slot accepts only one provider" |
+| disabled nodes are ignored; a provider never counts as a trigger | — |
+
+**Back-compat:** every new field is **optional**. Server validation only runs
+slot rules when the registry-derived `nodeMeta` map is passed
+(`validateFlowForActivation(graph, paramSchemas, nodeMeta)`); the editor only
+styles slot edges when `byType` is passed to `flowToRfEdges`. Phase-A nodes
+declare no slots/role, so their payloads and behavior are byte-identical.
+
+**Executor:** providers are resolved as the consumer's **config**, never run as a
+step. A correctly-wired graph never routes data into one; if a malformed graph
+parks the cursor on a provider the executor skips it (emits nothing, ends the
+branch) instead of calling `execute()`.
+
+**Canvas:** slot handles render along the **bottom** edge of the consumer
+(target handles, labeled with the kind, `*` = required); providers expose a
+single bottom `provider` output handle. Sub-connection edges are drawn **dashed**
+(`ctb-slot-edge`, AI accent color) to read distinctly from solid data edges.

@@ -35,6 +35,7 @@ import {
   type FlowExport,
   type FlowSettings,
   type FlowVersionInfo,
+  type NodeSlotMeta,
 } from '@ctb/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -100,6 +101,18 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
   // type → Zod params schema, built once — registry defs are static per process.
   const paramSchemas: ReadonlyMap<string, ZodType> = new Map(
     (deps.registry?.list() ?? []).map((def) => [def.type, def.paramsSchema]),
+  );
+  // type → typed sub-connection facts (role/slots/provides) for PB-T1 activation
+  // rules, from the SAME registry (I5). Mirrored by the editor's test fake.
+  // Built with omitted (not undefined) keys to satisfy exactOptionalPropertyTypes.
+  const nodeMeta: ReadonlyMap<string, NodeSlotMeta> = new Map(
+    (deps.registry?.list() ?? []).map((def) => {
+      const m: NodeSlotMeta = {};
+      if (def.role) m.role = def.role;
+      if (def.inputSlots) m.inputSlots = def.inputSlots;
+      if (def.provides) m.provides = def.provides;
+      return [def.type, m] as const;
+    }),
   );
 
   app.get('/api/flows', async (req) => {
@@ -205,7 +218,7 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
     if (!graph.success) {
       return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
     }
-    const nodeProblems = validateFlowForActivation(graph.data, paramSchemas);
+    const nodeProblems = validateFlowForActivation(graph.data, paramSchemas, nodeMeta);
     if (nodeProblems.length > 0) {
       return reply
         .code(422)

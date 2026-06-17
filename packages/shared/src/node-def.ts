@@ -451,12 +451,86 @@ export const NodeCategorySchema = z.enum(['trigger', 'telegram', 'flow', 'data',
 export type NodeCategory = z.infer<typeof NodeCategorySchema>;
 
 /**
+ * Typed sub-connection kinds (PB-T1, Phase B foundation).
+ *
+ * A "sub-connection" is NOT a data edge — it ATTACHES a provider node to a
+ * consumer node's typed input *slot* (the n8n "Chat Model / Memory / Tool"
+ * dashed wires under an AI Agent). The kind names the contract: an `ai:model`
+ * slot accepts only a node that PROVIDES a chat model, `ai:memory` a memory
+ * store, `ai:tool` a callable tool. Slots never carry items; the executor
+ * resolves them as the consumer's *config*, it never runs the providers as
+ * steps in the data flow (see `role` below).
+ */
+export const SlotKindSchema = z.enum(['ai:model', 'ai:memory', 'ai:tool']);
+export type SlotKind = z.infer<typeof SlotKindSchema>;
+
+/**
+ * One typed input slot a CONSUMER node (role `data`, e.g. the future `ai.agent`)
+ * exposes. The slot's `name` is ALSO the target port name a sub-connection edge
+ * lands on, so slots and data input ports share the `to.port` namespace — a
+ * provider edge is just a `FlowEdge` whose `to.port` equals a slot name. Slot
+ * names are therefore the slot kind (`ai:model`/`ai:memory`/`ai:tool`) which is
+ * already a valid `PortName`; a consumer never has two slots of the same kind.
+ */
+export interface InputSlot {
+  /** Which provider contract this slot accepts. Doubles as the slot's port name. */
+  kind: SlotKind;
+  /** A required slot must be filled by exactly one provider for activation. */
+  required: boolean;
+  /** A repeatable slot accepts many providers (e.g. an Agent's tools); else at most one. */
+  repeatable: boolean;
+}
+
+/**
+ * The Zod mirror of `InputSlot` (I5) — used by `NodeTypeInfoSchema` and any
+ * runtime validation of a registry-published slot list.
+ */
+export const InputSlotSchema = z.object({
+  kind: SlotKindSchema,
+  required: z.boolean(),
+  repeatable: z.boolean(),
+});
+
+/**
+ * A node's STRUCTURAL role in the graph (PB-T1):
+ *  - `data`     — the default. Runs as a step, routes items through edges.
+ *                 May expose typed input `slots` that providers attach to.
+ *  - `provider` — a sub-node (Chat Model / Memory / Tool). It is NEVER a flow
+ *                 entry point and is NEVER executed as a step: the executor
+ *                 resolves it as the configuration of the consumer it is
+ *                 attached to. It emits at most a `provider` output port (the
+ *                 dashed wire's source) and takes no data input.
+ */
+export const NodeRoleSchema = z.enum(['data', 'provider']);
+export type NodeRole = z.infer<typeof NodeRoleSchema>;
+
+/**
  * NodeDef — the implementation contract for packages/nodes (NODES.md §contract).
  * paramsSchema drives BOTH server-side validation and the editor's auto-form.
  */
 export interface NodeDef<P = unknown> {
   type: string; // "tg.sendMessage"
   category: NodeCategory;
+  /**
+   * Structural role (PB-T1). Defaults to `'data'` when omitted, so every node
+   * shipped before Phase B keeps its exact behavior. `'provider'` marks a
+   * sub-node resolved as a consumer's config, never run as a step.
+   */
+  role?: NodeRole;
+  /**
+   * The typed sub-connection slots this (consumer) node exposes (PB-T1). Each
+   * slot's `kind` is the target port name a provider edge lands on. Omitted /
+   * empty for every node that has no sub-nodes — i.e. all of Phase A. Only a
+   * `role:'data'` node may declare slots.
+   */
+  inputSlots?: readonly InputSlot[];
+  /**
+   * The provider contract this node SATISFIES when `role:'provider'` (PB-T1) —
+   * e.g. `ai.memory.kv` provides `'ai:memory'`. It may only be attached to a
+   * consumer slot of this exact kind. Required when (and only when) the node is
+   * a provider.
+   */
+  provides?: SlotKind;
   /** Display metadata for the editor palette (i18n keys, not literals). */
   meta: { labelKey: string; descriptionKey?: string; icon?: string };
   ports: { inputs: PortName[]; outputs: PortName[] };

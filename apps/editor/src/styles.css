@@ -293,6 +293,30 @@ input[dir='ltr'] { direction: ltr; }
 .react-flow__edge-text { fill: var(--text-dim); font-size: 10px; }
 .react-flow__edge-textbg { fill: var(--bg); }
 
+/* ---- typed sub-connection slots + provider wires (PB-T1) ---- */
+/* slot/provider handles sit on the BOTTOM edge of a node, tinted like the AI
+   category to read as "config", distinct from the accent data handles. */
+.ctb-slot-handle {
+  background: var(--node-ai);
+}
+.ctb-provider-handle {
+  border-radius: 2px; /* square = a provider's output, not a round data port */
+}
+.ctb-slot-label {
+  position: absolute;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--node-ai);
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* the dashed sub-connection edge (provider → consumer slot) */
+.ctb-slot-edge .react-flow__edge-path {
+  stroke-dasharray: 6 4;
+  stroke: var(--node-ai);
+}
+
 /* ---- param side-panel + form engine (P2-T3) ---- */
 
 .param-panel {

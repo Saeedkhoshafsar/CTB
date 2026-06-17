@@ -12,7 +12,7 @@ import { memo, useEffect } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
-import { effectiveOutputs, type CtbNodeData } from './graph';
+import { effectiveOutputs, inputSlots, isProvider, type CtbNodeData } from './graph';
 
 const CATEGORY_COLOR: Record<string, string> = {
   trigger: 'var(--node-trigger)',
@@ -40,10 +40,15 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   // dynamic-port nodes (tg.menu / flow.switch, P2-T6) grow one handle per
   // button/rule — computed from params via the shared helper.
   const outputs = effectiveOutputs(flowNode, info);
+  // typed sub-connection surface (PB-T1): a consumer's slots render as BOTTOM
+  // input handles (dashed provider wires land there, distinct from data ports
+  // on the left); a provider node exposes a single bottom "provider" output.
+  const slots = inputSlots(info);
+  const provider = isProvider(info);
   // React Flow caches handle positions — tell it to re-measure whenever the
   // dynamic port list changes (add/remove button) so edges re-anchor.
   const updateNodeInternals = useUpdateNodeInternals();
-  const portsKey = outputs.join('|');
+  const portsKey = `${outputs.join('|')}#${slots.map((s) => s.kind).join('|')}#${provider ? 'p' : ''}`;
   useEffect(() => {
     updateNodeInternals(flowNode.id);
   }, [portsKey, flowNode.id, updateNodeInternals]);
@@ -100,6 +105,33 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
           ) : null}
         </div>
       ))}
+
+      {/* PB-T1: typed sub-connection handles along the BOTTOM edge — a
+          consumer's slots (target) and a provider's single output (source). */}
+      {slots.map((slot, i) => (
+        <div key={`slot-${slot.kind}`}>
+          <Handle
+            id={slot.kind}
+            type="target"
+            position={Position.Bottom}
+            className="ctb-slot-handle"
+            style={{ left: handleTop(i, slots.length) }}
+          />
+          <span className="ctb-slot-label" style={{ left: handleTop(i, slots.length) }}>
+            {slot.kind}
+            {slot.required ? ' *' : ''}
+          </span>
+        </div>
+      ))}
+      {provider ? (
+        <Handle
+          id="provider"
+          type="source"
+          position={Position.Bottom}
+          className="ctb-slot-handle ctb-provider-handle"
+          style={{ left: '50%' }}
+        />
+      ) : null}
     </div>
   );
 });

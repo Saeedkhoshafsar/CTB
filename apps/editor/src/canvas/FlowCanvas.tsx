@@ -20,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
-import { effectiveOutputs, flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
+import { canConnect, flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
 import { useNodeDetail } from './NodeDetail';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
@@ -50,7 +50,10 @@ function CanvasInner() {
     () => flowToRfNodes(graph, byType, selection.nodes),
     [graph, byType, selection.nodes],
   );
-  const rfEdges = useMemo(() => flowToRfEdges(graph, selection.edges), [graph, selection.edges]);
+  const rfEdges = useMemo(
+    () => flowToRfEdges(graph, selection.edges, byType),
+    [graph, selection.edges, byType],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CtbRfNode>[]) => {
@@ -154,23 +157,24 @@ function CanvasInner() {
     });
   }, []);
 
-  /** port-aware pre-check so React Flow shows invalid targets as forbidden. */
+  /**
+   * port-aware pre-check so React Flow shows invalid targets as forbidden.
+   * Delegates to the SAME shared `canConnect` the store commits with, so the
+   * drag preview and the actual edit agree — including the PB-T1 typed
+   * sub-connection rules (a provider only into a matching slot, etc.).
+   */
   const isValidConnection = useCallback(
     (conn: Connection | { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => {
+      if (!conn.source || !conn.target) return false;
       const { graph: g, byType: bt } = useCanvas.getState();
-      const verdict = (() => {
-        const source = g.nodes.find((n) => n.id === conn.source);
-        const target = g.nodes.find((n) => n.id === conn.target);
-        if (!source || !target || source.id === target.id) return false;
-        const si = bt.get(source.type);
-        const ti = bt.get(target.type);
-        return Boolean(
-          si &&
-            effectiveOutputs(source, si).includes(conn.sourceHandle ?? 'main') &&
-            ti?.ports.inputs.includes(conn.targetHandle ?? 'main'),
-        );
-      })();
-      return verdict;
+      return canConnect(
+        {
+          from: { node: conn.source, port: conn.sourceHandle ?? 'main' },
+          to: { node: conn.target, port: conn.targetHandle ?? 'main' },
+        },
+        g,
+        bt,
+      ).ok;
     },
     [],
   );

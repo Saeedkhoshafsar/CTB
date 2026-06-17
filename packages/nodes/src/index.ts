@@ -21,6 +21,7 @@ import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
 import { dataKv } from './data/kv';
 import { dataSetFields } from './data/set-fields';
+import { dataEditFields } from './data/edit-fields';
 import { dataUserProfile } from './data/user-profile';
 import { httpRequest } from './data/http-request';
 import { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -56,6 +57,7 @@ export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
 export { dataKv } from './data/kv';
 export { dataSetFields } from './data/set-fields';
+export { dataEditFields } from './data/edit-fields';
 export { dataUserProfile } from './data/user-profile';
 export { httpRequest } from './data/http-request';
 export { flowExecuteSubFlow } from './flow/execute-subflow';
@@ -108,6 +110,7 @@ export const builtinNodes: NodeDef<never>[] = [
   flowSwitch,
   flowWait,
   dataSetFields,
+  dataEditFields,
   dataKv,
   dataCode,
   dataUserProfile,

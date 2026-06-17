@@ -133,6 +133,15 @@ Sends a message with inline buttons; each button is an **output port**.
 ### Set Fields `M`
 - Set/rename/remove keys on `$json` and/or `$vars`. Rows of `name = value(expression)`; option "keep only set fields".
 
+### Edit Fields (Set) `+PA` — *the n8n "Edit Fields / Set" power node* (`data.editFields`)
+A richer sibling of Set Fields, labelled **"Edit Fields (Set)"** so n8n users find it. Same immutable, per-item model (input items are never mutated; `$vars` rows apply once per run; empty input still emits one shaped item to seed a pipeline) plus three powers per row:
+- **op `rename`** — move a value from one dotted path (`name`) to another (`value` = the destination path), deleting the source. Works in `keep_only_set` mode too (the source is read from the original item).
+- **`value_mode: 'json'`** — interpret a STRING `value` as raw JSON (`"[1,2]"` → a real array; a non-string value passes through unchanged).
+- **`enabled`** (default true) — a disabled row is kept in config but skipped entirely.
+- **Parameters:** `fields` (≥1 rows, each `{ name, value?, op: set|remove|rename, target: json|vars, value_mode: value|json, enabled }`) · `keep_only_set` (output `$json` starts empty, holding only the fields this node sets/renames).
+- **In:** 1 → **Out:** 1 (passthrough, edited). Dotted names create nested objects (`user.level` → `{user:{level}}`).
+- **Fails loudly** on a `value_mode:'json'` value that isn't valid JSON, or a `rename` with an empty destination (validated up front, before any item is touched).
+
 ### Wait / Delay `M`
 - Fixed duration (`30s`…`7d`) or until datetime (expression). Persisted — survives restarts (uses the same wait machinery).
 

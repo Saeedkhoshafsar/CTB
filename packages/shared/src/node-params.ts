@@ -311,6 +311,43 @@ export const DataSetFieldsParamsSchema = z.object({
 });
 export type DataSetFieldsParams = z.infer<typeof DataSetFieldsParamsSchema>;
 
+// ── data.editFields (PA-T3 — n8n "Edit Fields / Set" power node) ──────────────
+
+/**
+ * One Edit-Fields assignment (PA-T3). A power-up of `SetFieldRow`: adds a
+ * per-row `enabled` toggle (turn a rule off without deleting it), a `rename`
+ * op (move a value from one dotted path to another, taken from `name`), and a
+ * `value_mode` so a string `value` can be interpreted as raw JSON (n8n's
+ * "JSON" value type — `"[1,2]"` → an actual array). For `set`, `value` is the
+ * (already expression-resolved) value to write; for `rename`, `value` is the
+ * NEW dotted path (the old path is `name`); for `remove`, `value` is unused.
+ */
+export const EditFieldRowSchema = z.object({
+  /** The dotted target path (for `rename`, the SOURCE path). */
+  name: z.string().min(1),
+  /** set → value to write; rename → the destination dotted path (string); remove → unused. */
+  value: z.unknown().optional(),
+  /** Where the field lands: the item's $json or the execution's $vars. */
+  target: z.enum(['json', 'vars']).default('json'),
+  op: z.enum(['set', 'remove', 'rename']).default('set'),
+  /**
+   * How a `set` value is interpreted: `value` = use it verbatim (default);
+   * `json` = if it's a string, JSON.parse it into a real value/object/array
+   * (a non-string value is passed through unchanged). Ignored for remove/rename.
+   */
+  value_mode: z.enum(['value', 'json']).default('value'),
+  /** A disabled row is skipped entirely (kept in config but not applied). */
+  enabled: z.boolean().default(true),
+});
+export type EditFieldRow = z.infer<typeof EditFieldRowSchema>;
+
+export const DataEditFieldsParamsSchema = z.object({
+  fields: z.array(EditFieldRowSchema).min(1),
+  /** Keep-only-set mode: the output $json starts empty, holding only fields this node sets. */
+  keep_only_set: z.boolean().default(false),
+});
+export type DataEditFieldsParams = z.infer<typeof DataEditFieldsParamsSchema>;
+
 // ── flow.stopError ───────────────────────────────────────────────────────────
 
 export const FlowStopErrorParamsSchema = z.object({

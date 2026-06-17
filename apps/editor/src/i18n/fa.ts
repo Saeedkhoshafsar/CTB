@@ -284,6 +284,7 @@ export const fa = {
 
   'nodes.tg.trigger.label': 'شروع (تریگر)',
   'nodes.tg.sendMessage.label': 'ارسال پیام',
+  'nodes.tg.sendMedia.label': 'ارسال رسانه',
   'nodes.tg.waitForReply.label': 'انتظار پاسخ',
   'nodes.flow.if.label': 'شرط (IF)',
   'nodes.data.setFields.label': 'تنظیم فیلدها',
@@ -318,6 +319,7 @@ export const fa = {
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
   'nodeDesc.tg.sendMessage': 'یک پیام (متن، عکس، فایل و…) به کاربر می‌فرستد. در متن می‌توانید از متغیرها استفاده کنید؛ مثلاً {{ $vars.name }}.',
+  'nodeDesc.tg.sendMedia': 'عکس/ویدیو/فایل/صدا را به کاربر می‌فرستد — از آدرس اینترنتی، file_id، فایلِ آپلودشده (از کالکشن) یا base64. با ۲ تا ۱۰ آیتم یک آلبوم (مدیا گروپ) می‌سازد.',
   'nodeDesc.tg.waitForReply': 'یک سؤال می‌پرسد و منتظر جواب کاربر می‌ماند (حتی ساعت‌ها یا روزها). جواب معتبر از خروجی reply ادامه می‌یابد.',
   'nodeDesc.flow.if': 'مسیر فلو را دوشاخه می‌کند: اگر شرط‌ها برقرار باشند از خروجی true، وگرنه از false ادامه می‌دهد.',
   'nodeDesc.data.setFields': 'مقدارهایی را در دادهٔ جاری ($json) یا متغیرهای اجرا ($vars) ذخیره یا حذف می‌کند.',
@@ -588,6 +590,13 @@ export const fa = {
   'paramDesc.ai.agent.max_steps': 'بیشینهٔ تعداد دورِ گفتگو با مدل (هر دور = یک فراخوانی مدل). از حلقهٔ بی‌پایان جلوگیری می‌کند. پیش‌فرض ۶.',
   'paramDesc.ai.agent.max_tool_calls': 'بیشینهٔ مجموع فراخوانی ابزار در کل اجرا. ۰ یعنی هیچ ابزاری اجرا نشود (فقط پاسخ مستقیم). پیش‌فرض ۱۲.',
   'paramDesc.ai.agent.max_tokens_total': 'سقف مجموع توکن مصرفی در کل حلقه؛ با عبور از آن، حلقه متوقف می‌شود. ۰ = بدون سقف. پیش‌فرض ۰.',
+  // tg.sendMedia params (PA-T1)
+  'paramDesc.tg.sendMedia.chat': 'خالی بگذارید تا به همین کاربر فعلی ارسال شود؛ یا یک chat id دیگر بدهید.',
+  'paramDesc.tg.sendMedia.media': 'یک یا چند رسانه برای ارسال. هر ردیف: نوع (عکس/ویدیو/فایل/صدا) و منبع (آدرس اینترنتی، file_id، فایلِ آپلودشده یا base64). با ۲ تا ۱۰ آیتم یک آلبوم ساخته می‌شود (فقط عکس و ویدیو، بدون دکمه).',
+  'paramDesc.tg.sendMedia.caption': 'متنی که زیر رسانه نمایش داده می‌شود. در آلبوم، روی اولین آیتم می‌نشیند.',
+  'paramDesc.tg.sendMedia.parse_mode': 'قالب‌بندی کپشن: HTML یا Markdown. خالی = متن ساده.',
+  'paramDesc.tg.sendMedia.keyboard': 'دکمه‌هایی که همراه رسانه نمایش داده می‌شوند (برای آلبوم قابل استفاده نیست).',
+  'paramDesc.tg.sendMedia.options': 'تنظیمات بیشتر ارسال (اختیاری).',
 
   // ── example placeholders (ph.<key>) ──
   'ph.command': '/start',
@@ -695,6 +704,15 @@ export const fa = {
   'option.data.userProfile.mode.replace': 'جایگزینی کامل پروفایل',
   'option.memory.none': 'بدون حافظه',
   'option.memory.conversation': 'حافظهٔ گفتگو (چند نوبت آخر)',
+  // tg.sendMedia kind/source options (PA-T1)
+  'option.tg.sendMedia.kind.photo': 'عکس',
+  'option.tg.sendMedia.kind.video': 'ویدیو',
+  'option.tg.sendMedia.kind.document': 'فایل',
+  'option.tg.sendMedia.kind.audio': 'صدا',
+  'option.tg.sendMedia.source.url': 'آدرس اینترنتی',
+  'option.tg.sendMedia.source.file_id': 'file_id تلگرام',
+  'option.tg.sendMedia.source.file': 'فایلِ آپلودشده (کالکشن)',
+  'option.tg.sendMedia.source.base64': 'base64',
 
   'executions.title': 'اجراها',
 

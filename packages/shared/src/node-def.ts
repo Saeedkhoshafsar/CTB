@@ -20,6 +20,28 @@ export interface CtbUser {
 }
 
 /**
+ * One resolved media attachment handed to `ctx.tg.sendMedia` (tg.sendMedia,
+ * PA-T1). The node resolves each author-configured media item into one of these
+ * — the host then performs the actual upload (URL/file_id passed through, raw
+ * `bytes` uploaded as a Telegram InputFile). Reading a CTB file id from disk and
+ * obtaining the token/socket stays host-side (invariants I3/I6): the node never
+ * touches them; for `source:'file'` it asks the host to read the bytes via the
+ * injected `readFile` and passes the resulting Buffer here.
+ */
+export interface TgInputMedia {
+  kind: 'photo' | 'video' | 'document' | 'audio';
+  /** Per-item caption (shown on each album item). */
+  caption?: string;
+  /** A URL Telegram fetches, or a Telegram file_id to re-send. */
+  ref?: string;
+  /** Raw bytes to upload (mutually exclusive with `ref`). */
+  bytes?: Uint8Array;
+  /** Upload hints when sending bytes. */
+  filename?: string;
+  mime?: string;
+}
+
+/**
  * NodeResult — what a node's execute() returns to the executor (ARCHITECTURE §7).
  * Discriminated union so the executor switch is exhaustive.
  */
@@ -123,6 +145,37 @@ export interface NodeCtx {
     answerCallbackQuery?(opts: Record<string, unknown>): Promise<void>;
     /** sendChatAction — typing / upload_photo / … indicator (tg.chatAction, P3-T3). */
     sendChatAction?(opts: Record<string, unknown>): Promise<void>;
+    /**
+     * sendMedia — send one media message OR an album/media-group of 2–10
+     * photos/videos (tg.sendMedia, PA-T1). The host maps each `TgInputMedia` to
+     * the right Bot-API call (`sendPhoto`/`sendVideo`/`sendDocument`/`sendAudio`
+     * for a single item, `sendMediaGroup` for an album) and uploads any `bytes`
+     * as a Telegram InputFile — so the node never touches a token or socket
+     * (invariants I3/I6). Returns the ids of every message Telegram created (an
+     * album yields one id per item). Optional: tg.sendMedia fails with a clear
+     * error when the host doesn't inject it.
+     */
+    sendMedia?(opts: {
+      chat_id: number | string;
+      media: TgInputMedia[];
+      caption?: string;
+      parse_mode?: string;
+      reply_markup?: unknown;
+      protect_content?: boolean;
+      reply_to_message_id?: number;
+      disable_notification?: boolean;
+    }): Promise<{ messageIds: number[] }>;
+  } | null;
+  /**
+   * File-store reader (tg.sendMedia `source:'file'`, PA-T1). Reads the raw bytes
+   * of a CTB file id (a Collection `image`/`file` value, or a stored upload)
+   * from the host's file store — the node never touches disk (invariants
+   * I3/I6). Null when no file store is wired (unit tests with no store) — the
+   * node then fails with a clear error. Throws if the id is unknown / not a
+   * local file.
+   */
+  files: {
+    read(fileId: string): Promise<{ bytes: Uint8Array; mime: string | null }>;
   } | null;
   /** Structured logging into exec_logs. */
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void;

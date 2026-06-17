@@ -151,6 +151,13 @@ export interface ExecutorServices {
    * because the credential — not the bot — selects the MCP server.
    */
   mcp?: NonNullable<NodeCtx['mcp']>;
+  /**
+   * File-store reader for tg.sendMedia `source:'file'` (PA-T1) — optional:
+   * ctx.files is null without it. The host reads the bytes of a CTB file id from
+   * disk so the node can upload them without touching the file system (invariant
+   * I6). A simple object (not per-bot) — the file id is globally unique.
+   */
+  files?: NonNullable<NodeCtx['files']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -531,6 +538,7 @@ export class Executor {
         : null,
       ai: executor.services.ai ?? null,
       mcp: executor.services.mcp ?? null,
+      files: executor.services.files ?? null,
     };
   }
 

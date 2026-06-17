@@ -24,6 +24,7 @@ async function main(): Promise<void> {
     db,
     sqlite,
     ctbSecret: env.CTB_SECRET,
+    dataDir: env.CTB_DATA_DIR,
     codeHttpAllowList: (env.CTB_CODE_HTTP_ALLOWLIST ?? '')
       .split(',')
       .map((s) => s.trim())

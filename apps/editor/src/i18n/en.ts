@@ -287,6 +287,7 @@ export const en: Record<keyof typeof fa, string> = {
 
   'nodes.tg.trigger.label': 'Trigger',
   'nodes.tg.sendMessage.label': 'Send Message',
+  'nodes.tg.sendMedia.label': 'Send Media',
   'nodes.tg.waitForReply.label': 'Wait for Reply',
   'nodes.flow.if.label': 'IF',
   'nodes.data.setFields.label': 'Set Fields',
@@ -321,6 +322,7 @@ export const en: Record<keyof typeof fa, string> = {
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
   'nodeDesc.tg.sendMessage': 'Sends a message (text, photo, file…) to the user. Use variables like {{ $vars.name }}.',
+  'nodeDesc.tg.sendMedia': 'Sends a photo/video/file/audio to the user — from a URL, file_id, an uploaded file (Collection), or base64. With 2–10 items it builds an album (media group).',
   'nodeDesc.tg.waitForReply': 'Asks a question and pauses until the user answers (even hours or days later). Valid replies continue from the reply output.',
   'nodeDesc.flow.if': 'Branches the flow: when conditions hold it continues from true, otherwise from false.',
   'nodeDesc.data.setFields': 'Sets or removes values on the current data ($json) or the execution variables ($vars).',
@@ -591,6 +593,13 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.ai.agent.max_steps': 'Maximum number of conversation rounds with the model (each round = one model call). Prevents infinite loops. Default 6.',
   'paramDesc.ai.agent.max_tool_calls': 'Maximum total tool calls across the whole run. 0 means no tool may run (direct answer only). Default 12.',
   'paramDesc.ai.agent.max_tokens_total': 'Cap on total tokens consumed across the loop; once exceeded, the loop stops. 0 = no cap. Default 0.',
+  // tg.sendMedia params (PA-T1)
+  'paramDesc.tg.sendMedia.chat': 'Leave empty to send to the current user; or provide another chat id.',
+  'paramDesc.tg.sendMedia.media': 'One or more media items to send. Each row: a kind (photo/video/file/audio) and a source (URL, file_id, uploaded file, or base64). With 2–10 items an album is built (photos & videos only, no keyboard).',
+  'paramDesc.tg.sendMedia.caption': 'Text shown under the media. In an album it attaches to the first item.',
+  'paramDesc.tg.sendMedia.parse_mode': 'Caption formatting: HTML or Markdown. Empty = plain text.',
+  'paramDesc.tg.sendMedia.keyboard': 'Buttons shown alongside the media (not available for albums).',
+  'paramDesc.tg.sendMedia.options': 'Extra send options (optional).',
 
   // ── example placeholders ──
   'ph.command': '/start',
@@ -698,6 +707,15 @@ export const en: Record<keyof typeof fa, string> = {
   'option.data.userProfile.mode.replace': 'Replace whole profile',
   'option.memory.none': 'No memory',
   'option.memory.conversation': 'Conversation memory (last few turns)',
+  // tg.sendMedia kind/source options (PA-T1)
+  'option.tg.sendMedia.kind.photo': 'Photo',
+  'option.tg.sendMedia.kind.video': 'Video',
+  'option.tg.sendMedia.kind.document': 'File',
+  'option.tg.sendMedia.kind.audio': 'Audio',
+  'option.tg.sendMedia.source.url': 'URL',
+  'option.tg.sendMedia.source.file_id': 'Telegram file_id',
+  'option.tg.sendMedia.source.file': 'Uploaded file (Collection)',
+  'option.tg.sendMedia.source.base64': 'base64',
 
   'executions.title': 'Executions',
 

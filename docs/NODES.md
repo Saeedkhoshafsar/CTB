@@ -64,6 +64,20 @@ Starts a flow when a record in a Collection is created/updated/deleted (from the
     - inline button kinds: `callback` (emits `button_click` events / connects to Menu logic), `url`, `web_app`
   - `options`: disable_preview, protect_content, reply_to, silent
 
+### Send Media `M` — *bytes upload + albums*
+Sends photo/video/document/audio — including raw **bytes** (not just URL/`file_id`) — and can group 2–10 items into a single album (media group). The node never touches disk: bytes come from `ctx.files` (a stored Collection file) or are decoded from base64, and the host (`ctx.tg.sendMedia`) owns the actual Bot-API upload.
+- **In:** 1 → **Out:** 1 (passthrough items + `{ sent_message_ids: number[], sent_message_id }`)
+- **Parameters:**
+  - `chat`: default current chat | expression
+  - `media`: 1–10 rows, each `{ kind, source, value, caption?, filename?, mime? }`
+    - `kind`: photo | video | document | audio
+    - `source`: `url` | `file_id` (Telegram-side, no upload) | `file` (Collection file id → bytes via `ctx.files.read`) | `base64` (decoded to bytes; `data:` prefix stripped)
+    - **album rule:** 2–10 items ⇒ media group; album items must all be `photo`/`video`, and no keyboard is allowed (enforced by schema `superRefine`)
+  - `caption` / `parse_mode`: caption attaches to the first item in an album
+  - `keyboard`: inline/reply (single-item only)
+  - `options`: protect_content, reply_to, silent
+- **Capabilities:** requires `ctx.tg.sendMedia`; `source: file` additionally requires `ctx.files`. Fail-loud when absent (I6).
+
 ### Wait for Reply `M` — *the conversation primitive*
 Pauses the execution until the user replies.
 

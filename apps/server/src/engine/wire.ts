@@ -36,6 +36,7 @@ import { decrypt, deriveKey } from '../lib/crypto';
 import type BetterSqlite3 from 'better-sqlite3';
 import { TelegramGateway } from '../telegram/gateway';
 import { SqliteCollectionStore } from '../collections/store';
+import { SqliteFileStore } from '../collections/file-store';
 import { SqliteFlowSource } from './flow-source';
 import { SqlitePendingTriggerStore } from './pending-store';
 import { RecordEventBus } from './record-events';
@@ -74,6 +75,14 @@ export interface WireOptions {
    * is refused — a guard against runaway mutual recursion (A calls B calls A…).
    */
   maxSubFlowDepth?: number;
+  /**
+   * Data directory for the file store (PA-T1) — backs `ctx.files.read` so
+   * `tg.sendMedia` (`source:'file'`) can upload the bytes of a Collection/file
+   * id. Defaults to `'data'` (matching `CTB_DATA_DIR`). The records/files REST
+   * APIs construct their own store over the same `dataDir`, so the on-disk
+   * bytes are shared.
+   */
+  dataDir?: string;
 }
 
 /** Default sub-flow recursion-depth cap (PLAN.md P3-T1 "recursion depth cap"). */
@@ -108,6 +117,25 @@ export interface Engine {
    * `user.first_seen` (from the user store) to subscribed `instance_webhooks`.
    */
   webhookDispatcher: WebhookDispatcher;
+  /**
+   * File store (PA-T1) — backs `ctx.files.read` for `tg.sendMedia`. Always
+   * present; reads local-disk bytes for a CTB file id.
+   */
+  fileStore: SqliteFileStore;
+}
+
+/**
+ * File-store reader capability (PA-T1). The node passes a CTB file id; the host
+ * reads the bytes from disk and returns them so `tg.sendMedia` can upload a
+ * Collection/file-store file (invariant I6 — the node never touches disk).
+ */
+function makeFiles(fileStore: SqliteFileStore): NonNullable<NodeCtx['files']> {
+  return {
+    async read(fileId) {
+      const { bytes, mime } = fileStore.readLocal(fileId);
+      return { bytes, mime };
+    },
+  };
 }
 
 /** DB-backed kv capability. Scope ids: user→tg user (set per-ctx later), flow→flowId, bot→''. */
@@ -573,6 +601,10 @@ export function wireEngine(opts: WireOptions): Engine {
     ? new SqliteCollectionStore(opts.db, opts.sqlite, clock)
     : null;
 
+  // File store (PA-T1) — backs ctx.files.read for tg.sendMedia (`source:'file'`).
+  // Shares the on-disk bytes with the records/files REST APIs (same dataDir).
+  const fileStore = new SqliteFileStore(opts.db, opts.dataDir ?? 'data', clock);
+
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
   // Forward refs: the subflow capability needs executor + flowSource, but those
@@ -633,8 +665,14 @@ export function wireEngine(opts: WireOptions): Engine {
         sendChatAction: async (o) => {
           await handle.sender.call('sendChatAction', o);
         },
+        // tg.sendMedia (PA-T1) — single media or an album. The sender maps each
+        // TgInputMedia to the right Bot-API call and uploads bytes as InputFile.
+        sendMedia: (o) =>
+          handle.sender.sendMedia(o as Parameters<typeof handle.sender.sendMedia>[0]),
       };
     },
+    // File-store reader (PA-T1) — tg.sendMedia (`source:'file'`) uploads bytes.
+    files: makeFiles(fileStore),
     // Sub-flow runner (flow.executeSubFlow, P3-T1). Loads the child flow, runs a
     // nested executor synchronously to completion, and returns the items its
     // flow.return node parked in $vars. Enforces same-bot ownership and the
@@ -941,6 +979,7 @@ export function wireEngine(opts: WireOptions): Engine {
     userStore,
     scheduler,
     webhookDispatcher,
+    fileStore,
     ...(collectionStore ? { collectionStore } : {}),
     ...(recordEventBus ? { recordEventBus } : {}),
   };

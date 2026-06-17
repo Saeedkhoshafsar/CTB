@@ -25,10 +25,10 @@ import { aiAgent, builtinNodes, parseToolArguments, registerBuiltinNodes } from 
 import { item, makeCtx, params } from './node-harness';
 
 describe('registry (P5-T4)', () => {
-  it('registers ai.agent; registry is 34 types', () => {
+  it('registers ai.agent; registry is 35 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.agent')).toBe(true);
-    expect(builtinNodes.length).toBe(34);
+    expect(builtinNodes.length).toBe(35);
   });
 
   it('is an `ai` node with main → main ports', () => {

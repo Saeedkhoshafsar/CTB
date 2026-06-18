@@ -1,0 +1,120 @@
+{
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "tg.trigger",
+      "params": { "event": "any_message" },
+      "position": { "x": 0, "y": 0 },
+      "note": "Fires on any incoming message. In the live bot the user sends a VOICE NOTE; the raw update carries message.voice.file_id, which the next nodes read as an expression (Telegram normalize treats voice as a generic message kind here, so the file_id rides through on $json)."
+    },
+    {
+      "id": "transcribe",
+      "type": "ai.speechToText",
+      "params": {
+        "credentialId": "cred-openai",
+        "model": "whisper-1",
+        "source": "telegram",
+        "audio_source": "{{ $json.raw.message.voice.file_id }}",
+        "language": "fa",
+        "save_as": "transcript"
+      },
+      "position": { "x": 240, "y": 0 },
+      "note": "STT leg (PB-T7): the host downloads the voice file via ctx.tg.getFile, then transcribes it via ctx.ai.transcribe. The text lands at $json.transcript.text."
+    },
+    {
+      "id": "model",
+      "type": "ai.modelOpenai",
+      "params": { "credentialId": "cred-openai", "model": "openai/gpt-4o-mini", "temperature": 0.3 },
+      "position": { "x": 480, "y": -180 },
+      "note": "ai:model PROVIDER (PB-T5): supplies which model + credential the agent calls (the OpenRouter-style model id). Resolved as config, never run as a step; attaches to the agent's ai:model slot."
+    },
+    {
+      "id": "memory",
+      "type": "ai.memoryPostgres",
+      "params": {
+        "credentialId": "cred-postgres",
+        "table": "ctb_chat_memory",
+        "session_key": "chat-{{ $json.chat.id }}",
+        "memory_window": 10,
+        "auto_create": true
+      },
+      "position": { "x": 480, "y": 180 },
+      "note": "ai:memory PROVIDER (PB-T4): a rolling Postgres-backed conversation memory keyed by chat id. The agent replays prior turns before answering and persists the new turn after; attaches to the agent's ai:memory slot."
+    },
+    {
+      "id": "think",
+      "type": "tool.think",
+      "params": {
+        "tool_name": "think",
+        "description": "Use this scratchpad to reason step-by-step before answering the caller."
+      },
+      "position": { "x": 720, "y": -180 },
+      "note": "ai:tool PROVIDER (PB-T6): the Think tool — a no-op reasoning scratchpad that improves multi-step answers; attaches to the agent's repeatable ai:tool slot."
+    },
+    {
+      "id": "lookup",
+      "type": "tool.httpRequest",
+      "params": {
+        "method": "GET",
+        "url": "https://api.example.com/orders",
+        "tool_name": "order_status",
+        "description": "Look up the live status of a customer order by its id.",
+        "params": [
+          { "name": "orderId", "type": "string", "description": "The order id to look up", "required": true }
+        ]
+      },
+      "position": { "x": 720, "y": 180 },
+      "note": "ai:tool PROVIDER (PB-T6): an HTTP tool the model can call to fetch a live order status. The model produces {orderId}, the host runs ctx.http.request and feeds the body back."
+    },
+    {
+      "id": "agent",
+      "type": "ai.agent",
+      "params": {
+        "model": "gpt-4o-mini",
+        "system_prompt": "You are a friendly Persian voice-support agent. Answer the caller concisely. Use the order_status tool when they ask about an order, and the think tool to plan multi-step answers.",
+        "user_prompt": "{{ $json.transcript.text }}",
+        "max_steps": 6,
+        "max_tool_calls": 12,
+        "save_as": "ai"
+      },
+      "position": { "x": 960, "y": 0 },
+      "note": "The orchestrator (PB-T5): consumes the model/memory/tool providers via its typed slots and turns the transcribed question into a reply at $json.ai.reply."
+    },
+    {
+      "id": "speak",
+      "type": "ai.textToSpeech",
+      "params": {
+        "credentialId": "cred-openai",
+        "model": "tts-1",
+        "text": "{{ $json.ai.reply }}",
+        "voice": "alloy",
+        "format": "opus",
+        "save_as": "speech"
+      },
+      "position": { "x": 1200, "y": 0 },
+      "note": "TTS leg (PB-T7): synthesizes the agent's reply to audio via ctx.ai.speech, stores the bytes via ctx.files.write, and surfaces a CTB file id at $json.speech.fileId (opus suits a Telegram voice note)."
+    },
+    {
+      "id": "send",
+      "type": "tg.sendMedia",
+      "params": {
+        "caption": "🔊 پاسخ صوتی",
+        "media": [
+          { "kind": "audio", "source": "file", "value": "{{ $json.speech.fileId }}" }
+        ]
+      },
+      "position": { "x": 1440, "y": 0 },
+      "note": "Sends the synthesized audio back to the caller (source:file → the host reads the stored bytes and uploads them). This closes the voice loop, rebuilding the user's screenshot end to end."
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "trigger", "port": "main" }, "to": { "node": "transcribe", "port": "main" } },
+    { "id": "e2", "from": { "node": "transcribe", "port": "main" }, "to": { "node": "agent", "port": "main" } },
+    { "id": "s_model", "from": { "node": "model", "port": "provider" }, "to": { "node": "agent", "port": "ai:model" } },
+    { "id": "s_memory", "from": { "node": "memory", "port": "provider" }, "to": { "node": "agent", "port": "ai:memory" } },
+    { "id": "s_think", "from": { "node": "think", "port": "provider" }, "to": { "node": "agent", "port": "ai:tool" } },
+    { "id": "s_lookup", "from": { "node": "lookup", "port": "provider" }, "to": { "node": "agent", "port": "ai:tool" } },
+    { "id": "e3", "from": { "node": "agent", "port": "main" }, "to": { "node": "speak", "port": "main" } },
+    { "id": "e4", "from": { "node": "speak", "port": "main" }, "to": { "node": "send", "port": "main" } }
+  ]
+}

@@ -5,6 +5,7 @@
  * skips them (it only guards `/api/` paths that are NOT `/api/v1/`); this
  * router installs its own bearer-auth preHandler.
  *
+ *   GET  /api/v1/node-types                                  → node catalog (PC-T1)
  *   POST /api/v1/flows/:id/trigger   { chat_id?, payload? }  → start a flow run
  *   POST /api/v1/bots/:id/send       { chat_id, text, ... }  → send a TG message
  *   GET  /api/v1/executions?flow_id=&bot_id=&status=&limit=  → list executions
@@ -36,6 +37,7 @@ import type { SqliteFlowSource } from '../engine/flow-source';
 import type { TelegramGateway } from '../telegram/gateway';
 import type { SqliteUserStore } from '../engine/user-store';
 import { hashApiToken, parseBearer } from '../lib/api-token';
+import { nodeTypeInfos } from './node-types';
 
 const EXEC_STATUSES = new Set<ExecutionStatus>([
   'running',
@@ -67,6 +69,15 @@ export interface V1ApiDeps {
 export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
   const { db, flowSource, executor, registry, gateway, userStore } = deps;
   const now = (): string => (deps.clock ?? (() => new Date()))().toISOString();
+
+  // PC-T1: the public node CATALOG. Computed ONCE — node defs are static for a
+  // process lifetime, exactly like the internal `/api/node-types` (this is the
+  // SAME projection, so the bearer-auth public surface can never advertise a
+  // node the engine can't execute). The `meta.labelKey`/`descriptionKey` are
+  // the i18n keys whose fa/en human text lives in the editor catalog; an
+  // external builder reads `type`/`category`/`role`/`ports`/`inputSlots`/
+  // `provides`/`paramsJsonSchema` to know exactly what bricks exist.
+  const nodeCatalogPayload = { nodeTypes: nodeTypeInfos(registry) };
 
   // Encapsulated scope: a bearer-auth preHandler that ONLY guards /api/v1/*.
   void app.register(async (scope) => {
@@ -100,6 +111,12 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       const tok = (req as FastifyRequest & { apiToken: AuthedToken }).apiToken;
       return tok.botId === null || tok.botId === botId;
     };
+
+    // ---- GET /api/v1/node-types (PC-T1) ----------------------------------
+    // The machine-readable node catalog. Any valid token (instance-wide OR
+    // bot-scoped) may read it — the node library is the SAME for every bot, so
+    // there is nothing bot-specific to scope here.
+    scope.get('/api/v1/node-types', async () => nodeCatalogPayload);
 
     // ---- POST /api/v1/flows/:id/trigger ----------------------------------
     scope.post('/api/v1/flows/:id/trigger', async (req, reply) => {

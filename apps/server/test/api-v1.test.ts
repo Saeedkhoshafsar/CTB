@@ -27,6 +27,7 @@ import { openDb, schema, type Db } from '../src/db/index';
 import { runMigrations } from '../src/db/migrate';
 import { wireEngine, type Engine } from '../src/engine/wire';
 import { hashApiToken } from '../src/lib/api-token';
+import { nodeTypeInfos } from '../src/api/node-types';
 import { loadEnv } from '../src/lib/env';
 
 const SECRET = 'devsecret0123456';
@@ -386,5 +387,84 @@ describe('v1 bot-scoped token isolation (P4-T3)', () => {
     const execs = (list.json() as { executions: { botId: string }[] }).executions;
     expect(execs.length).toBe(1);
     expect(execs.every((e) => e.botId === botA)).toBe(true);
+  });
+});
+
+describe('v1 node catalog — GET /api/v1/node-types (PC-T1)', () => {
+  let w: World;
+  beforeEach(async () => { w = await makeWorld(); });
+  afterEach(async () => { await w.engine.gateway.stopAll(); await w.app.close(); });
+
+  it('missing bearer → 401 (the catalog is bearer-guarded like the rest of v1)', async () => {
+    const res = await w.app.inject({ method: 'GET', url: '/api/v1/node-types' });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe('missing_bearer_token');
+  });
+
+  it('garbage token → 401', async () => {
+    const res = await w.app.inject({
+      method: 'GET', url: '/api/v1/node-types', headers: bearer('ctb_notreal'),
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe('invalid_token');
+  });
+
+  it('valid token → 200 and the payload mirrors the engine registry exactly', async () => {
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'GET', url: '/api/v1/node-types', headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { nodeTypes: ReturnType<typeof nodeTypeInfos> };
+    // The public catalog is the SAME projection as the engine registry — so it
+    // can never advertise a node the engine can't run.
+    const expected = nodeTypeInfos(w.engine.registry);
+    expect(body.nodeTypes).toEqual(expected);
+    expect(body.nodeTypes.length).toBe(expected.length);
+    // Spot-check the shape an external builder relies on (PC-T1 contract).
+    const sendMsg = body.nodeTypes.find((n) => n.type === 'tg.sendMessage')!;
+    expect(sendMsg.category).toBe('telegram');
+    expect(sendMsg.ports.inputs).toContain('main');
+    expect(sendMsg.meta.labelKey).toBe('nodes.tg.sendMessage.label');
+    expect(typeof sendMsg.paramsJsonSchema).toBe('object');
+  });
+
+  it('exposes the typed sub-connection surface (role/inputSlots/provides) for AI nodes', async () => {
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'GET', url: '/api/v1/node-types', headers: bearer(token),
+    });
+    const body = res.json() as { nodeTypes: ReturnType<typeof nodeTypeInfos> };
+    // A consumer (ai.agent) advertises its typed input slots…
+    const agent = body.nodeTypes.find((n) => n.type === 'ai.agent')!;
+    expect(agent.inputSlots?.some((s) => s.kind === 'ai:model')).toBe(true);
+    // …and a provider (ai.modelOpenai) advertises what it provides.
+    const model = body.nodeTypes.find((n) => n.type === 'ai.modelOpenai')!;
+    expect(model.role).toBe('provider');
+    expect(model.provides).toBe('ai:model');
+  });
+
+  it('a bot-scoped token may also read the catalog (the node library is bot-agnostic)', async () => {
+    const botId = await createBot(w);
+    const scoped = (await createToken(w, { botId })).token;
+    const res = await w.app.inject({
+      method: 'GET', url: '/api/v1/node-types', headers: bearer(scoped),
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { nodeTypes: unknown[] }).nodeTypes.length).toBeGreaterThan(0);
+  });
+
+  it('the public catalog is byte-identical to the internal /api/node-types', async () => {
+    const token = (await createToken(w)).token;
+    const pub = await w.app.inject({
+      method: 'GET', url: '/api/v1/node-types', headers: bearer(token),
+    });
+    // The internal route is panel-cookie guarded.
+    const internal = await w.app.inject({
+      method: 'GET', url: '/api/node-types', cookies: w.cookie,
+    });
+    expect(pub.statusCode).toBe(200);
+    expect(internal.statusCode).toBe(200);
+    expect(pub.json()).toEqual(internal.json());
   });
 });

@@ -356,14 +356,17 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
   agent's config (`ctx.slots['ai:model'][0]`); its `execute()` fails loudly if a
   malformed graph ever routes data into it.
 
-### AI Agent tool nodes `+PB` (`tool.httpRequest`, `tool.code`, `tool.think`, `tool.subflow`) — PB-T6
+### AI Agent tool nodes `+PB` (`tool.httpRequest`, `tool.code`, `tool.think`, `tool.subflow`) — PB-T6 · (`tool.mcp`) — PC-T4
 - **Role:** `provider`, **provides:** `ai:tool`. *Sub-nodes* (no data ports — a
   single dashed `provider` wire) attached to an AI Agent's repeatable `ai:tool`
-  slot. Each turns into ONE callable tool: its `tool_name` + `description` are
-  what the model reads to decide IF/WHEN to call it, and its `params` rows become
+  slot. Most turn into ONE callable tool: their `tool_name` + `description` are
+  what the model reads to decide IF/WHEN to call it, and their `params` rows become
   the tool's JSON-Schema arguments (no rows → an open object). The agent resolves
   these directly (`resolveSlotTools`), so they need no inline `AgentToolSource`.
-  Generic infrastructure (I2 — a tool is a capability, never a domain).
+  `tool.mcp` is the exception — it expands to MANY tools (one per advertised MCP
+  tool), so the agent maps it to an `mcp` tool *source* by node type
+  (`toolSourcesFromSlots`) and lists/expands it via `ctx.mcp`. Generic
+  infrastructure (I2 — a tool is a capability, never a domain).
 - **`tool.httpRequest`** — the model calls an external API. The author fixes
   `method` + `url` + `headers` + optional `credentialId`; at call time the agent
   merges the model's args into the **query** (GET/HEAD) or the **JSON body**
@@ -385,6 +388,15 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
   `$json`; the items its `flow.return` produced become the tool result. Runs
   through `ctx.subflow.run` (P3-T1) so the same-bot + recursion-depth guards
   apply; a blank `tool_name` is derived from the flow id (`flow_<id>`).
+- **`tool.mcp`** `+PC` (PC-T4) — attaches EVERY tool a remote MCP server
+  advertises to the agent. The author picks ONE `mcpServer` `credentialId` (its
+  only param); at run start the agent lists the server's tools via `ctx.mcp`
+  (P5-T3) and exposes them all, then calls them back through `ctx.mcp.callTool`.
+  It is the canvas (draggable, `ai:tool`-slot) form of the inline
+  `AgentToolSource` `mcp` variant — a flow built either way behaves identically.
+  The decrypted key never reaches a node (I6/I7); a missing `ctx.mcp` fails the
+  agent loudly. This is the inverse of CTB-as-an-MCP-server (PC-T3): PC-T3 lets
+  the outside drive CTB; `tool.mcp` lets a CTB agent drive any MCP server.
 - A provider is never executed as a data step — its `execute()` fails loudly if a
   malformed graph ever routes data into it. Tool errors during a run are returned
   to the model as `error: …` strings (never a node failure) so the agent can

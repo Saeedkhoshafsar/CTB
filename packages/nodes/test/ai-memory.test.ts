@@ -34,7 +34,7 @@ describe('ai memory providers — registration & contract (PB-T4)', () => {
     const types = builtinNodes.map((n) => n.type);
     expect(types).toContain('ai.memoryKv');
     expect(types).toContain('ai.memoryPostgres');
-    expect(builtinNodes.length).toBe(53);
+    expect(builtinNodes.length).toBe(54);
   });
 
   it('both are ai:memory providers with no data input', () => {

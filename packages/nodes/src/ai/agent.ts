@@ -48,6 +48,7 @@ import {
   type NodeDef,
   type ToolCodeParams,
   type ToolHttpRequestParams,
+  type ToolMcpParams,
   type ToolParamRow,
   type ToolSubflowParams,
   type ToolThinkParams,
@@ -392,16 +393,26 @@ function resolveMemory(ctx: NodeCtx, provider: AttachedProvider | undefined): Ch
 }
 
 /**
- * Convert attached `ai:tool` provider slots into `AgentToolSource`s (PB-T5).
- * Dedicated PB-T6 tool nodes (`tool.*`) are NOT handled here — `resolveSlotTools`
- * turns those into runners directly. This path remains for forward-compat: a
- * provider whose validated params already match an `AgentToolSource`
- * (`{type:'mcp'|'subflow', …}`) is accepted; an unrecognized, non-`tool.*`
- * provider is skipped with a warning rather than crashing the agent.
+ * Convert attached `ai:tool` provider slots into `AgentToolSource`s.
+ * Two paths feed this:
+ *  - `tool.mcp` (PC-T4): the canvas form of an `mcp` source — mapped to a source
+ *    BY NODE TYPE (its params carry only a `credentialId`, no `type` field), so
+ *    `resolveTools` expands it into one tool per advertised server tool.
+ *  - forward-compat (PB-T5): a provider whose validated params ALREADY match an
+ *    inline `AgentToolSource` (`{type:'mcp'|'subflow', …}`) is accepted as-is.
+ * Dedicated PB-T6 tool nodes (`tool.httpRequest`/`code`/`think`/`subflow`) are
+ * NOT handled here — `resolveSlotTools` turns those into runners directly. An
+ * unrecognized provider is skipped with a warning rather than crashing the agent.
  */
 function toolSourcesFromSlots(ctx: NodeCtx, providers: readonly AttachedProvider[]): AgentToolSource[] {
   const sources: AgentToolSource[] = [];
   for (const provider of providers) {
+    // tool.mcp (PC-T4): a draggable MCP-tools provider → an `mcp` source.
+    if (provider.type === 'tool.mcp') {
+      const p = provider.params as ToolMcpParams;
+      sources.push({ type: 'mcp', credentialId: p.credentialId, flow_id: '', tool_name: '', description: '' });
+      continue;
+    }
     if (isToolProviderType(provider.type)) continue; // handled by resolveSlotTools
     const p = provider.params as { type?: unknown };
     if (p && (p.type === 'mcp' || p.type === 'subflow')) {

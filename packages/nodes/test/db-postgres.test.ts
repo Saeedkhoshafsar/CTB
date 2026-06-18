@@ -30,7 +30,7 @@ describe('registry (PB-T2)', () => {
   it('registers db.postgres; registry is 53 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('db.postgres')).toBe(true);
-    expect(builtinNodes.length).toBe(53);
+    expect(builtinNodes.length).toBe(54);
   });
 
   it('db.postgres is a `data` node, main → main', () => {

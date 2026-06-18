@@ -19,6 +19,7 @@ import {
   aiAgent,
   aiToolCode,
   aiToolHttpRequest,
+  aiToolMcp,
   aiToolSubflow,
   aiToolThink,
   registerBuiltinNodes,
@@ -27,6 +28,7 @@ import {
   AiModelOpenaiParamsSchema,
   ToolCodeParamsSchema,
   ToolHttpRequestParamsSchema,
+  ToolMcpParamsSchema,
   ToolSubflowParamsSchema,
   ToolThinkParamsSchema,
   type AttachedProvider,
@@ -42,9 +44,9 @@ function modelSlot(raw: unknown = { credentialId: 'c1' }): AttachedProvider {
 // ── registration + provider contract ─────────────────────────────────────────
 
 describe('AI Agent tool nodes — registration & contract (PB-T6)', () => {
-  it('registers all four tool nodes in the builtins', () => {
+  it('registers all five tool nodes in the builtins', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
-    for (const type of ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow']) {
+    for (const type of ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow', 'tool.mcp']) {
       expect(reg.has(type)).toBe(true);
     }
   });
@@ -54,6 +56,7 @@ describe('AI Agent tool nodes — registration & contract (PB-T6)', () => {
     ['tool.code', aiToolCode as NodeDef<never>],
     ['tool.think', aiToolThink as NodeDef<never>],
     ['tool.subflow', aiToolSubflow as NodeDef<never>],
+    ['tool.mcp', aiToolMcp as NodeDef<never>],
   ])('%s is an ai:tool provider with no data ports', (type, def) => {
     expect(def.type).toBe(type);
     expect(def.category).toBe('ai');
@@ -68,6 +71,7 @@ describe('AI Agent tool nodes — registration & contract (PB-T6)', () => {
     ['tool.code', aiToolCode as NodeDef<never>],
     ['tool.think', aiToolThink as NodeDef<never>],
     ['tool.subflow', aiToolSubflow as NodeDef<never>],
+    ['tool.mcp', aiToolMcp as NodeDef<never>],
   ])('%s fails loudly if ever executed as a data step', async (_t, def) => {
     const ctx = makeCtx({});
     const res = await def.execute(ctx, {} as never, [item({})]);
@@ -106,6 +110,12 @@ describe('tool node param schemas (PB-T6)', () => {
     expect(ToolSubflowParamsSchema.parse({ flow_id: 'f1' }).tool_name).toBe('');
   });
 
+  it('tool.mcp requires a credentialId (PC-T4)', () => {
+    expect(ToolMcpParamsSchema.safeParse({}).success).toBe(false);
+    expect(ToolMcpParamsSchema.safeParse({ credentialId: '' }).success).toBe(false);
+    expect(ToolMcpParamsSchema.parse({ credentialId: 'mcp1' }).credentialId).toBe('mcp1');
+  });
+
   it('rejects a tool param row with a non-identifier name', () => {
     expect(
       ToolHttpRequestParamsSchema.safeParse({ url: 'x', params: [{ name: '1bad' }] }).success,
@@ -127,6 +137,9 @@ function thinkToolSlot(raw: unknown = {}): AttachedProvider {
 }
 function subflowToolSlot(raw: unknown): AttachedProvider {
   return { nodeId: 'tool1', type: 'tool.subflow', params: ToolSubflowParamsSchema.parse(raw) };
+}
+function mcpToolSlot(raw: unknown): AttachedProvider {
+  return { nodeId: 'tool1', type: 'tool.mcp', params: ToolMcpParamsSchema.parse(raw) };
 }
 
 describe('tool.httpRequest runner (PB-T6)', () => {
@@ -292,5 +305,58 @@ describe('multiple tools + dedupe (PB-T6)', () => {
     const names = (ctx.aiCalls[0]!.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual(['think', 'work']);
     expect(ctx.logs.some((l) => l.level === 'warn' && /duplicate tool name/.test(l.message))).toBe(true);
+  });
+});
+
+// ── tool.mcp runner through the real ai.agent (PC-T4) ──────────────────────────
+
+describe('tool.mcp runner (PC-T4)', () => {
+  it('expands a wired tool.mcp provider into the server\'s tools and the model calls one', async () => {
+    const ctx = makeCtx({
+      mcp: {
+        tools: [{ name: 'getWeather', description: 'weather by city', inputSchema: { type: 'object' } }],
+        callResult: { content: [{ type: 'text', text: 'sunny, 25°C' }], text: 'sunny, 25°C', isError: false },
+      },
+      aiResponses: [
+        { reply: '', toolCalls: [{ id: 'call_1', name: 'getWeather', argumentsJson: '{"city":"Tehran"}' }] },
+        { reply: 'It is sunny and 25°C in Tehran.', usage: { totalTokens: 12 } },
+      ],
+      slots: {
+        'ai:model': [modelSlot()],
+        'ai:tool': [mcpToolSlot({ credentialId: 'mcp1' })],
+      },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'weather in Tehran?' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+
+    // The provider was mapped to an mcp source by NODE TYPE → listTools once,
+    // callTool once, using the node's credential (never a leaked key).
+    expect(ctx.mcpListCalls).toHaveLength(1);
+    expect(ctx.mcpListCalls[0]!.credentialId).toBe('mcp1');
+    expect(ctx.mcpCallCalls).toHaveLength(1);
+    expect(ctx.mcpCallCalls[0]).toMatchObject({ credentialId: 'mcp1', name: 'getWeather', arguments: { city: 'Tehran' } });
+
+    // First LLM turn carried the advertised tool spec.
+    expect(ctx.aiCalls[0]!.tools).toEqual([
+      { name: 'getWeather', description: 'weather by city', parameters: { type: 'object' } },
+    ]);
+    expect(res.outputs.main![0]!.json.agent).toMatchObject({
+      reply: 'It is sunny and 25°C in Tehran.',
+      toolCalls: 1,
+      stopReason: 'final',
+    });
+  });
+
+  it('fails loudly when no MCP service is available in the run context', async () => {
+    const ctx = makeCtx({
+      mcp: null, // ctx.mcp === null
+      aiResponses: [{ reply: 'unused' }],
+      slots: {
+        'ai:model': [modelSlot()],
+        'ai:tool': [mcpToolSlot({ credentialId: 'mcp1' })],
+      },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'hi' }), [item({})]);
+    expect(res.kind).toBe('error');
   });
 });

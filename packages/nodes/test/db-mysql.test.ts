@@ -31,7 +31,7 @@ describe('registry (PB-T3)', () => {
   it('registers db.mysql; registry is 53 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('db.mysql')).toBe(true);
-    expect(builtinNodes.length).toBe(53);
+    expect(builtinNodes.length).toBe(54);
   });
 
   it('db.mysql is a `data` node, main → main', () => {

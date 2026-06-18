@@ -76,6 +76,7 @@ describe('nodeTypeInfos (P2-T2)', () => {
       'tool.code',
       'tool.think',
       'tool.subflow',
+      'tool.mcp',
     ]);
     const consumersWithSlots = new Set(['ai.agent']);
     for (const info of infos) {
@@ -97,7 +98,7 @@ describe('nodeTypeInfos (P2-T2)', () => {
   });
 
   it('surfaces role:provider + provides:ai:tool for the PB-T6 tool nodes', () => {
-    for (const type of ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow']) {
+    for (const type of ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow', 'tool.mcp']) {
       const info = infos.find((i) => i.type === type)!;
       expect(info, `missing ${type}`).toBeDefined();
       expect(info.role).toBe('provider');

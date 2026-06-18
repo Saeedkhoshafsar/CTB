@@ -1686,6 +1686,24 @@ export const ToolSubflowParamsSchema = z.object({
 });
 export type ToolSubflowParams = z.infer<typeof ToolSubflowParamsSchema>;
 
+/**
+ * tool.mcp params (PC-T4). Attaches EVERY tool a remote MCP server advertises to
+ * an AI Agent as callable tools — the canvas (draggable, `ai:tool`-slot) form of
+ * the inline `AgentToolSource` `mcp` variant, so a CTB agent can use any MCP tool
+ * in the wild. The author only picks one `mcpServer` credential (endpoint URL +
+ * optional key); the agent lists the server's tools at the start of its run and
+ * exposes them all, then calls them back through the host `ctx.mcp` capability
+ * (P5-T3) — the decrypted key never reaches a node (invariants I6/I7). The agent
+ * maps a `tool.mcp` provider to an `mcp` tool source by NODE TYPE (no per-node
+ * `type` field to confuse the editor form). Mirrors the `mcp` shape of the inline
+ * `AgentToolSource`.
+ */
+export const ToolMcpParamsSchema = z.object({
+  /** The `mcpServer` credential (endpoint URL + optional key); host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'mcpServer' }),
+});
+export type ToolMcpParams = z.infer<typeof ToolMcpParamsSchema>;
+
 // ── db.postgres (PB-T2) ──────────────────────────────────────────────────────
 
 /**

@@ -23,6 +23,7 @@ import { aiSpeechToText } from './ai/speech-to-text';
 import { aiTextToSpeech } from './ai/text-to-speech';
 import { aiToolCode } from './ai/tool-code';
 import { aiToolHttpRequest } from './ai/tool-http-request';
+import { aiToolMcp } from './ai/tool-mcp';
 import { aiToolSubflow } from './ai/tool-subflow';
 import { aiToolThink } from './ai/tool-think';
 import { collectionRecordChanged } from './data/record-changed';
@@ -77,6 +78,7 @@ export { aiSpeechToText } from './ai/speech-to-text';
 export { aiTextToSpeech } from './ai/text-to-speech';
 export { aiToolCode } from './ai/tool-code';
 export { aiToolHttpRequest } from './ai/tool-http-request';
+export { aiToolMcp } from './ai/tool-mcp';
 export { aiToolSubflow } from './ai/tool-subflow';
 export { aiToolThink } from './ai/tool-think';
 export { collectionRecordChanged } from './data/record-changed';
@@ -170,6 +172,7 @@ export const builtinNodes: NodeDef<never>[] = [
   aiToolCode,
   aiToolThink,
   aiToolSubflow,
+  aiToolMcp,
   flowLoop,
   flowMerge,
   flowStopError,

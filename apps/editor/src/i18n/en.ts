@@ -350,6 +350,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.tool.code.label': 'Code Tool',
   'nodes.tool.think.label': 'Think Tool',
   'nodes.tool.subflow.label': 'Workflow Tool',
+  'nodes.tool.mcp.label': 'MCP Tool',
   'nodes.ai.speechToText.label': 'Speech to Text',
   'nodes.ai.textToSpeech.label': 'Text to Speech',
 
@@ -414,6 +415,8 @@ export const en: Record<keyof typeof fa, string> = {
     'Gives an AI Agent a "Think" scratchpad tool. Attach it to the Agent\'s Tool slot. Calling it does nothing but record the model\'s own reasoning and hand it back — a no-op that measurably improves multi-step tool use. It needs no credential and never touches the outside world.',
   'nodeDesc.tool.subflow':
     'Exposes another flow of this bot to an AI Agent as a single callable tool (the n8n "Workflow Tool"). Attach it to the Agent\'s Tool slot and pick a flow. The model\'s arguments become the child flow\'s input; the items its Return node produced become the tool result. Because flows are pausable/resumable, the tool can even wait for a human reply.',
+  'nodeDesc.tool.mcp':
+    'Attaches every tool a remote MCP server advertises to an AI Agent as callable tools. Attach it to the Agent\'s Tool slot and pick an mcpServer credential. The agent lists the server\'s tools at the start of its run and exposes them all; the encrypted key never reaches a node. This is the canvas form of the inline "mcp" tool source.',
   'nodeDesc.ai.speechToText':
     'Transcribes a voice/audio message to text. Point it at a Telegram file_id (a voice note the user sent) or a stored file; the server downloads the audio and sends it to an OpenAI-compatible transcription model (e.g. Whisper). The text lands on each item so the next node — usually an AI Agent — can read it.',
   'nodeDesc.ai.textToSpeech':
@@ -561,6 +564,9 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.tool.think.tool_name': 'The function name the model invokes (letters, digits, _ or -). Usually just "think".',
   'paramDesc.tool.think.description': 'When the model should pause to reason. Calling the tool records the thought and returns it unchanged.',
 
+  'param.tool.mcp.credentialId': 'MCP server credential',
+  'paramDesc.tool.mcp.credentialId':
+    'The mcpServer credential (endpoint URL + optional key). The agent lists all of this server\'s tools and exposes them to the model. Its key is injected on the server — the model and the flow never see the secret.',
   'param.tool.subflow.flow_id': 'Flow',
   'param.tool.subflow.tool_name': 'Tool name',
   'param.tool.subflow.description': 'Tool description',

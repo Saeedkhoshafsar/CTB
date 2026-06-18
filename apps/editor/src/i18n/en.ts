@@ -350,6 +350,8 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.tool.code.label': 'Code Tool',
   'nodes.tool.think.label': 'Think Tool',
   'nodes.tool.subflow.label': 'Workflow Tool',
+  'nodes.ai.speechToText.label': 'Speech to Text',
+  'nodes.ai.textToSpeech.label': 'Text to Speech',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -412,6 +414,10 @@ export const en: Record<keyof typeof fa, string> = {
     'Gives an AI Agent a "Think" scratchpad tool. Attach it to the Agent\'s Tool slot. Calling it does nothing but record the model\'s own reasoning and hand it back — a no-op that measurably improves multi-step tool use. It needs no credential and never touches the outside world.',
   'nodeDesc.tool.subflow':
     'Exposes another flow of this bot to an AI Agent as a single callable tool (the n8n "Workflow Tool"). Attach it to the Agent\'s Tool slot and pick a flow. The model\'s arguments become the child flow\'s input; the items its Return node produced become the tool result. Because flows are pausable/resumable, the tool can even wait for a human reply.',
+  'nodeDesc.ai.speechToText':
+    'Transcribes a voice/audio message to text. Point it at a Telegram file_id (a voice note the user sent) or a stored file; the server downloads the audio and sends it to an OpenAI-compatible transcription model (e.g. Whisper). The text lands on each item so the next node — usually an AI Agent — can read it.',
+  'nodeDesc.ai.textToSpeech':
+    'Turns text into a spoken audio file. Sends the text to an OpenAI-compatible text-to-speech model, stores the result, and hands back a file id you can send with Send Media (as a voice/audio message). Pair it with an AI Agent to give your bot a real voice.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'Operation',
@@ -563,6 +569,37 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.tool.subflow.tool_name': 'The function name the model invokes. Leave blank to derive one from the flow id.',
   'paramDesc.tool.subflow.description': 'What the flow does and when to call it — the model reads this to decide whether to use it.',
   'paramDesc.tool.subflow.params': 'Optional declared arguments the model may fill. Leave empty to accept any JSON object.',
+
+  // ── ai.speechToText / ai.textToSpeech params (PB-T7) ──
+  'param.ai.speechToText.credentialId': 'OpenAI credential',
+  'param.ai.speechToText.model': 'Model',
+  'param.ai.speechToText.source': 'Audio source',
+  'param.ai.speechToText.audio_source': 'Audio (file_id or file)',
+  'param.ai.speechToText.language': 'Language (optional)',
+  'param.ai.speechToText.prompt': 'Prompt (optional)',
+  'param.ai.speechToText.save_as': 'Save result as',
+  'paramDesc.ai.speechToText.credentialId': 'An OpenAI-compatible credential (base URL + key). The host resolves it — this node only references the credential. Works with OpenAI Whisper or any compatible transcription endpoint.',
+  'paramDesc.ai.speechToText.model': 'The transcription model as the provider expects it (e.g. whisper-1, gpt-4o-transcribe).',
+  'paramDesc.ai.speechToText.source': 'Telegram: the value below is a Telegram file_id (a voice/audio the user sent), downloaded on the server. File: it is a stored CTB file id.',
+  'paramDesc.ai.speechToText.audio_source': 'The Telegram file_id or stored file id of the audio. Usually an expression like {{ $json.message.voice.file_id }}.',
+  'paramDesc.ai.speechToText.language': 'Optional ISO-639-1 language hint (en, fa, …) to improve accuracy. Leave blank to auto-detect.',
+  'paramDesc.ai.speechToText.prompt': 'Optional text biasing the decoding — e.g. proper nouns or prior context the model should recognise.',
+  'paramDesc.ai.speechToText.save_as': 'Where the result ({ text, language, duration }) is stored on each item. Default: transcript.',
+
+  'param.ai.textToSpeech.credentialId': 'OpenAI credential',
+  'param.ai.textToSpeech.model': 'Model',
+  'param.ai.textToSpeech.text': 'Text',
+  'param.ai.textToSpeech.voice': 'Voice',
+  'param.ai.textToSpeech.format': 'Audio format',
+  'param.ai.textToSpeech.speed': 'Speed (optional)',
+  'param.ai.textToSpeech.save_as': 'Save result as',
+  'paramDesc.ai.textToSpeech.credentialId': 'An OpenAI-compatible credential (base URL + key). The host resolves it — this node only references the credential. Works with OpenAI TTS or any compatible speech endpoint.',
+  'paramDesc.ai.textToSpeech.model': 'The text-to-speech model as the provider expects it (e.g. tts-1, tts-1-hd, gpt-4o-mini-tts).',
+  'paramDesc.ai.textToSpeech.text': 'The text to speak — usually an expression like {{ $json.ai.reply }}.',
+  'paramDesc.ai.textToSpeech.voice': 'The voice name as the provider expects it (e.g. alloy, nova, shimmer).',
+  'paramDesc.ai.textToSpeech.format': 'Output audio format. opus suits Telegram voice notes; mp3 is universally playable.',
+  'paramDesc.ai.textToSpeech.speed': 'Playback speed 0.25–4.0. Leave blank for the provider default (1.0).',
+  'paramDesc.ai.textToSpeech.save_as': 'Where the stored audio ({ fileId, mime, size, url }) is placed on each item. Feed fileId to Send Media. Default: speech.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

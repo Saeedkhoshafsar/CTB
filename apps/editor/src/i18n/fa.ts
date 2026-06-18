@@ -347,6 +347,8 @@ export const fa = {
   'nodes.tool.code.label': 'ابزار کد',
   'nodes.tool.think.label': 'ابزار تفکر',
   'nodes.tool.subflow.label': 'ابزار فلو',
+  'nodes.ai.speechToText.label': 'گفتار به متن',
+  'nodes.ai.textToSpeech.label': 'متن به گفتار',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'نقطهٔ شروع فلو — وقتی پیام، دستور یا دکمهٔ مشخصی از کاربر برسد، فلو از اینجا اجرا می‌شود.',
@@ -409,6 +411,10 @@ export const fa = {
     'به یک «دستیار هوش مصنوعی» ابزار دفترچهٔ «تفکر» می‌دهد. آن را به اسلات «ابزار» دستیار وصل کنید. صدا زدنش کاری نمی‌کند جز ثبت استدلال خود مدل و بازگرداندن آن — یک بی‌اثر (no-op) که استفادهٔ چندمرحله‌ای از ابزار را به‌طور محسوس بهتر می‌کند. به اعتبارنامه نیاز ندارد و هرگز با دنیای بیرون تماس نمی‌گیرد.',
   'nodeDesc.tool.subflow':
     'یک فلوی دیگرِ همین بات را به‌عنوان یک ابزارِ قابل‌فراخوانی در اختیار «دستیار هوش مصنوعی» می‌گذارد (همان «Workflow Tool» در n8n). آن را به اسلات «ابزار» دستیار وصل کنید و یک فلو انتخاب کنید. آرگومان‌های مدل ورودی فلوی فرزند می‌شوند؛ آیتم‌هایی که نود Return آن تولید کرده نتیجهٔ ابزار می‌شوند. چون فلوها قابل توقف/ازسرگیری‌اند، این ابزار حتی می‌تواند منتظر پاسخ یک انسان بماند.',
+  'nodeDesc.ai.speechToText':
+    'یک پیام صوتی را به متن تبدیل می‌کند. آن را به یک file_id تلگرام (وُیسی که کاربر فرستاده) یا یک فایل ذخیره‌شده اشاره دهید؛ سرور صدا را دانلود کرده و به یک مدل رونویسی سازگار با OpenAI (مثل Whisper) می‌فرستد. متن روی هر آیتم قرار می‌گیرد تا نود بعدی — معمولاً یک «دستیار هوش مصنوعی» — آن را بخواند.',
+  'nodeDesc.ai.textToSpeech':
+    'متن را به یک فایل صوتیِ گفتاری تبدیل می‌کند. متن را به یک مدل متن‌به‌گفتارِ سازگار با OpenAI می‌فرستد، نتیجه را ذخیره می‌کند و یک file_id برمی‌گرداند که با «ارسال رسانه» می‌توانید آن را (به‌صورت پیام صوتی/وُیس) بفرستید. آن را با یک «دستیار هوش مصنوعی» جفت کنید تا به بات‌تان یک صدای واقعی بدهید.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'عملیات',
@@ -552,6 +558,37 @@ export const fa = {
   'paramDesc.tool.subflow.tool_name': 'نام تابعی که مدل صدا می‌زند. برای ساختن خودکار از شناسهٔ فلو، خالی بگذارید.',
   'paramDesc.tool.subflow.description': 'فلو چه می‌کند و کِی باید فراخوانی شود — مدل برای تصمیم به استفاده این را می‌خواند.',
   'paramDesc.tool.subflow.params': 'آرگومان‌های اعلام‌شدهٔ اختیاری که مدل می‌تواند پر کند. برای پذیرش هر شیء JSON خالی بگذارید.',
+
+  // ── ai.speechToText / ai.textToSpeech params (PB-T7) ──
+  'param.ai.speechToText.credentialId': 'اعتبارنامهٔ OpenAI',
+  'param.ai.speechToText.model': 'مدل',
+  'param.ai.speechToText.source': 'منبع صدا',
+  'param.ai.speechToText.audio_source': 'صدا (file_id یا فایل)',
+  'param.ai.speechToText.language': 'زبان (اختیاری)',
+  'param.ai.speechToText.prompt': 'پرامپت (اختیاری)',
+  'param.ai.speechToText.save_as': 'ذخیرهٔ نتیجه به‌عنوان',
+  'paramDesc.ai.speechToText.credentialId': 'یک اعتبارنامهٔ سازگار با OpenAI (آدرس پایه + کلید). میزبان آن را resolve می‌کند — این نود فقط به اعتبارنامه ارجاع می‌دهد. با Whisper اوپن‌ای‌آی یا هر سرویس رونویسیِ سازگار کار می‌کند.',
+  'paramDesc.ai.speechToText.model': 'مدل رونویسی همان‌طور که سرویس‌دهنده انتظار دارد (مثلاً whisper-1، gpt-4o-transcribe).',
+  'paramDesc.ai.speechToText.source': 'تلگرام: مقدار زیر یک file_id تلگرام است (صوتی که کاربر فرستاده) که روی سرور دانلود می‌شود. فایل: یک شناسهٔ فایل ذخیره‌شدهٔ CTB است.',
+  'paramDesc.ai.speechToText.audio_source': 'شناسهٔ file_id تلگرام یا شناسهٔ فایلِ ذخیره‌شدهٔ صدا. معمولاً یک عبارت مانند {{ $json.message.voice.file_id }}.',
+  'paramDesc.ai.speechToText.language': 'راهنمای زبان اختیاری به‌صورت ISO-639-1 (en، fa، …) برای دقت بیشتر. برای تشخیص خودکار خالی بگذارید.',
+  'paramDesc.ai.speechToText.prompt': 'متن اختیاری برای هدایت رمزگشایی — مثلاً اسامی خاص یا زمینهٔ قبلی که مدل باید تشخیص دهد.',
+  'paramDesc.ai.speechToText.save_as': 'محل ذخیرهٔ نتیجه ({ text, language, duration }) روی هر آیتم. پیش‌فرض: transcript.',
+
+  'param.ai.textToSpeech.credentialId': 'اعتبارنامهٔ OpenAI',
+  'param.ai.textToSpeech.model': 'مدل',
+  'param.ai.textToSpeech.text': 'متن',
+  'param.ai.textToSpeech.voice': 'صدا',
+  'param.ai.textToSpeech.format': 'قالب صدا',
+  'param.ai.textToSpeech.speed': 'سرعت (اختیاری)',
+  'param.ai.textToSpeech.save_as': 'ذخیرهٔ نتیجه به‌عنوان',
+  'paramDesc.ai.textToSpeech.credentialId': 'یک اعتبارنامهٔ سازگار با OpenAI (آدرس پایه + کلید). میزبان آن را resolve می‌کند — این نود فقط به اعتبارنامه ارجاع می‌دهد. با TTS اوپن‌ای‌آی یا هر سرویس گفتارِ سازگار کار می‌کند.',
+  'paramDesc.ai.textToSpeech.model': 'مدل متن‌به‌گفتار همان‌طور که سرویس‌دهنده انتظار دارد (مثلاً tts-1، tts-1-hd، gpt-4o-mini-tts).',
+  'paramDesc.ai.textToSpeech.text': 'متنی که باید خوانده شود — معمولاً یک عبارت مانند {{ $json.ai.reply }}.',
+  'paramDesc.ai.textToSpeech.voice': 'نام صدا همان‌طور که سرویس‌دهنده انتظار دارد (مثلاً alloy، nova، shimmer).',
+  'paramDesc.ai.textToSpeech.format': 'قالب صدای خروجی. opus برای وُیس‌نوت‌های تلگرام مناسب است؛ mp3 همه‌جا قابل پخش است.',
+  'paramDesc.ai.textToSpeech.speed': 'سرعت پخش ۰٫۲۵ تا ۴٫۰. برای پیش‌فرض سرویس‌دهنده (۱٫۰) خالی بگذارید.',
+  'paramDesc.ai.textToSpeech.save_as': 'محل قرارگیری صدای ذخیره‌شده ({ fileId, mime, size, url }) روی هر آیتم. fileId را به «ارسال رسانه» بدهید. پیش‌فرض: speech.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',

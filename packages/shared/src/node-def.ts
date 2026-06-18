@@ -305,6 +305,22 @@ export interface NodeCtx {
    */
   ai: {
     chat(req: AiChatRequest): Promise<AiChatResult>;
+    /**
+     * Transcribe audio to text (ai.speechToText, PB-T7). The host decrypts the
+     * openAiApi credential and POSTs the OpenAI-compatible
+     * `/audio/transcriptions` multipart request. Optional — null/absent when no
+     * speech service is wired (older hosts / unit tests); the node then fails
+     * with a clear error. Throws on a credential miss or a transport/API error.
+     */
+    transcribe?(req: AiTranscribeRequest): Promise<AiTranscribeResult>;
+    /**
+     * Synthesize speech from text (ai.textToSpeech, PB-T7). The host decrypts
+     * the openAiApi credential and POSTs the OpenAI-compatible `/audio/speech`
+     * request, returning the audio bytes. Optional — null/absent when no speech
+     * service is wired; the node then fails with a clear error. Throws on a
+     * credential miss or a transport/API error.
+     */
+    speech?(req: AiSpeechRequest): Promise<AiSpeechResult>;
   } | null;
   /**
    * MCP client capability (ai.mcpClient, P5-T3). The host resolves a stored
@@ -505,6 +521,70 @@ export interface AiChatResult {
   model?: string;
   /** Tool calls the model requested this turn (ai.agent, P5-T4). Empty/absent → none. */
   toolCalls?: AiToolCall[];
+}
+
+/**
+ * What ai.speechToText asks the host to run (PB-T7). The node hands over the raw
+ * audio bytes (downloaded from Telegram via `ctx.tg.getFile`, or read from the
+ * file store) plus the model name; the host decrypts the openAiApi credential
+ * and POSTs the OpenAI-compatible `/audio/transcriptions` multipart request. The
+ * decrypted key never crosses into node code (invariants I6/I7).
+ */
+export interface AiTranscribeRequest {
+  /** Stored credential id (openAiApi). The host turns it into base URL + key. */
+  credentialId: string;
+  /** Transcription model, e.g. `whisper-1`, `gpt-4o-transcribe`. */
+  model: string;
+  /** Raw audio bytes to transcribe. */
+  audio: Uint8Array;
+  /** Filename hint for the multipart upload (the provider uses the extension). */
+  filename: string;
+  /** MIME type of the audio (best-effort; sent as the part's content-type). */
+  mime?: string;
+  /** Optional ISO-639-1 language hint (`en`, `fa`, …) to improve accuracy. */
+  language?: string;
+  /** Optional prompt to bias the decoding (proper nouns, prior context). */
+  prompt?: string;
+}
+
+/** The host's reply to an AiTranscribeRequest (PB-T7). */
+export interface AiTranscribeResult {
+  /** The transcribed text. */
+  text: string;
+  /** The detected/used language, when the provider reports it. */
+  language?: string;
+  /** The audio duration in seconds, when the provider reports it. */
+  duration?: number;
+}
+
+/**
+ * What ai.textToSpeech asks the host to run (PB-T7). The node hands over the
+ * text + voice + format; the host decrypts the openAiApi credential and POSTs
+ * the OpenAI-compatible `/audio/speech` request, returning the synthesized audio
+ * bytes (the node then stores them via `ctx.files.write` for `tg.sendMedia`).
+ * The decrypted key never crosses into node code (invariants I6/I7).
+ */
+export interface AiSpeechRequest {
+  /** Stored credential id (openAiApi). The host turns it into base URL + key. */
+  credentialId: string;
+  /** TTS model, e.g. `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`. */
+  model: string;
+  /** The text to synthesize. */
+  input: string;
+  /** Voice name as the provider expects it, e.g. `alloy`, `nova`, `shimmer`. */
+  voice: string;
+  /** Output container/codec: `mp3`, `opus`, `aac`, `flac`, `wav`, `pcm`. */
+  format?: string;
+  /** Playback speed 0.25–4.0 (provider default when omitted). */
+  speed?: number;
+}
+
+/** The host's reply to an AiSpeechRequest (PB-T7). */
+export interface AiSpeechResult {
+  /** The synthesized audio bytes. */
+  audio: Uint8Array;
+  /** The MIME type of the returned audio (derived from the requested format). */
+  mime: string;
 }
 
 /** A record as seen by data.collection (the host's RecordPublic, minus host-only ids). */

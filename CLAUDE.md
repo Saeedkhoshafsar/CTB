@@ -20,8 +20,8 @@ later when the user answers. TypeScript monorepo. No PHP. No domain-specific (sh
 Run these steps **in order, every session, before writing any code**:
 
 ```
-STEP 1  Read docs/STATE.md          → learn the CURRENT task ID and repo status
-STEP 2  Read that task in docs/PLAN.md → learn exactly what to build and its acceptance criteria
+STEP 1  Read docs/STATE2.md          → learn the CURRENT task ID and repo status (ACTIVE file: PLAN2 / Phase A+B). docs/STATE.md is the FROZEN PLAN1 (Phase 0–6) archive — read it only for pre-Phase-B history.
+STEP 2  Read that task in docs/PLAN2.md → learn exactly what to build and its acceptance criteria (PLAN.md is done through P5-T4)
 STEP 3  Read the relevant §§ of docs/ARCHITECTURE.md (and docs/NODES.md if touching nodes)
 STEP 4  Run the verification commands listed in STATE.md → confirm the repo is healthy
 STEP 5  Only now: write code.
@@ -46,7 +46,7 @@ npm run verify             # typecheck + test — must be green
 When documents disagree, higher wins:
 
 ```
-1. docs/STATE.md          (what is true RIGHT NOW)
+1. docs/STATE2.md         (what is true RIGHT NOW — PLAN2 / Phase A+B; docs/STATE.md is the frozen PLAN1 Phase 0–6 archive)
 2. docs/PLAN.md           (what to do, in what order, with what acceptance criteria)
 3. docs/ARCHITECTURE.md   (how to build it — structure, contracts, stack)
 4. docs/NODES.md          (node-by-node behavior specification)
@@ -71,10 +71,10 @@ in the same commit, with rationale. Never silently deviate.
    - [ ] `npm run verify` green (typecheck + all tests)
    - [ ] New logic has tests (engine changes REQUIRE a pause/resume serialization round-trip test)
    - [ ] docs updated if behavior/contracts changed
-   - [ ] **STATE.md updated in the same commit** (current task advanced, session log appended)
+   - [ ] **STATE2.md updated in the same commit** (current task advanced, session log appended). STATE.md is the frozen PLAN1 archive — touch it only when revisiting Phase 0–6.
 4. **Spec before code** for nodes: a node must exist in docs/NODES.md (params, ports, behavior)
    before its implementation is written.
-5. **Never skip ahead.** Phases and tasks execute in PLAN.md order unless STATE.md documents
+5. **Never skip ahead.** Phases and tasks execute in PLAN2.md order unless STATE2.md documents
    a justified reorder.
 
 ---
@@ -85,7 +85,7 @@ in the same commit, with rationale. Never silently deviate.
 branch   : genspark_ai_developer  (all AI work happens here)
 commit   : after EVERY task completion — message: "<type>(scope): <desc> [P<phase>-T<task>]"
            e.g.  feat(core): executor loop with port routing [P1-T4]
-state    : docs/STATE.md is updated IN THE SAME COMMIT as the code it describes
+state    : docs/STATE2.md (active; STATE.md = frozen PLAN1 archive) is updated IN THE SAME COMMIT as the code it describes
 push     : every commit is pushed immediately
 PR       : keep one open PR genspark_ai_developer → main; update its description per phase;
            share the PR URL with the user
@@ -93,7 +93,7 @@ sync     : before pushing, fetch origin/main and rebase; on conflict prefer remo
            local change is the task itself
 ```
 
-A commit that changes code but not STATE.md is a protocol violation.
+A commit that changes code but not STATE2.md (the active truth file) is a protocol violation.
 
 ---
 

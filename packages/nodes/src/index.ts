@@ -18,6 +18,7 @@ import { aiLlmChat } from './ai/llm-chat';
 import { aiMcpClient } from './ai/mcp-client';
 import { aiMemoryKv } from './ai/memory-kv';
 import { aiMemoryPostgres } from './ai/memory-postgres';
+import { aiModelOpenai } from './ai/model-openai';
 import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
@@ -65,6 +66,7 @@ export { aiLlmChat, AI_MEMORY_KEY_PREFIX } from './ai/llm-chat';
 export { aiMcpClient } from './ai/mcp-client';
 export { aiMemoryKv } from './ai/memory-kv';
 export { aiMemoryPostgres } from './ai/memory-postgres';
+export { aiModelOpenai } from './ai/model-openai';
 export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
@@ -149,6 +151,7 @@ export const builtinNodes: NodeDef<never>[] = [
   dbMysql,
   aiMemoryKv,
   aiMemoryPostgres,
+  aiModelOpenai,
   flowLoop,
   flowMerge,
   flowStopError,

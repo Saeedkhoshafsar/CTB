@@ -28,10 +28,10 @@ function onlyCall(calls: DbQueryRequest[]): DbQueryRequest {
 }
 
 describe('registry (PB-T3)', () => {
-  it('registers db.mysql; registry is 46 types', () => {
+  it('registers db.mysql; registry is 47 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('db.mysql')).toBe(true);
-    expect(builtinNodes.length).toBe(46);
+    expect(builtinNodes.length).toBe(47);
   });
 
   it('db.mysql is a `data` node, main → main', () => {

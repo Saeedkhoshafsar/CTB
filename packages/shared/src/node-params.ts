@@ -1437,9 +1437,18 @@ export const AgentToolSourceSchema = z
 export type AgentToolSource = z.infer<typeof AgentToolSourceSchema>;
 
 export const AiAgentParamsSchema = z.object({
-  /** OpenAI-compatible credential (base_url + key) for the agent's LLM; host resolves it (I7). */
-  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
-  /** Model name as the provider expects it (must support tool/function calling). */
+  /**
+   * OpenAI-compatible credential (base_url + key) for the agent's LLM; host
+   * resolves it (I7). OPTIONAL since PB-T5: when an `ai:model` provider slot is
+   * attached it supplies the credential/model and this inline field is ignored.
+   * Kept for backward compatibility — a slot-less agent still works by reading
+   * this inline credential (it must be non-empty in that case, enforced at run).
+   */
+  credentialId: z.string().default('').meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /**
+   * Model name as the provider expects it (must support tool/function calling).
+   * Overridden by an attached `ai:model` slot (PB-T5); inline fallback otherwise.
+   */
   model: z.string().min(1).default('gpt-4o-mini'),
   /** System prompt steering the agent's behaviour (expression-aware). */
   system_prompt: z.string().default('You are a helpful assistant. Use the available tools when they help answer the user.'),
@@ -1464,6 +1473,29 @@ export const AiAgentParamsSchema = z.object({
     .default('agent'),
 });
 export type AiAgentParams = z.infer<typeof AiAgentParamsSchema>;
+
+// ── ai.modelOpenai (PB-T5) ───────────────────────────────────────────────────
+
+/**
+ * ai.modelOpenai params (PB-T5). A `role:'provider'` node that supplies the
+ * `ai:model` slot for an `ai.agent` (the n8n "OpenAI Chat Model" sub-node). It
+ * carries an OpenAI-compatible credential + model + sampling knobs; it is never
+ * executed as a data step (the executor resolves it as config and validates
+ * these params, then the consuming agent calls the LLM through `ctx.ai`). The
+ * node itself NEVER touches the network — it only declares WHICH model the agent
+ * should call and with WHICH credential id (the host decrypts it, I6/I7).
+ */
+export const AiModelOpenaiParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key); the host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Model name as the provider expects it (must support tool/function calling). */
+  model: z.string().min(1).default('gpt-4o-mini'),
+  /** Sampling temperature 0–2 (provider default when omitted). */
+  temperature: z.coerce.number().min(0).max(2).optional(),
+  /** Per-LLM-call response token cap (provider default when omitted). */
+  max_tokens: z.coerce.number().int().min(1).max(32_000).optional(),
+});
+export type AiModelOpenaiParams = z.infer<typeof AiModelOpenaiParamsSchema>;
 
 // ── db.postgres (PB-T2) ──────────────────────────────────────────────────────
 

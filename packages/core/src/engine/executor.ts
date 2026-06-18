@@ -18,15 +18,18 @@
 import {
   ExecutionBudgetError,
   UnknownNodeTypeError,
+  type AttachedProviders,
   type Execution,
   type ExecutionState,
   type FlowGraph,
   type FlowItem,
   type FlowNode,
   type NodeCtx,
+  type NodeDef,
   type NodeId,
   type NodeResult,
   type PortName,
+  type SlotKind,
   type WaitSpec,
 } from '@ctb/shared';
 import type { EvaluateOptions } from '../expression/evaluator';
@@ -350,7 +353,7 @@ export class Executor {
         this.log(exec.id, node.id, 'debug', `provider node "${node.id}" is not a data step — skipped`);
       } else {
         try {
-          result = await this.executeNode(exec, flow, node, inputItems, state);
+          result = await this.executeNode(exec, flow, graph, node, inputItems, state);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const tag = err instanceof UnknownNodeTypeError ? 'unknown node type' : 'node failed';
@@ -451,6 +454,7 @@ export class Executor {
   private async executeNode(
     exec: Execution,
     flow: FlowRef,
+    graph: FlowGraph,
     node: FlowNode,
     inputItems: FlowItem[],
     state: ExecutionState,
@@ -477,8 +481,57 @@ export class Executor {
     for (const w of warnings) this.log(exec.id, node.id, 'warn', w);
     const params = this.registry.parseParams(node.type, node.id, resolved);
 
-    const ctx = this.buildCtx(exec, flow, node, state, state.items);
+    const slots = this.resolveSlots(exec, graph, node, def);
+    const ctx = this.buildCtx(exec, flow, node, state, state.items, slots);
     return def.execute(ctx, params, inputItems);
+  }
+
+  /**
+   * Resolve the providers attached to a consumer's typed input slots (PB-T5).
+   * A sub-connection is an edge whose `to.port` is a slot kind and whose source
+   * is a `role:'provider'` node (PB-T1). For each such edge into `node` we look
+   * up the provider node, validate its params against its own schema (exactly
+   * as a data node is parsed) and group it under the slot kind, in graph order.
+   * Disabled providers are ignored. Returns an empty map for any node that
+   * declares no `inputSlots` (every Phase-A node), so behavior is unchanged.
+   */
+  private resolveSlots(
+    exec: Execution,
+    graph: FlowGraph,
+    node: FlowNode,
+    def: NodeDef,
+  ): AttachedProviders {
+    const slotKinds = def.inputSlots;
+    if (!slotKinds || slotKinds.length === 0) return {};
+    const kinds = new Set<string>(slotKinds.map((s) => s.kind));
+    const byId = new Map<NodeId, FlowNode>(graph.nodes.map((n) => [n.id, n]));
+    const out: AttachedProviders = {};
+    for (const edge of graph.edges) {
+      if (edge.to.node !== node.id) continue;
+      const kind = edge.to.port;
+      if (!kinds.has(kind)) continue;
+      const provider = byId.get(edge.from.node);
+      if (!provider || provider.disabled) continue;
+      if (!this.registry.has(provider.type)) continue;
+      const pdef = this.registry.get(provider.type);
+      if (pdef.role !== 'provider' || pdef.provides !== kind) continue;
+      let params: unknown;
+      try {
+        params = this.registry.parseParams(provider.type, provider.id, provider.params);
+      } catch (err) {
+        // A misconfigured provider must not silently vanish — surface it.
+        this.log(
+          exec.id,
+          node.id,
+          'warn',
+          `slot "${kind}" provider "${provider.id}" has invalid params: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        continue;
+      }
+      const list = (out[kind as SlotKind] ??= []);
+      list.push({ nodeId: provider.id, type: provider.type, params });
+    }
+    return out;
   }
 
   private buildNodeScope(
@@ -504,9 +557,11 @@ export class Executor {
     node: FlowNode,
     state: ExecutionState,
     inputsByPort: Record<PortName, FlowItem[]>,
+    slots: AttachedProviders = {},
   ): NodeCtx {
     const executor = this;
     return {
+      slots,
       executionId: exec.id,
       flowId: flow.id,
       botId: exec.botId,

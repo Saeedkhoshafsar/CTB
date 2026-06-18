@@ -22,18 +22,41 @@
 import { NodeRegistry } from '@ctb/core';
 import { describe, expect, it } from 'vitest';
 import { aiAgent, builtinNodes, parseToolArguments, registerBuiltinNodes } from '../src/index';
+import {
+  AiMemoryKvParamsSchema,
+  AiModelOpenaiParamsSchema,
+  kvMemoryKey,
+  type AttachedProvider,
+} from '@ctb/shared';
 import { item, makeCtx, params } from './node-harness';
 
+/** Build an `ai:model` provider slot the way the executor's resolveSlots would. */
+function modelSlot(raw: unknown): AttachedProvider {
+  return { nodeId: 'm1', type: 'ai.modelOpenai', params: AiModelOpenaiParamsSchema.parse(raw) };
+}
+/** Build an `ai:memory` (kv) provider slot the way the executor's resolveSlots would. */
+function kvMemorySlot(raw: unknown = {}): AttachedProvider {
+  return { nodeId: 'mem1', type: 'ai.memoryKv', params: AiMemoryKvParamsSchema.parse(raw) };
+}
+
 describe('registry (P5-T4)', () => {
-  it('registers ai.agent; registry is 38 types', () => {
+  it('registers ai.agent; registry is 47 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.agent')).toBe(true);
-    expect(builtinNodes.length).toBe(46);
+    expect(builtinNodes.length).toBe(47);
   });
 
   it('is an `ai` node with main → main ports', () => {
     expect(aiAgent.category).toBe('ai');
     expect(aiAgent.ports).toEqual({ inputs: ['main'], outputs: ['main'] });
+  });
+
+  it('declares the PB-T5 typed input slots (model required-shape, memory, repeatable tools)', () => {
+    expect(aiAgent.inputSlots).toEqual([
+      { kind: 'ai:model', required: false, repeatable: false },
+      { kind: 'ai:memory', required: false, repeatable: false },
+      { kind: 'ai:tool', required: false, repeatable: true },
+    ]);
   });
 });
 
@@ -407,5 +430,167 @@ describe('ai.agent — failure modes', () => {
     const res = await aiAgent.execute(ctx, params(aiAgent, { credentialId: 'c1', user_prompt: 'x' }), [item({})]);
     expect(res.kind).toBe('error');
     if (res.kind === 'error') expect(res.message).toMatch(/provider down/);
+  });
+});
+
+// ── PB-T5: ai:model slot ─────────────────────────────────────────────────────
+
+describe('ai.agent — ai:model slot (PB-T5)', () => {
+  it('uses the attached model provider (credential + model + knobs) over the inline params', async () => {
+    const ctx = makeCtx({
+      aiResponses: [{ reply: 'ok' }],
+      slots: {
+        'ai:model': [modelSlot({ credentialId: 'slotCred', model: 'gpt-4o', temperature: 0.3, max_tokens: 256 })],
+      },
+    });
+    const res = await aiAgent.execute(
+      ctx,
+      // Inline credential/model differ — the slot must win.
+      params(aiAgent, { credentialId: 'inlineCred', model: 'inline-model', user_prompt: 'hi' }),
+      [item({})],
+    );
+    if (res.kind !== 'items') throw new Error('expected items');
+    expect(ctx.aiCalls).toHaveLength(1);
+    expect(ctx.aiCalls[0]!.credentialId).toBe('slotCred');
+    expect(ctx.aiCalls[0]!.model).toBe('gpt-4o');
+    expect(ctx.aiCalls[0]!.temperature).toBe(0.3);
+    expect(ctx.aiCalls[0]!.maxTokens).toBe(256);
+  });
+
+  it('falls back to the inline credential/model when no model slot is attached (back-compat)', async () => {
+    const ctx = makeCtx({ aiResponses: [{ reply: 'ok' }] });
+    const res = await aiAgent.execute(
+      ctx,
+      params(aiAgent, { credentialId: 'inlineCred', model: 'inline-model', user_prompt: 'hi' }),
+      [item({})],
+    );
+    if (res.kind !== 'items') throw new Error('expected items');
+    expect(ctx.aiCalls[0]!.credentialId).toBe('inlineCred');
+    expect(ctx.aiCalls[0]!.model).toBe('inline-model');
+  });
+
+  it('fails loudly when neither a model slot nor an inline credential is provided', async () => {
+    const ctx = makeCtx({ aiResponses: [{ reply: 'ok' }] });
+    // credentialId now defaults to '' (optional) — with no slot this must fail.
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'hi' }), [item({})]);
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.message).toMatch(/no model/);
+  });
+});
+
+// ── PB-T5: ai:memory slot ────────────────────────────────────────────────────
+
+describe('ai.agent — ai:memory slot (PB-T5)', () => {
+  it('replays prior KV turns before the prompt and persists the new turn after', async () => {
+    const ctx = makeCtx({
+      aiResponses: [{ reply: 'second answer' }],
+      slots: {
+        'ai:model': [modelSlot({ credentialId: 'c1' })],
+        'ai:memory': [kvMemorySlot({ session_key: 'sess-1', memory_window: 5 })],
+      },
+    });
+    // Seed an existing turn under the kv memory key.
+    const memKey = kvMemoryKey('sess-1');
+    ctx.kvBag.set(`user:${memKey}`, [
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'first answer' },
+    ]);
+
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'second question' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+
+    // The model saw: system, the replayed turn, then the new user prompt.
+    const msgs = ctx.aiCalls[0]!.messages;
+    expect(msgs.some((m) => m.role === 'user' && m.content === 'first question')).toBe(true);
+    expect(msgs.some((m) => m.role === 'assistant' && m.content === 'first answer')).toBe(true);
+    expect(msgs[msgs.length - 1]).toEqual({ role: 'user', content: 'second question' });
+
+    // The new turn was appended (now two turns stored).
+    const stored = ctx.kvBag.get(`user:${memKey}`) as { role: string; content: string }[];
+    expect(stored).toHaveLength(4);
+    expect(stored[2]).toEqual({ role: 'user', content: 'second question' });
+    expect(stored[3]).toEqual({ role: 'assistant', content: 'second answer' });
+  });
+
+  it('keys memory per-node + per-chat when the provider session_key is blank', async () => {
+    const ctx = makeCtx({
+      nodeId: 'agentNode',
+      chatId: 999,
+      aiResponses: [{ reply: 'reply' }],
+      slots: {
+        'ai:model': [modelSlot({ credentialId: 'c1' })],
+        'ai:memory': [kvMemorySlot({})],
+      },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'q' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+    // Default key = `${nodeId}:${chatId}` → __ai_mem__:agentNode:999
+    const stored = ctx.kvBag.get(`user:${kvMemoryKey('agentNode:999')}`);
+    expect(stored).toBeDefined();
+  });
+
+  it('runs statelessly (no memory replay/persist) when no memory slot is attached', async () => {
+    const ctx = makeCtx({
+      aiResponses: [{ reply: 'reply' }],
+      slots: { 'ai:model': [modelSlot({ credentialId: 'c1' })] },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'q' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+    // Only system + user — no replayed history.
+    expect(ctx.aiCalls[0]!.messages).toEqual([
+      { role: 'system', content: expect.any(String) },
+      { role: 'user', content: 'q' },
+    ]);
+    // Nothing persisted.
+    expect([...ctx.kvBag.keys()].some((k) => k.includes('__ai_mem__'))).toBe(false);
+  });
+});
+
+// ── PB-T5: ai:tool slot ──────────────────────────────────────────────────────
+
+describe('ai.agent — ai:tool slot (PB-T5)', () => {
+  it('exposes a subflow tool attached via the ai:tool slot alongside inline tools', async () => {
+    const ctx = makeCtx({
+      subflowRun: async (_flowId, items) => ({ items: [{ json: { echoed: items[0]!.json } }] }),
+      aiResponses: [
+        { reply: '', toolCalls: [{ id: 'c1', name: 'slotTool', argumentsJson: '{"x":1}' }] },
+        { reply: 'done' },
+      ],
+      slots: {
+        'ai:model': [modelSlot({ credentialId: 'c1' })],
+        // A tool provider whose validated params already match an AgentToolSource
+        // (PB-T6 ships the dedicated tool nodes; this is the forward-compat path).
+        'ai:tool': [
+          {
+            nodeId: 't1',
+            type: 'tool.subflow',
+            params: { type: 'subflow', flow_id: 'flowX', tool_name: 'slotTool', description: 'a slot tool' },
+          },
+        ],
+      },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'use the tool' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+
+    // The slot tool's spec was advertised to the model and the sub-flow ran.
+    expect(ctx.aiCalls[0]!.tools?.some((t) => t.name === 'slotTool')).toBe(true);
+    expect(ctx.subflowCalls).toHaveLength(1);
+    expect(ctx.subflowCalls[0]).toMatchObject({ flowId: 'flowX', items: [{ json: { x: 1 } }] });
+    expect(res.outputs.main![0]!.json.agent).toMatchObject({ reply: 'done', toolCalls: 1 });
+  });
+
+  it('skips an unrecognized tool provider with a warning rather than crashing', async () => {
+    const ctx = makeCtx({
+      aiResponses: [{ reply: 'ok' }],
+      slots: {
+        'ai:model': [modelSlot({ credentialId: 'c1' })],
+        'ai:tool': [{ nodeId: 't1', type: 'tool.future', params: { foo: 'bar' } }],
+      },
+    });
+    const res = await aiAgent.execute(ctx, params(aiAgent, { user_prompt: 'hi' }), [item({})]);
+    if (res.kind !== 'items') throw new Error('expected items');
+    // No tools advertised (the unknown provider was skipped).
+    expect(ctx.aiCalls[0]!.tools).toBeUndefined();
+    expect(ctx.logs.some((l) => l.level === 'warn' && /not a recognized tool source/.test(l.message))).toBe(true);
   });
 });

@@ -313,8 +313,46 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
 ### AI Extract
 - prompt + target JSON schema (Zod-style) → structured `$json.extracted`. Retries on invalid JSON.
 
-### AI Agent (tools)
-- LLM with tool-calling; tools = selected MCP server tools and/or other flows exposed as tools. Multi-turn loop with budget caps.
+### AI Agent (tools) `+PB` — PB-T5 slots
+- LLM with tool-calling; multi-turn reasoning loop with budget caps
+  (`max_steps`/`max_tool_calls`/`max_tokens_total`). The result
+  (`{reply, steps, toolCalls, usage, stopReason}`) merges onto every item under
+  `$json.<save_as>` (default `agent`).
+- **Typed sub-connection slots (PB-T5):** the agent is a **consumer** that
+  declares `inputSlots`:
+  - **`ai:model`** — the chat model to drive. Filled by an `ai.modelOpenai`
+    provider (see below). *Backward-compatible:* when no model slot is attached
+    the agent falls back to its inline `credentialId`/`model` params, so Phase-A
+    agent flows keep working. With neither source it fails loudly (`no model: …`).
+  - **`ai:memory`** *(optional)* — a chat-memory provider (`ai.memoryKv` /
+    `ai.memoryPostgres`). When attached, the agent replays the rolling window
+    (`loadChatHistory`) before the first model turn and persists the new
+    user+assistant pair (`appendChatTurn`) after the final answer (best-effort —
+    a store hiccup is logged, never loses the reply). Blank provider `session_key`
+    defaults to `<nodeId>:<chatId>` (per-node, per-chat isolation).
+  - **`ai:tool`** *(repeatable)* — callable tools, merged **alongside** the
+    inline `tools` param and resolved through the same path. The dedicated tool
+    provider nodes land in **PB-T6**; until then a tool provider whose validated
+    params already match an `AgentToolSource` (`{type:'mcp'|'subflow', …}`) is
+    accepted, and anything else is skipped with a warning (forward-compatible).
+- Tools come from MCP server tools and/or other flows exposed as tools (from
+  either the inline param or the `ai:tool` slots). I6/I7 hold — the node only
+  ever passes a `credentialId`; the host resolves the key.
+
+### AI model providers `+PB` (`ai.modelOpenai`) — PB-T5
+- **Role:** `provider`, **provides:** `ai:model`. A *sub-node* (no data ports —
+  a single dashed `provider` wire) attached to an AI Agent's **required**
+  `ai:model` slot — the n8n "OpenAI Chat Model" sub-node. Generic infrastructure
+  (I2 — a model is a capability, never a domain).
+- **`ai.modelOpenai`** — carries an OpenAI-compatible `credentialId` (base_url +
+  key → OpenAI / OpenRouter / Anthropic-via-proxy / local), `model` (default
+  `gpt-4o-mini`, must support tool/function calling), and optional `temperature`
+  / `max_tokens`. The node **never** touches the network: it only declares which
+  model + credential the agent should use; the agent calls the LLM through the
+  injected `ctx.ai` capability (I3/I6), passing the id the host decrypts (I7).
+- A provider is never executed as a data step — the executor resolves it as the
+  agent's config (`ctx.slots['ai:model'][0]`); its `execute()` fails loudly if a
+  malformed graph ever routes data into it.
 
 ### Chat memory providers `+PB` (`ai.memoryKv`, `ai.memoryPostgres`) — PB-T4
 - **Role:** `provider`, **provides:** `ai:memory`. These are *sub-nodes* (no data
@@ -341,7 +379,7 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
   identifier is validated against `/^[A-Za-z_][A-Za-z0-9_]*$/` per dot-segment
   and double-quoted (`quotePgIdent`) — a hostile table name throws loudly. Fails
   loud when the needed capability (`ctx.kv` for kv, `ctx.db` for postgres) is
-  absent. **Consumed by the AI Agent in PB-T5.**
+  absent. **Consumed by the AI Agent via the `ai:memory` slot (PB-T5, done).**
 
 ### MCP Client
 - credential: MCP server (SSE/stdio-over-http); action: list tools | call tool (name, args expression) → `$json.result`.

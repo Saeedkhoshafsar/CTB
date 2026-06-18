@@ -345,6 +345,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.db.mysql.label': 'MySQL (Database)',
   'nodes.ai.memoryKv.label': 'Chat Memory (KV)',
   'nodes.ai.memoryPostgres.label': 'Postgres Chat Memory',
+  'nodes.ai.modelOpenai.label': 'OpenAI Chat Model',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -397,6 +398,8 @@ export const en: Record<keyof typeof fa, string> = {
     'Gives an AI Agent a rolling conversation memory with no database required — the last few turns are stored in the built-in key-value store, per chat. Attach it to the Agent\'s Memory slot (the dashed wire). This is the default memory provider.',
   'nodeDesc.ai.memoryPostgres':
     'Gives an AI Agent a conversation memory persisted in a Postgres table (the n8n "Postgres Chat Memory" node), selected by a Postgres credential. Attach it to the Agent\'s Memory slot. The table can be created automatically; each turn is stored as rows with the session key, role and content. The connection details stay on the server — this node only references the credential.',
+  'nodeDesc.ai.modelOpenai':
+    'Tells an AI Agent which model to call. Attach it to the Agent\'s Model slot (the dashed wire) and pick an OpenAI-compatible credential (base URL + key) plus a model name — works with OpenAI, OpenRouter, an Anthropic proxy or a local model. This node never calls the network itself; the Agent uses it to know which model and credential to use. The model must support tool/function calling.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'Operation',
@@ -491,6 +494,16 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.ai.memoryPostgres.session_key': 'How rows are grouped into a conversation. Leave blank to key per chat (per node). Expression-aware, e.g. {{ $json.userId }}.',
   'paramDesc.ai.memoryPostgres.memory_window': 'How many prior turns (a user + assistant pair) to replay. Bounded so the prompt stays small.',
   'paramDesc.ai.memoryPostgres.auto_create': 'When on, the table is created with CREATE TABLE IF NOT EXISTS before first use. Turn off if you manage the schema yourself.',
+
+  // ── ai.modelOpenai provider (PB-T5) ──
+  'param.ai.modelOpenai.credentialId': 'OpenAI credential',
+  'param.ai.modelOpenai.model': 'Model',
+  'param.ai.modelOpenai.temperature': 'Temperature',
+  'param.ai.modelOpenai.max_tokens': 'Max tokens (per call)',
+  'paramDesc.ai.modelOpenai.credentialId': 'An OpenAI-compatible credential (base URL + key). The host resolves it — this node only references the credential. Works with OpenAI, OpenRouter, an Anthropic proxy or a local model.',
+  'paramDesc.ai.modelOpenai.model': 'The model name as the provider expects it (e.g. gpt-4o-mini). It must support tool/function calling for the Agent to call tools.',
+  'paramDesc.ai.modelOpenai.temperature': 'Sampling temperature 0–2. Lower is more deterministic. Leave blank for the provider default.',
+  'paramDesc.ai.modelOpenai.max_tokens': 'Cap on tokens generated per model call. Leave blank for the provider default.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

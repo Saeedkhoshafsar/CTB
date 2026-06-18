@@ -336,6 +336,36 @@ export interface NodeCtx {
   db: {
     query(req: DbQueryRequest): Promise<DbQueryResult>;
   } | null;
+  /**
+   * Attached sub-connection providers (PB-T5). A CONSUMER node (e.g. `ai.agent`)
+   * reads the providers wired into its typed input slots here — each slot kind
+   * (`ai:model`/`ai:memory`/`ai:tool`) maps to the provider node(s) attached to
+   * it, already resolved to `{ type, params }` (params validated by the
+   * provider's own schema, exactly as the registry does for a data node). The
+   * executor never RUNS a provider (PB-T1); it resolves the dashed slot edges
+   * and hands the consumer its providers' config through this map. A slot with
+   * no provider is absent from the map; a non-repeatable slot yields at most one
+   * entry. Empty for every node that declares no `inputSlots` (all of Phase A).
+   */
+  slots: AttachedProviders;
+}
+
+/**
+ * The providers attached to a consumer's input slots (PB-T5), keyed by slot
+ * kind. Each entry lists the provider node(s) wired to that slot, in graph
+ * order. A node reads e.g. `ctx.slots['ai:memory']?.[0]` to get its memory
+ * provider's `{ type, params }`.
+ */
+export type AttachedProviders = Partial<Record<SlotKind, AttachedProvider[]>>;
+
+/** One resolved provider on a slot: its node type + validated params. */
+export interface AttachedProvider {
+  /** The provider node's graph id (so a consumer can log/scope by it). */
+  nodeId: string;
+  /** The provider node type, e.g. `ai.memoryKv`. */
+  type: string;
+  /** Params validated against the provider's own paramsSchema. */
+  params: unknown;
 }
 
 /**

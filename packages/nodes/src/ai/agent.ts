@@ -29,15 +29,20 @@
  */
 import {
   AiAgentParamsSchema,
+  appendChatTurn,
   fail,
+  loadChatHistory,
   out,
+  toAiMessages,
   type AiAgentParams,
   type AgentToolSource,
+  type AttachedProvider,
   type AiChatMessage,
   type AiChatResult,
   type AiChatUsage,
   type AiToolCall,
   type AiToolSpec,
+  type ChatMemoryConfig,
   type FlowItem,
   type NodeCtx,
   type NodeDef,
@@ -45,6 +50,14 @@ import {
 
 /** Why the agent loop stopped. */
 export type AgentStopReason = 'final' | 'max_steps' | 'max_tool_calls' | 'max_tokens';
+
+/** The model + credential the agent will call, after resolving the `ai:model` slot. */
+interface ResolvedModel {
+  credentialId: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
 
 /** A resolved tool the agent can call: its spec for the model + a runner for the node. */
 interface ResolvedTool {
@@ -58,6 +71,16 @@ export const aiAgent: NodeDef<AiAgentParams> = {
   category: 'ai',
   meta: { labelKey: 'nodes.ai.agent.label', descriptionKey: 'nodes.ai.agent.desc', icon: 'bot' },
   ports: { inputs: ['main'], outputs: ['main'] },
+  // Typed sub-connection slots (PB-T5). The agent is a CONSUMER: a model
+  // provider is required (the LLM it drives), memory is optional (rolling
+  // conversation history), and tools are repeatable (each attached tool node
+  // adds one callable). Inline params (credentialId/model/tools) remain a
+  // backward-compatible fallback so Phase-A agent flows keep working.
+  inputSlots: [
+    { kind: 'ai:model', required: false, repeatable: false },
+    { kind: 'ai:memory', required: false, repeatable: false },
+    { kind: 'ai:tool', required: false, repeatable: true },
+  ],
   paramsSchema: AiAgentParamsSchema,
   async execute(ctx, params, items) {
     if (!ctx.ai) {
@@ -66,24 +89,55 @@ export const aiAgent: NodeDef<AiAgentParams> = {
 
     const saveAs = params.save_as ?? 'agent';
 
-    // Resolve the attached tools into model specs + node-side runners. An mcp
+    // Resolve the model to call. An attached `ai:model` provider slot wins;
+    // otherwise we fall back to the inline credentialId/model params (back-compat).
+    let modelCfg: ResolvedModel;
+    try {
+      modelCfg = resolveModel(ctx, params);
+    } catch (err) {
+      return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Resolve the attached tools into model specs + node-side runners. Tools come
+    // from BOTH the inline `tools` param AND any `ai:tool` provider slots. An mcp
     // source expands into one tool per advertised server tool; a subflow source
     // becomes a single named tool. Resolution failures (no MCP service, unknown
     // flow) fail the node loudly — a misconfigured agent must not run blind.
     let resolved: ResolvedTool[];
     try {
-      resolved = await resolveTools(ctx, params.tools);
+      const slotSources = toolSourcesFromSlots(ctx, ctx.slots['ai:tool'] ?? []);
+      resolved = await resolveTools(ctx, [...params.tools, ...slotSources]);
     } catch (err) {
       return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
     }
     const toolByName = new Map(resolved.map((t) => [t.spec.name, t]));
     const toolSpecs = resolved.map((t) => t.spec);
 
-    // Conversation seed: system prompt + the user's request.
+    // Resolve the optional `ai:memory` provider slot into a chat-memory config.
+    // When attached, we replay the rolling window before the loop and persist the
+    // new turn after it (PB-T4 runtime). No slot → stateless (legacy behavior).
+    let memory: ChatMemoryConfig | null;
+    try {
+      memory = resolveMemory(ctx, ctx.slots['ai:memory']?.[0]);
+    } catch (err) {
+      return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    let history: AiChatMessage[] = [];
+    if (memory) {
+      try {
+        history = toAiMessages(await loadChatHistory(memory, { kv: ctx.kv, db: ctx.db }));
+      } catch (err) {
+        return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // Conversation seed: system prompt + replayed memory + the user's request.
     const messages: AiChatMessage[] = [];
     if (params.system_prompt && params.system_prompt.trim() !== '') {
       messages.push({ role: 'system', content: params.system_prompt });
     }
+    messages.push(...history);
     messages.push({ role: 'user', content: params.user_prompt });
 
     const usage: AiChatUsage = {};
@@ -104,12 +158,12 @@ export const aiAgent: NodeDef<AiAgentParams> = {
       let result: AiChatResult;
       try {
         result = await ctx.ai.chat({
-          credentialId: params.credentialId,
-          model: params.model,
+          credentialId: modelCfg.credentialId,
+          model: modelCfg.model,
           messages,
           ...(toolSpecs.length > 0 ? { tools: toolSpecs } : {}),
-          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-          ...(params.max_tokens !== undefined ? { maxTokens: params.max_tokens } : {}),
+          ...(modelCfg.temperature !== undefined ? { temperature: modelCfg.temperature } : {}),
+          ...(modelCfg.maxTokens !== undefined ? { maxTokens: modelCfg.maxTokens } : {}),
         });
       } catch (err) {
         return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
@@ -153,6 +207,17 @@ export const aiAgent: NodeDef<AiAgentParams> = {
       if (hitToolCap) {
         stopReason = 'max_tool_calls';
         break;
+      }
+    }
+
+    // Persist the new turn (user prompt + final reply) when memory is attached.
+    // Best-effort: a store hiccup must not lose the answer we already produced —
+    // we log and continue (consistent with the loop never failing on tool errors).
+    if (memory && reply !== '') {
+      try {
+        await appendChatTurn(memory, { kv: ctx.kv, db: ctx.db }, { user: params.user_prompt, assistant: reply });
+      } catch (err) {
+        ctx.log('warn', `ai.agent: failed to persist chat memory: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
@@ -230,6 +295,103 @@ export function parseToolArguments(raw: string): Record<string, unknown> {
     throw new Error('tool arguments must be a JSON object');
   }
   return parsed as Record<string, unknown>;
+}
+
+/**
+ * Resolve which LLM the agent calls (PB-T5). An attached `ai:model` provider
+ * slot supplies the credential + model + sampling knobs; when none is attached
+ * we fall back to the inline `credentialId`/`model` params so existing flows keep
+ * working. Throws (→ node failure) when neither source yields a credential, so a
+ * model-less agent fails loudly instead of calling the host with a blank id.
+ */
+function resolveModel(ctx: NodeCtx, params: AiAgentParams): ResolvedModel {
+  const provider = ctx.slots['ai:model']?.[0];
+  if (provider) {
+    // The provider's params were already validated against AiModelOpenaiParamsSchema
+    // by the executor (PB-T5 resolveSlots), so this read is safe.
+    const p = provider.params as {
+      credentialId: string;
+      model: string;
+      temperature?: number;
+      max_tokens?: number;
+    };
+    if (!p.credentialId || p.credentialId.trim() === '') {
+      throw new Error(`model provider "${provider.nodeId}" has no credential`);
+    }
+    const cfg: ResolvedModel = { credentialId: p.credentialId, model: p.model };
+    if (p.temperature !== undefined) cfg.temperature = p.temperature;
+    if (p.max_tokens !== undefined) cfg.maxTokens = p.max_tokens;
+    return cfg;
+  }
+  // No model slot → inline fallback (back-compat). The inline credentialId is
+  // optional in the schema now, so enforce it here when it's the only source.
+  if (!params.credentialId || params.credentialId.trim() === '') {
+    throw new Error('no model: attach an ai:model provider or set an inline credential');
+  }
+  const cfg: ResolvedModel = { credentialId: params.credentialId, model: params.model };
+  if (params.temperature !== undefined) cfg.temperature = params.temperature;
+  if (params.max_tokens !== undefined) cfg.maxTokens = params.max_tokens;
+  return cfg;
+}
+
+/**
+ * Resolve the optional `ai:memory` provider slot into a `ChatMemoryConfig`
+ * (PB-T5). Mirrors the two provider param shapes (`ai.memoryKv` /
+ * `ai.memoryPostgres`); the resolved `session_key` falls back to a per-chat,
+ * per-node default (matching the old ai.llmChat key convention) when blank, so a
+ * single attached provider gives every chat isolated memory out of the box.
+ * Returns null when no memory provider is attached.
+ */
+function resolveMemory(ctx: NodeCtx, provider: AttachedProvider | undefined): ChatMemoryConfig | null {
+  if (!provider) return null;
+  const defaultKey = `${ctx.nodeId}:${ctx.chatId ?? 'nochat'}`;
+  if (provider.type === 'ai.memoryKv') {
+    const p = provider.params as { session_key: string; memory_window: number };
+    return {
+      kind: 'kv',
+      sessionKey: p.session_key.trim() !== '' ? p.session_key : defaultKey,
+      window: p.memory_window,
+    };
+  }
+  if (provider.type === 'ai.memoryPostgres') {
+    const p = provider.params as {
+      credentialId: string;
+      table: string;
+      session_key: string;
+      memory_window: number;
+      auto_create: boolean;
+    };
+    return {
+      kind: 'postgres',
+      credentialId: p.credentialId,
+      table: p.table,
+      sessionKey: p.session_key.trim() !== '' ? p.session_key : defaultKey,
+      window: p.memory_window,
+      autoCreate: p.auto_create,
+    };
+  }
+  throw new Error(`unsupported memory provider type "${provider.type}"`);
+}
+
+/**
+ * Convert any attached `ai:tool` provider slots into `AgentToolSource`s so they
+ * flow through the same `resolveTools` path as inline tools (PB-T5). The tool
+ * PROVIDER nodes themselves land in PB-T6; until then a provider whose validated
+ * params already match an `AgentToolSource` (`{type:'mcp'|'subflow', …}`) is
+ * accepted, and anything else is skipped with a warning rather than crashing the
+ * agent — forward-compatible with the dedicated tool nodes.
+ */
+function toolSourcesFromSlots(ctx: NodeCtx, providers: readonly AttachedProvider[]): AgentToolSource[] {
+  const sources: AgentToolSource[] = [];
+  for (const provider of providers) {
+    const p = provider.params as { type?: unknown };
+    if (p && (p.type === 'mcp' || p.type === 'subflow')) {
+      sources.push(provider.params as AgentToolSource);
+      continue;
+    }
+    ctx.log('warn', `ai.agent: tool provider "${provider.nodeId}" (${provider.type}) is not a recognized tool source — skipped`);
+  }
+  return sources;
 }
 
 /**

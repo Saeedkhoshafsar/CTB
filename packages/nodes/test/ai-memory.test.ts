@@ -30,11 +30,11 @@ import {
 import { makeCtx } from './node-harness';
 
 describe('ai memory providers — registration & contract (PB-T4)', () => {
-  it('registers both memory providers; registry is 46 types', () => {
+  it('registers both memory providers; registry is 47 types', () => {
     const types = builtinNodes.map((n) => n.type);
     expect(types).toContain('ai.memoryKv');
     expect(types).toContain('ai.memoryPostgres');
-    expect(builtinNodes.length).toBe(46);
+    expect(builtinNodes.length).toBe(47);
   });
 
   it('both are ai:memory providers with no data input', () => {

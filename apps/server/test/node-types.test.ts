@@ -64,15 +64,41 @@ describe('nodeTypeInfos (P2-T2)', () => {
   it('omits role/inputSlots/provides for plain data nodes (Phase-A back-compat)', () => {
     // A plain data node (no slots, no provider role) must NOT carry any of the
     // new keys — its palette payload stays byte-identical to before PB-T1. The
-    // ONLY builtins that opt in today are the PB-T4 memory providers, which we
-    // assert separately below; every other node here is still a plain data node.
-    const memoryProviders = new Set(['ai.memoryKv', 'ai.memoryPostgres']);
+    // builtins that opt in today are the PB-T4 memory providers + the PB-T5
+    // `ai.modelOpenai` provider + the `ai.agent` consumer (which declares
+    // inputSlots); we assert those separately below. Every other node here is
+    // still a plain data node.
+    const providers = new Set(['ai.memoryKv', 'ai.memoryPostgres', 'ai.modelOpenai']);
+    const consumersWithSlots = new Set(['ai.agent']);
     for (const info of infos) {
-      if (memoryProviders.has(info.type)) continue;
+      if (providers.has(info.type) || consumersWithSlots.has(info.type)) continue;
       expect(info).not.toHaveProperty('role');
       expect(info).not.toHaveProperty('inputSlots');
       expect(info).not.toHaveProperty('provides');
     }
+  });
+
+  it('surfaces role:provider + provides:ai:model for the PB-T5 ai.modelOpenai provider', () => {
+    const info = infos.find((i) => i.type === 'ai.modelOpenai')!;
+    expect(info).toBeDefined();
+    expect(info.role).toBe('provider');
+    expect(info.provides).toBe('ai:model');
+    expect(info.ports.inputs).toEqual([]);
+    expect(info.ports.outputs).toEqual(['provider']);
+    expect(info).not.toHaveProperty('inputSlots');
+  });
+
+  it('surfaces the PB-T5 inputSlots for the real ai.agent builtin', () => {
+    const agent = infos.find((i) => i.type === 'ai.agent')!;
+    expect(agent).toBeDefined();
+    // consumer: role defaults to 'data' so it is OMITTED from the payload
+    expect(agent).not.toHaveProperty('role');
+    expect(agent).not.toHaveProperty('provides');
+    expect(agent.inputSlots).toEqual([
+      { kind: 'ai:model', required: false, repeatable: false },
+      { kind: 'ai:memory', required: false, repeatable: false },
+      { kind: 'ai:tool', required: false, repeatable: true },
+    ]);
   });
 
   it('surfaces role:provider + provides:ai:memory for the PB-T4 memory providers', () => {

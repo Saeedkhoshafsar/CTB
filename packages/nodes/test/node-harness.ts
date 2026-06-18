@@ -7,6 +7,7 @@
 import { runInSandbox } from '@ctb/sandbox';
 import type {
   AiChatRequest,
+  AttachedProviders,
   CollectionRecord,
   CtbUser,
   DbQueryRequest,
@@ -182,6 +183,13 @@ export function makeCtx(
     seedCollections?: Record<string, { id?: string; data: Record<string, unknown> }[]>;
     /** Slugs that exist (so unknown-slug throws like the real store). Defaults to seeded slugs. */
     knownCollections?: string[];
+    /**
+     * PB-T5: the providers attached to a CONSUMER node's typed input slots
+     * (`ai:model`/`ai:memory`/`ai:tool`), exactly as the executor's
+     * `resolveSlots` would hand them over. Each entry is `{ nodeId, type,
+     * params }`. Defaults to `{}` (no slots — every plain data node).
+     */
+    slots?: AttachedProviders;
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -590,6 +598,8 @@ export function makeCtx(
               return { rows: [], rowCount: 0 };
             },
           },
+    // PB-T5: attached sub-connection providers (default: none).
+    slots: overrides.slots ?? {},
   };
 
   function requireCollection(slug: string): Map<string, CollectionRecord> {

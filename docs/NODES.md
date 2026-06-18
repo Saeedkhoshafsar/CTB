@@ -390,6 +390,35 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
   to the model as `error: …` strings (never a node failure) so the agent can
   recover by trying differently.
 
+### Speech nodes `+PB` (`ai.speechToText`, `ai.textToSpeech`) — PB-T7
+- Plain **data** nodes (`main` in/out — NOT providers): the transcribe + TTS legs
+  of the voice flow (the PLAN2 screenshot). Both pick an OpenAI-compatible
+  provider through the existing `openAiApi` credential; the host resolves it to
+  base URL + key (I7 — the node only ever passes a `credentialId`). The actual
+  HTTP work is done host-side through two new optional `ctx.ai` capabilities,
+  `ctx.ai.transcribe` / `ctx.ai.speech` (I3/I6 — nullable, fail-loud when the
+  host doesn't wire them, e.g. an older instance or a unit test). Each runs ONCE
+  per node run (a speech call is expensive execution-external work); the
+  expression-aware fields resolve against the FIRST item.
+- **`ai.speechToText`** — transcribes a voice/audio file to text. `source` picks
+  how the audio is located: `telegram` (the default — `audio_source` is a
+  Telegram `file_id` the host downloads via `ctx.tg.getFile`, e.g.
+  `{{ $json.message.voice.file_id }}`) or `file` (`audio_source` is a CTB file id
+  read via `ctx.files.read`). The host POSTs the bytes as a multipart
+  `/audio/transcriptions` request (`response_format: verbose_json` so language +
+  duration come back). The result `{ text, language?, duration? }` lands on every
+  output item under `save_as` (default `transcript`). Optional `language` (ISO-639-1)
+  and `prompt` bias the decoding. Fails loud on an absent capability, an empty
+  file, a download error or a provider error.
+- **`ai.textToSpeech`** — synthesizes speech from `text`
+  (e.g. `{{ $json.ai.reply }}`) with a chosen `voice` + `format`
+  (`mp3`/`opus`/`aac`/`flac`/`wav`/`pcm`; `opus` suits Telegram voice notes) and
+  optional `speed`. The host POSTs `/audio/speech`, returns the audio bytes, and
+  the node STORES them via `ctx.files.write` → a CTB file id. The result
+  `{ fileId, mime, size, url }` lands on every item under `save_as` (default
+  `speech`); feed `fileId` to `tg.sendMedia` (`source:'file'`) to send it. Fails
+  loud on an absent capability/file store or a provider error.
+
 ### Chat memory providers `+PB` (`ai.memoryKv`, `ai.memoryPostgres`) — PB-T4
 - **Role:** `provider`, **provides:** `ai:memory`. These are *sub-nodes* (no data
   ports — a single dashed `provider` wire), attached to an AI Agent's `ai:memory`

@@ -7,6 +7,8 @@
 import { runInSandbox } from '@ctb/sandbox';
 import type {
   AiChatRequest,
+  AiSpeechRequest,
+  AiTranscribeRequest,
   AttachedProviders,
   CollectionRecord,
   CtbUser,
@@ -69,6 +71,10 @@ export interface FakeCtx extends NodeCtx {
   recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[];
   /** ai.llmChat (P5-T1): recorded LLM chat requests. */
   aiCalls: AiChatRequest[];
+  /** ai.speechToText (PB-T7): recorded transcription requests. */
+  transcribeCalls: AiTranscribeRequest[];
+  /** ai.textToSpeech (PB-T7): recorded speech-synthesis requests. */
+  speechCalls: AiSpeechRequest[];
   /** ai.mcpClient (P5-T3): recorded MCP requests by kind. */
   mcpListCalls: McpListToolsRequest[];
   mcpCallCalls: McpCallToolRequest[];
@@ -129,6 +135,36 @@ export function makeCtx(
           toolCalls?: { id: string; name: string; argumentsJson: string }[];
         }[]
       | null;
+    /**
+     * PB-T7: scripted ai.speechToText behaviour for ctx.ai.transcribe.
+     *  - omit → a default `{ text: 'transcribed: <filename>' }`.
+     *  - object → returned verbatim.
+     *  - function → called with the request.
+     *  - `error` → ctx.ai.transcribe throws this message.
+     * Pass `dropTranscribe: true` to drop the method so the node sees an
+     * instance whose `ctx.ai.transcribe` is undefined (capability absent).
+     */
+    transcribeResult?:
+      | { text: string; language?: string; duration?: number }
+      | ((req: AiTranscribeRequest) => { text: string; language?: string; duration?: number })
+      | { error: string };
+    /** Drop ctx.ai.transcribe so the node sees a host without the capability. */
+    dropTranscribe?: boolean;
+    /**
+     * PB-T7: scripted ai.textToSpeech behaviour for ctx.ai.speech.
+     *  - omit → a default that returns a tiny byte buffer + a mime from format.
+     *  - object → returned verbatim.
+     *  - function → called with the request.
+     *  - `error` → ctx.ai.speech throws this message.
+     * Pass `dropSpeech: true` to drop the method so the node sees an instance
+     * whose `ctx.ai.speech` is undefined (capability absent).
+     */
+    speechResult?:
+      | { audio: Uint8Array; mime: string }
+      | ((req: AiSpeechRequest) => { audio: Uint8Array; mime: string })
+      | { error: string };
+    /** Drop ctx.ai.speech so the node sees a host without the capability. */
+    dropSpeech?: boolean;
     /**
      * P5-T3: scripted MCP behaviour for ctx.mcp. Pass `null` to simulate an
      * instance with no MCP service (ctx.mcp === null). Omit → a default that
@@ -217,6 +253,8 @@ export function makeCtx(
   const recordEvents: { event: 'created' | 'updated' | 'deleted'; slug: string; recordId: string }[] = [];
   const aiCalls: AiChatRequest[] = [];
   let aiIdx = 0;
+  const transcribeCalls: AiTranscribeRequest[] = [];
+  const speechCalls: AiSpeechRequest[] = [];
   const mcpListCalls: McpListToolsRequest[] = [];
   const mcpCallCalls: McpCallToolRequest[] = [];
   const dbCalls: DbQueryRequest[] = [];
@@ -281,6 +319,8 @@ export function makeCtx(
     collectionsBag,
     recordEvents,
     aiCalls,
+    transcribeCalls,
+    speechCalls,
     mcpListCalls,
     mcpCallCalls,
     dbCalls,
@@ -559,6 +599,35 @@ export function makeCtx(
                 ...(r.toolCalls ? { toolCalls: r.toolCalls } : {}),
               };
             },
+            // ai.speechToText (PB-T7): records the request; default echoes the
+            // filename. `dropTranscribe` omits the method (capability absent).
+            ...(overrides.dropTranscribe
+              ? {}
+              : {
+                  async transcribe(req: AiTranscribeRequest) {
+                    transcribeCalls.push(req);
+                    const r = overrides.transcribeResult;
+                    if (r && 'error' in r) throw new Error(r.error);
+                    if (typeof r === 'function') return r(req);
+                    if (r) return r;
+                    return { text: `transcribed: ${req.filename}` };
+                  },
+                }),
+            // ai.textToSpeech (PB-T7): records the request; default returns a
+            // 3-byte buffer + a mime from the format. `dropSpeech` omits it.
+            ...(overrides.dropSpeech
+              ? {}
+              : {
+                  async speech(req: AiSpeechRequest) {
+                    speechCalls.push(req);
+                    const r = overrides.speechResult;
+                    if (r && 'error' in r) throw new Error(r.error);
+                    if (typeof r === 'function') return r(req);
+                    if (r) return r;
+                    const mime = req.format === 'opus' ? 'audio/ogg' : 'audio/mpeg';
+                    return { audio: new Uint8Array([1, 2, 3]), mime };
+                  },
+                }),
           },
     // ai.mcpClient (P5-T3): records requests; `mcp: null` simulates an instance
     // with no MCP service (ctx.mcp === null); omit → a default echo server.

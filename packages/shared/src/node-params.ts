@@ -1497,6 +1497,70 @@ export const AiModelOpenaiParamsSchema = z.object({
 });
 export type AiModelOpenaiParams = z.infer<typeof AiModelOpenaiParamsSchema>;
 
+// ── Speech nodes (PB-T7) ─────────────────────────────────────────────────────
+
+/**
+ * ai.speechToText (PB-T7) — transcribe a voice/audio file to text via an
+ * OpenAI-compatible `/audio/transcriptions` endpoint. The author points at the
+ * audio either by a Telegram `file_id` (downloaded host-side via `ctx.tg.getFile`)
+ * or by a CTB file id (read via `ctx.files.read`). The host resolves the
+ * openAiApi credential (base_url + key) — the node only ever passes a
+ * `credentialId` (invariant I7).
+ */
+export const AiSpeechToTextParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key); the host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** Transcription model as the provider expects it, e.g. `whisper-1`. */
+  model: z.string().min(1).default('whisper-1'),
+  /**
+   * How to locate the audio:
+   *  - `telegram` — `audio_source` is a Telegram `file_id` (voice/audio/document)
+   *    the host downloads via `ctx.tg.getFile`.
+   *  - `file`     — `audio_source` is a CTB file id read via `ctx.files.read`.
+   */
+  source: z.enum(['telegram', 'file']).default('telegram'),
+  /** The Telegram file_id OR CTB file id of the audio (expression-aware). */
+  audio_source: z.string().min(1),
+  /** Optional ISO-639-1 language hint (`en`, `fa`, …) to improve accuracy. */
+  language: z.string().default(''),
+  /** Optional prompt biasing the decoding (proper nouns, prior context). */
+  prompt: z.string().default(''),
+  /** Where the `{ text, language, duration }` result lands on each output item. */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('transcript'),
+});
+export type AiSpeechToTextParams = z.infer<typeof AiSpeechToTextParamsSchema>;
+
+/**
+ * ai.textToSpeech (PB-T7) — synthesize speech from text via an OpenAI-compatible
+ * `/audio/speech` endpoint, store the audio in the file store, and surface a CTB
+ * file id that `tg.sendMedia` (`source:'file'`) can send as a voice/audio
+ * message. The host resolves the openAiApi credential — the node only ever
+ * passes a `credentialId` (invariant I7).
+ */
+export const AiTextToSpeechParamsSchema = z.object({
+  /** OpenAI-compatible credential (base_url + key); the host resolves it (I7). */
+  credentialId: z.string().min(1).meta({ ctbWidget: 'credentialRef', credentialType: 'openAiApi' }),
+  /** TTS model as the provider expects it, e.g. `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`. */
+  model: z.string().min(1).default('tts-1'),
+  /** The text to synthesize (expression-aware — usually `{{ $json.ai.reply }}`). */
+  text: z.string().min(1),
+  /** Voice name as the provider expects it, e.g. `alloy`, `nova`, `shimmer`. */
+  voice: z.string().min(1).default('alloy'),
+  /** Output container/codec. `opus` suits Telegram voice notes; `mp3` is universal. */
+  format: z.enum(['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']).default('mp3'),
+  /** Playback speed 0.25–4.0 (provider default when omitted). */
+  speed: z.coerce.number().min(0.25).max(4).optional(),
+  /** Where the `{ fileId, mime, size, url }` result lands on each output item. */
+  save_as: z
+    .string()
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 'must be a valid identifier')
+    .default('speech'),
+});
+export type AiTextToSpeechParams = z.infer<typeof AiTextToSpeechParamsSchema>;
+
 // ── AI Agent tool nodes (PB-T6) ──────────────────────────────────────────────
 
 /**

@@ -19,7 +19,11 @@ import {
   type AiChatMessage,
   type AiChatRequest,
   type AiChatResult,
+  type AiSpeechRequest,
+  type AiSpeechResult,
   type AiToolCall,
+  type AiTranscribeRequest,
+  type AiTranscribeResult,
   type CollectionFilter,
   type CredentialData,
   type FlowItem,
@@ -231,25 +235,35 @@ function makeCredentials(db: Db, key: Buffer): NonNullable<NodeCtx['credentials'
  * loudly. The `fetchImpl` is injectable so tests run with no network.
  */
 function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeCtx['ai']> {
+  /**
+   * Resolve a stored openAiApi credential to its base URL + key (shared by chat,
+   * transcribe and speech). Throws on a missing / undecryptable / wrong-type
+   * credential so the calling node fails loudly. The decrypted key stays here
+   * (host-side) and never crosses into node code (invariants I6/I7).
+   */
+  function resolveOpenAi(credentialId: string): { baseUrl: string; apiKey: string } {
+    const row = db
+      .select()
+      .from(credentialsTable)
+      .where(eq(credentialsTable.id, credentialId))
+      .get();
+    if (!row) throw new Error(`credential "${credentialId}" not found`);
+    let data: CredentialData;
+    try {
+      data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
+    } catch {
+      throw new Error(`credential "${credentialId}" could not be decrypted`);
+    }
+    if (data.type !== 'openAiApi') {
+      throw new Error(`credential "${credentialId}" is not an OpenAI-compatible API credential`);
+    }
+    return { baseUrl: data.baseUrl.replace(/\/+$/, ''), apiKey: data.apiKey };
+  }
+
   return {
     async chat(req: AiChatRequest): Promise<AiChatResult> {
-      const row = db
-        .select()
-        .from(credentialsTable)
-        .where(eq(credentialsTable.id, req.credentialId))
-        .get();
-      if (!row) throw new Error(`credential "${req.credentialId}" not found`);
-      let data: CredentialData;
-      try {
-        data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
-      } catch {
-        throw new Error(`credential "${req.credentialId}" could not be decrypted`);
-      }
-      if (data.type !== 'openAiApi') {
-        throw new Error(`credential "${req.credentialId}" is not an OpenAI-compatible API credential`);
-      }
-
-      const url = `${data.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+      const data = resolveOpenAi(req.credentialId);
+      const url = `${data.baseUrl}/chat/completions`;
       const payload: Record<string, unknown> = {
         model: req.model,
         // Translate CTB messages into the OpenAI wire shape (tool calls/results
@@ -299,7 +313,123 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
       }
       return parseChatCompletion(body);
     },
+
+    // ── Speech-to-Text (ai.speechToText, PB-T7) ──────────────────────────────
+    async transcribe(req: AiTranscribeRequest): Promise<AiTranscribeResult> {
+      const data = resolveOpenAi(req.credentialId);
+      const url = `${data.baseUrl}/audio/transcriptions`;
+
+      // OpenAI-compatible transcription is a multipart/form-data upload: the
+      // audio part plus the model (+ optional language / prompt). We build a
+      // standard FormData/Blob — undici/Node fetch sets the boundary header.
+      const form = new FormData();
+      const ab = req.audio.buffer.slice(
+        req.audio.byteOffset,
+        req.audio.byteOffset + req.audio.byteLength,
+      ) as ArrayBuffer;
+      const blob = new Blob([ab], req.mime ? { type: req.mime } : {});
+      form.append('file', blob, req.filename);
+      form.append('model', req.model);
+      // Ask for a verbose JSON body so we can surface language + duration.
+      form.append('response_format', 'verbose_json');
+      if (req.language !== undefined && req.language !== '') form.append('language', req.language);
+      if (req.prompt !== undefined && req.prompt !== '') form.append('prompt', req.prompt);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 120_000);
+      let res: Response;
+      try {
+        res = await fetchImpl(url, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${data.apiKey}` },
+          body: form,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const text = await res.text();
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`speech provider returned HTTP ${res.status}: ${text.slice(0, 500)}`);
+      }
+      return parseTranscription(text);
+    },
+
+    // ── Text-to-Speech (ai.textToSpeech, PB-T7) ──────────────────────────────
+    async speech(req: AiSpeechRequest): Promise<AiSpeechResult> {
+      const data = resolveOpenAi(req.credentialId);
+      const url = `${data.baseUrl}/audio/speech`;
+      const format = req.format ?? 'mp3';
+      const payload: Record<string, unknown> = {
+        model: req.model,
+        input: req.input,
+        voice: req.voice,
+        response_format: format,
+      };
+      if (req.speed !== undefined) payload.speed = req.speed;
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 120_000);
+      let res: Response;
+      try {
+        res = await fetchImpl(url, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${data.apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (res.status < 200 || res.status >= 300) {
+        const errText = await res.text();
+        throw new Error(`speech provider returned HTTP ${res.status}: ${errText.slice(0, 500)}`);
+      }
+      const buf = new Uint8Array(await res.arrayBuffer());
+      return { audio: buf, mime: speechMime(format) };
+    },
   };
+}
+
+/** Parse an OpenAI-compatible transcription response (verbose or plain JSON). */
+function parseTranscription(text: string): AiTranscribeResult {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // Some providers return raw text when `response_format` isn't JSON — treat
+    // the whole body as the transcript.
+    return { text: text.trim() };
+  }
+  const b = (body ?? {}) as { text?: unknown; language?: unknown; duration?: unknown };
+  const result: AiTranscribeResult = { text: typeof b.text === 'string' ? b.text : '' };
+  if (typeof b.language === 'string') result.language = b.language;
+  if (typeof b.duration === 'number') result.duration = b.duration;
+  return result;
+}
+
+/** Map an OpenAI speech `response_format` to a MIME type for the stored file. */
+function speechMime(format: string): string {
+  switch (format) {
+    case 'opus':
+      return 'audio/ogg';
+    case 'aac':
+      return 'audio/aac';
+    case 'flac':
+      return 'audio/flac';
+    case 'wav':
+      return 'audio/wav';
+    case 'pcm':
+      return 'audio/pcm';
+    case 'mp3':
+    default:
+      return 'audio/mpeg';
+  }
 }
 
 /**

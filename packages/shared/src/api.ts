@@ -486,3 +486,91 @@ export interface ApiErrorBody {
   /** Structured activation problems (P2-T4) — lets the canvas badge the offending node. */
   nodeProblems?: FlowProblem[];
 }
+
+// ---------------------------------------------------------------------------
+// MCP server surface (PC-T3) — CTB as a Model-Context-Protocol *server*
+// ---------------------------------------------------------------------------
+
+/**
+ * CTB speaks MCP over a single streamable-HTTP endpoint (`POST /api/v1/mcp`)
+ * using plain JSON-RPC 2.0 — the wire format the MCP spec is built on. We
+ * implement the protocol natively rather than pulling in the MCP SDK so it
+ * lives INSIDE the existing bearer-auth `/api/v1` scope (I7) and reuses the
+ * EXACT same capabilities the REST routes expose (no surface drift, I5): an
+ * external AI agent (Claude Desktop, an IDE, …) points its MCP client at the
+ * endpoint with `Authorization: Bearer ctb_…` and gets the same node catalog,
+ * flow authoring, trigger, collection-query, and send powers — bounded by the
+ * token's bot scope exactly like the REST surface.
+ *
+ * These schemas describe the JSON-RPC envelope and the MCP `initialize` /
+ * `tools/list` / `tools/call` payloads we accept and emit. They are SHARED so
+ * a future typed MCP client (or tests) speaks the identical shapes (I5).
+ */
+
+/** The MCP protocol revision this server implements (date-based, per spec). */
+export const MCP_PROTOCOL_VERSION = '2025-06-18';
+
+/** Server identity returned in `initialize`. */
+export const MCP_SERVER_INFO = { name: 'ctb', version: '1' } as const;
+
+/** A JSON-RPC 2.0 request id — string, number, or null (notifications omit it). */
+export const JsonRpcIdSchema = z.union([z.string(), z.number(), z.null()]);
+export type JsonRpcId = z.infer<typeof JsonRpcIdSchema>;
+
+/**
+ * A single inbound JSON-RPC 2.0 message. `id` absent ⇒ a notification (no
+ * response is sent). `params` is method-specific and validated per-method.
+ */
+export const JsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal('2.0'),
+  id: JsonRpcIdSchema.optional(),
+  method: z.string().min(1),
+  params: z.unknown().optional(),
+});
+export type JsonRpcRequest = z.infer<typeof JsonRpcRequestSchema>;
+
+/** Standard JSON-RPC error codes we use (subset of the spec + MCP additions). */
+export const JSON_RPC_ERRORS = {
+  parseError: -32700,
+  invalidRequest: -32600,
+  methodNotFound: -32601,
+  invalidParams: -32602,
+  internalError: -32603,
+} as const;
+
+export interface JsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+/** A JSON-RPC 2.0 response — exactly one of `result` / `error` is present. */
+export interface JsonRpcResponse {
+  jsonrpc: '2.0';
+  id: JsonRpcId;
+  result?: unknown;
+  error?: JsonRpcError;
+}
+
+/** Params for `tools/call`: which tool, and its arguments object. */
+export const McpToolCallParamsSchema = z.object({
+  name: z.string().min(1),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
+export type McpToolCallParams = z.infer<typeof McpToolCallParamsSchema>;
+
+/**
+ * The list of MCP tools CTB advertises. The `inputSchema` strings name the
+ * JSON-Schema each tool's arguments follow (the server emits the real
+ * JSON-Schema objects at runtime). This is the inverse of the `ai.mcpClient`
+ * node (P5-T3, where CTB *consumes* a remote MCP server).
+ */
+export const MCP_TOOL_NAMES = [
+  'list_nodes',
+  'validate_flow',
+  'create_flow',
+  'trigger_flow',
+  'query_collection',
+  'send_message',
+] as const;
+export type McpToolName = (typeof MCP_TOOL_NAMES)[number];

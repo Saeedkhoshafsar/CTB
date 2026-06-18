@@ -216,6 +216,10 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       registry: opts.engine.registry,
       gateway: opts.engine.gateway,
       userStore: opts.engine.userStore,
+      // PC-T3: the MCP `query_collection` tool reads through the SAME engine
+      // collection store the panel + `data.collection` node use (absent when no
+      // sqlite handle was wired ⇒ the tool reports collections_not_available).
+      collectionStore: opts.engine.collectionStore,
       // PC-T2: re-arm cron schedules when a v1 authoring write changes the
       // active-flow set / graphs, exactly like the panel's flows API.
       onFlowsChanged: () => void opts.engine!.scheduler.reconcile(),

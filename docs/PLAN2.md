@@ -167,45 +167,53 @@ minimal agent, PB-T5 upgrades it to the attached-provider model.
 > configurable) and answers them one by one. "We add the bot to a channel/group,
 > make it admin, and a configurable node covers the different scenarios."
 >
-> **This is a NEW pillar, not an inline PB/PC task** — it breaks PLAN2's core
-> "pure Telegram **Bot API** + stateless flow steps" assumption and adds a
-> long-lived realtime audio pipeline. It is sequenced LAST (after the open-builder
-> surface) and gated behind an explicit feasibility + design sign-off.
+> **Design principle the user set (2026-06-18, MUST honour):** *don't bake a single
+> path into the roadmap and thereby narrow the other options* — instead **make the
+> nodes multi-purpose and put the choice in the node's own settings.** So Phase E
+> picks **no** transport/mode here; every fork below is a **node/credential
+> setting**, decided per-flow by the author, not a phase-level decision. (This is
+> just invariant **I2 — generic only** — applied to voice: a "Voice Call" node is a
+> generic capability, the scenario lives in the user's config.) The user also noted
+> that, like adding a helper bot such as `@myidbot` alongside our own bot, the
+> design must allow **a companion/helper account to carry a leg** — so the *who
+> connects the audio* is also a setting, not a hard-coded assumption.
 
-## E.0 — Feasibility findings (researched 2026-06-18, MUST read before building)
+## E.0 — Feasibility findings (researched 2026-06-18) — turned into SETTINGS, not forks
 
-| Question | Finding | Consequence for CTB |
+| Question | Finding | How it becomes a *node/credential setting* (no roadmap lock-in) |
 |---|---|---|
-| Does the **Bot API** expose voice/video calls or group voice chats? | **No.** Confirmed by Telegram docs + community (Latenode, May 2025). The Bot API has *no* call/voice-chat methods at all. | The whole feature lives **outside** the Bot-API surface every existing CTB node uses. |
-| What *can* join a Telegram voice chat / place a 1:1 call? | **MTProto** via `tgcalls`/`pytgcalls` (Python: Pyrogram/Telethon) or `tgcalls`/`gram-tgcalls` (JS: GramJS), all driving **WebRTC** through `ntgcalls`/`libtgcalls`. They stream **raw PCM** frames in/out of group calls and private calls. | Needs a **userbot CLIENT** + a native WebRTC media layer running as a **persistent process** — not a webhook handler. |
-| Can a normal **bot token** do it? | **No.** Joining a voice chat / calling requires a **user account (phone-number session)**, i.e. a *userbot*. Even "join as channel" still uses a user MTProto session. | Introduces a brand-new credential type (`telegramUserSession` — an encrypted MTProto session string, I7) and the operational/ToS weight of running a userbot. The "add the bot as admin" mental model is *partly* right (admin rights ARE needed to manage a group call), but a **separate user session** does the audio, not the Bot-API bot. |
-| Is the audio a request/response, like every other node? | **No.** It's a **continuous bidirectional stream** for the whole call. | The executor's "node runs, returns items, done" model can't host the call loop. We need a **host-side long-lived "call session" service** (like the scheduler/trigger runtime) that flows *attach to* via events — not a node that blocks for 30 minutes. |
+| Does the **Bot API** expose voice/video calls or group voice chats? | **No.** Confirmed by Telegram docs + community (Latenode, May 2025). The Bot API has *no* call/voice-chat methods. | Not a choice — it's a constraint. The audio leg always rides MTProto; the **`voiceConnection` credential** (E.2) abstracts "who connects", so a flow never hard-codes it. |
+| What *can* join a Telegram voice chat / place a 1:1 call? | **MTProto** via `tgcalls`/`pytgcalls` (Python) or `tgcalls`/`gram-tgcalls` (JS), driving **WebRTC** (`ntgcalls`). Streams raw **PCM** in/out of group **and** 1:1 calls. | The **same** Call Session Service handles both group and 1:1; *which* a given flow uses is the `trigger.callEvent` / `call.connect` **`target` setting** (a chat id, a channel, or a user) — one node, every scenario. |
+| Who carries the audio — our bot, or a companion account? | A **bot token cannot join calls**; a **user session** must. But that user session can be **the operator's own userbot OR a delegated "companion" account** added to the group alongside our Bot-API bot (the `@myidbot`-style helper the user described). | The **`voiceConnection` credential** has a `kind` setting: `userbot` (a session string the operator owns) — and is forward-shaped for `companion`/`external` providers. The flow just references a credential; swapping the connector never touches the graph. |
+| Node-native (JS) vs Python (`pytgcalls`) media engine? | Both exist; Python is more battle-tested, JS keeps one language. | **Not a user-facing choice and not locked here.** It's an **internal host adapter** behind the `ctx.call` interface (E.1). The host can ship a JS adapter and/or a Python-sidecar adapter; nodes/flows are 100% agnostic. We pick the implementation when we build PE-T2, and can change it later without touching a single node. |
+| Is the audio a request/response, like every other node? | **No** — a continuous bidirectional stream for the whole call. | The stream stays in a **host service**; flows see discrete **events** (trigger) + **actions** (`ctx.call.*`). Unchanged executor model. |
 
-**Verdict:** feasible and high-value, but it is the **heaviest** addition in PLAN2 —
-a new process type, a new native dependency, a new credential, and real ToS /
-abuse considerations. Treat it as its own phase with its own risk budget.
+**Verdict:** feasible and high-value. The weight (a long-lived service + a native
+media dep + a session credential) is **isolated in the host**; the *product surface*
+is just a few generic, **fully-configurable** nodes — so building it narrows
+nothing else.
 
 ## E.1 — The architecture (how it fits CTB's invariants)
 
-The trick is the **same one we used for Telegram updates and the scheduler**: the
-*real-time, stateful* work lives in a **host capability/service**; flows stay
-**stateless and event-driven**. A live call becomes a sequence of discrete
-*events* (a caller joined, a question turn opened, an utterance was transcribed)
-that **trigger** a flow, and a small set of *actions* (speak this audio, grant the
-next turn, mute someone) the flow can **invoke** — never a node that holds the
-socket open.
+Same move as Telegram updates + the scheduler: the *real-time, stateful* work lives
+in a **host service**; flows stay **stateless and event-driven**. A live call
+becomes discrete *events* that **trigger** a flow, and a small set of *actions* the
+flow can **invoke**. The connector and the mode are **settings**, not branches.
 
 ```
           ┌─────────────────── apps/server (host) ───────────────────┐
           │  Call Session Service (NEW, long-lived, like scheduler)   │
-          │   • userbot MTProto session  (gram-tgcalls / pytgcalls)   │
+          │   • pluggable connector adapters behind ONE ctx.call iface:│
+          │       - userbot   (gram-tgcalls / pytgcalls sidecar)       │
+          │       - companion (a delegated helper account)   [later]   │
+          │       - external  (a 3rd-party voice bridge)     [later]   │
           │   • WebRTC media in/out (PCM frames)                       │
-          │   • turn-taking queue (sequential | random, configurable)  │
+          │   • turn-taking queue: mode + order are PER-CALL settings  │
           │   • VAD + chunked STT  →  emits "utterance" events         │
           └───┬───────────────────────────────▲──────────────────────┘
    emits events│ (callJoined, turnOpened,      │ invokes actions
    → TRIGGER   │  utteranceFinal, callLeft)    │ (ctx.call.speak / grantTurn /
-   a flow      ▼                               │  muteTurn / endTurn)
+   a flow      ▼                               │  muteTurn / endTurn / leave)
           ┌────────────────────── a CTB flow ───────────────────────┐
           │  trigger.callEvent  →  ai.speechToText (reuse PB-T7!) →   │
           │  ai.agent (model/memory/tools, reuse PB-T5/T6)  →         │
@@ -213,28 +221,43 @@ socket open.
           └──────────────────────────────────────────────────────────┘
 ```
 
+Two design rules that keep everything open:
+- **One interface, many adapters.** `ctx.call` is a single typed capability; the
+  *connector* (userbot now; companion/external later) is chosen by the referenced
+  **`voiceConnection` credential**, never by the node type. Adding a new connector
+  is a host adapter + a credential `kind` — **zero** changes to flows or node code.
+- **Behaviour = config.** `support` vs `lineup`, `sequential` vs `random`, group vs
+  1:1, max turn length, barge-in on/off — all are **fields on the trigger/action
+  nodes**, so one set of nodes covers every scenario the user described and more.
+
 Crucially: **STT, the agent, and TTS are already built (PB-T5…PB-T7).** Phase E only
-adds the *transport* (the call session) and the *glue* (a trigger + a few action
+adds the *transport* (the call session) + the *glue* (a trigger + a few action
 nodes + a credential). That is the payoff of having done speech first.
 
-## E.2 — Tasks
+## E.2 — Tasks (each fork is a SETTING, not a separate task)
 
 | Task | Scope |
 |---|---|
-| **PE-T1** | **`telegramUserSession` credential + userbot health.** New encrypted credential (MTProto session string + api_id/api_hash, AES-256-GCM, I7). A host-side connect/validate path that logs the user account in, reports health in the panel, and **fails closed** if the session is invalid/expired. Doc the ToS/abuse posture clearly (a userbot is the operator's own account; rate-limit-friendly defaults). **No audio yet** — just a verified, reusable session. |
-| **PE-T2** | **Call Session Service (host runtime, the hard part).** A long-lived service in `apps/server` (sibling to the scheduler) that, given a `telegramUserSession` + a target chat, **joins a group voice chat / places-or-answers a 1:1 call** via a JS MTProto-calls layer (`gram-tgcalls`/`tgcalls`, `ntgcalls` native). Streams **PCM in** (downlink) and **PCM out** (uplink), with VAD-based utterance segmentation. Exposes a **typed internal API**: `join/leave`, `speak(pcm|fileId)`, `onUtterance(cb)`, plus participant controls. Hard caps: max concurrent calls, max call duration, per-bot budget (cost/abuse safety). Native dep isolated behind an interface so `core`/`nodes` never import it (I3). |
-| **PE-T3** | **`trigger.callEvent` (entry node).** A new trigger that starts a flow on call events: `callJoined`, `utteranceFinal` (a caller finished speaking — carries the downlink audio as a CTB file id, ready for `ai.speechToText`), `turnOpened`, `callLeft`. Config: which chat(s), which events, and the **moderation mode** — `support` (answer everyone, possibly concurrent-safe queue) vs `lineup` (a Q&A queue: `sequential` or `random` turn order, max turn length, auto-advance). This is where the user's "sequential / random, configurable" lives. |
-| **PE-T4** | **`call.*` action nodes (what the flow does back).** `call.speak` — play synthesized audio into the live call (takes a `fileId` from `ai.textToSpeech`, or raw text + a voice for a one-shot). `call.grantTurn` / `call.endTurn` — open/close a speaker's turn in `lineup` mode (the moderator handing the mic around). `call.mute` / `call.leave`. All go through `ctx.call` (the PE-T2 service), injected like every other capability (I6). |
-| **PE-T5** | **🎬 Demos + docs.** Two scripted, fake-transport e2e demos matching the user's two scenarios: (a) **AI voice support** — caller speaks → `utteranceFinal` → STT → agent → TTS → `call.speak`, full duplex; (b) **channel Q&A moderator** — N listeners raise hands, the node grants turns `sequential`/`random`, each question is answered, then `call.endTurn`+`call.grantTurn` advances. NODES.md + a PROTOCOL.md "Live voice" chapter covering the userbot setup, the credential, and the ToS posture. |
+| **PE-T1** | **`voiceConnection` credential (abstracts "who connects the audio").** New encrypted credential (AES-256-GCM, I7) with a **`kind` setting**: `userbot` (an MTProto session string + api_id/api_hash the operator owns) shipped first; the schema is forward-shaped so `companion` (a delegated helper account added beside our bot, the `@myidbot`-style idea) and `external` (a 3rd-party voice bridge) drop in later **without a node change**. Host connect/validate path: logs in, reports health in the panel, **fails closed** on an invalid/expired session. Doc the ToS posture (a userbot is the operator's own account; rate-limit-friendly defaults). No audio yet — a verified, swappable connector. |
+| **PE-T2** | **Call Session Service + the `ctx.call` interface (host runtime, the hard part).** A long-lived service in `apps/server` (sibling to the scheduler) exposing ONE typed capability — `connect(target)` / `leave`, `speak(pcm\|fileId)`, `onUtterance(cb)`, participant controls — where `target` is a **setting** (group/channel/user) so the same service handles group **and** 1:1. Behind it, a **pluggable connector adapter** (the JS-native vs Python-sidecar media engine is an *internal* choice, swappable, never exposed to flows). Streams PCM in/out with VAD utterance segmentation. Hard caps as **config + safe defaults**: max concurrent calls, max duration, per-bot budget. Native dep isolated behind the interface so `core`/`nodes` never import it (I3). |
+| **PE-T3** | **`trigger.callEvent` (entry node) — one node, all scenarios via settings.** Starts a flow on `callJoined` / `utteranceFinal` (carries the caller audio as a CTB file id, ready for `ai.speechToText`) / `turnOpened` / `callLeft`. Settings (this is where the user's "configurable" lives): `connection` (which `voiceConnection` credential), `target` (chat/channel/user), `events` (which to fire on), `mode` = `support` (answer everyone) \| `lineup` (Q&A queue), and for `lineup`: `order` = `sequential` \| `random`, `maxTurnSeconds`, `autoAdvance`. No mode is privileged — they're enum fields. |
+| **PE-T4** | **`call.*` action nodes (what the flow does back) — also setting-driven.** `call.connect` (join/start a call to a `target` using a `voiceConnection`), `call.speak` (play `ai.textToSpeech` output, or one-shot text+voice — a `source` setting), `call.grantTurn`/`call.endTurn` (hand the mic around in `lineup`), `call.mute`, `call.leave`. All go through `ctx.call` (I6), so they work identically across every connector kind and target type. |
+| **PE-T5** | **🎬 Demos + docs.** Two scripted, fake-transport e2e demos — (a) **AI voice support** (1:1 or group: caller speaks → `utteranceFinal` → STT → agent → TTS → `call.speak`, full duplex) and (b) **channel Q&A moderator** (listeners queue; node grants turns `sequential`/`random`; answer; `endTurn`+`grantTurn` advances) — both built from the **same nodes**, differing only in settings (proving the multi-purpose design). NODES.md + a PROTOCOL.md "Live voice" chapter (connector kinds, the credential, ToS posture). |
 
-## E.3 — Open questions to confirm with the user (before PE-T1)
+## E.3 — Implementation choices CTB makes internally (so the user doesn't have to)
 
-1. **Userbot is mandatory** — are you OK operating a dedicated **user account** (phone number + MTProto session) for the audio leg? (A plain bot token cannot join calls.)
-2. **Runtime stack** — CTB's host is TypeScript/Node. The most mature calls stack is Python (`pytgcalls`). Acceptable options: (a) a **Node-native** path (`gram-tgcalls`+`ntgcalls`) inside `apps/server`, or (b) a **separate Python sidecar microservice** the host talks to over a local socket. Which do you prefer? (Trade-off: (a) keeps one process + one language but rides a less-trodden JS lib; (b) uses the battle-tested Python lib but adds a service to deploy.)
-3. **Scope of v1** — start with **group/channel voice chats only** (the livestream-moderator case), and add **1:1 private calls** in a follow-up? Or both at once?
-4. **Sequencing** — Phase E is currently **last**. Do you want it pulled **earlier** (e.g. right after the agent/speech of Phase B, since it reuses them directly), or kept after the open-builder Phase C?
+Per the user's instruction, these are **CTB's calls, not roadmap forks** — and none
+of them constrains a flow author, because each lives behind the `ctx.call` interface
+or a credential setting:
 
-> Until these are answered, Phase E stays a **design proposal**; no PE-T* code starts.
+1. **Connector:** ship **`userbot`** first (it's the only thing that can join a call today); keep the credential `kind` open for `companion`/`external` so the `@myidbot`-style helper-account idea is a *future credential*, not a rewrite.
+2. **Media engine:** start with whichever adapter is fastest to ship correctly (likely a **Python `pytgcalls` sidecar** for reliability, talked to over a local socket); it's an internal adapter, so we can add/replace a JS-native one later with zero node/flow impact.
+3. **Call type:** the service supports **group and 1:1 from day one** because `target` is just a setting — no "group-only v1" lock-in.
+4. **Sequencing:** Phase E stays **after** Phase C/D by default (it's the heaviest infra), **but** since it reuses PB-T5…PB-T7 directly it can be pulled forward on request. This is the one genuinely scheduling-level question; everything else is a node setting.
+
+> Phase E remains a **design proposal** until we actively start it; when we do, PE-T1
+> begins with the `voiceConnection` credential. No flow author is ever asked to pick
+> a transport — they pick a credential and toggle node settings.
 
 ---
 
@@ -250,10 +273,12 @@ nodes + a credential). That is the payoff of having done speech first.
 5. **Phase C (API + MCP)** — it *exposes* a library that must already be
    rich and stable to be worth discovering.
 6. **Phase E (live voice AI)** is a **separate pillar**, sequenced last by default
-   because it adds a new process type + native media dep + a userbot credential —
-   the heaviest, most ToS-sensitive addition. It directly **reuses** PB-T5…PB-T7
-   (agent + STT + TTS), so it *could* be pulled forward right after Phase B if the
-   user prioritizes it; that ordering call is one of the E.3 open questions.
+   because it adds a new process type + native media dep + a session credential —
+   the heaviest, most ToS-sensitive addition. Per the user's principle, every
+   transport/mode fork is a **node/credential setting** (not a phase decision), so
+   building it narrows nothing else. It directly **reuses** PB-T5…PB-T7 (agent +
+   STT + TTS), so it *could* be pulled forward right after Phase B on request — the
+   only genuine scheduling question, since everything else is config.
 
 ## Risk register (PLAN2-specific)
 
@@ -266,8 +291,9 @@ nodes + a credential). That is the payoff of having done speech first.
 | MCP server exposes too much | every MCP tool maps to an existing bearer-auth-scoped API action; bot-scoped tokens stay isolated (as in P4-T3) |
 | Scope creep toward a domain | I2 unchanged: Postgres/MySQL/Agent/Speech are infrastructure; "order", "ticket", "lead" never appear in node code |
 | **Phase E** live calls break the "pure Bot API + stateless steps" model | the realtime call loop lives in a host **Call Session Service** (PE-T2, like the scheduler), never in a node; flows only see discrete *events* (trigger) + *actions* (`ctx.call.*`); the native MTProto/WebRTC dep is isolated in `apps/server` behind an interface (I3) so `core`/`nodes` stay clean |
-| **Phase E** userbot ToS / abuse risk | a userbot is the operator's OWN account; rate-limit-friendly defaults, hard caps on concurrent calls + duration + per-bot budget (PE-T2), fail-closed on an invalid session (PE-T1), and an explicit ToS chapter in the docs (PE-T5); gated behind the E.3 sign-off before any code |
-| **Phase E** native media dep (`ntgcalls`/WebRTC) is heavy/less-trodden in JS | E.3 lets the user choose a Node-native path or a Python (`pytgcalls`) sidecar; either way it sits behind the PE-T2 `ctx.call` interface so the rest of CTB is agnostic to the choice |
+| **Phase E** userbot ToS / abuse risk | a userbot is the operator's OWN account; rate-limit-friendly defaults, hard caps on concurrent calls + duration + per-bot budget (PE-T2), fail-closed on an invalid session (PE-T1), and an explicit ToS chapter in the docs (PE-T5) |
+| **Phase E** native media dep (`ntgcalls`/WebRTC) is heavy/less-trodden in JS | it's an **internal host adapter** behind the PE-T2 `ctx.call` interface — CTB chooses it (likely a Python `pytgcalls` sidecar first) and can add/replace a JS-native one with **zero** node/flow change; the rest of CTB never imports it (I3) |
+| **Phase E** locking one transport/mode would narrow other options | per the user's principle, every fork is a **node/credential setting** (connector `kind`, `target`, `mode`, `order`), not a phase decision — one generic node set covers all scenarios (I2); a new connector (e.g. an `@myidbot`-style companion account) is a future credential `kind`, not a redesign |
 
 ---
 

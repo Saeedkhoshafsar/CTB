@@ -65,10 +65,18 @@ describe('nodeTypeInfos (P2-T2)', () => {
     // A plain data node (no slots, no provider role) must NOT carry any of the
     // new keys — its palette payload stays byte-identical to before PB-T1. The
     // builtins that opt in today are the PB-T4 memory providers + the PB-T5
-    // `ai.modelOpenai` provider + the `ai.agent` consumer (which declares
-    // inputSlots); we assert those separately below. Every other node here is
-    // still a plain data node.
-    const providers = new Set(['ai.memoryKv', 'ai.memoryPostgres', 'ai.modelOpenai']);
+    // `ai.modelOpenai` provider + the PB-T6 tool providers (`tool.*`) + the
+    // `ai.agent` consumer (which declares inputSlots); we assert those
+    // separately below. Every other node here is still a plain data node.
+    const providers = new Set([
+      'ai.memoryKv',
+      'ai.memoryPostgres',
+      'ai.modelOpenai',
+      'tool.httpRequest',
+      'tool.code',
+      'tool.think',
+      'tool.subflow',
+    ]);
     const consumersWithSlots = new Set(['ai.agent']);
     for (const info of infos) {
       if (providers.has(info.type) || consumersWithSlots.has(info.type)) continue;
@@ -86,6 +94,18 @@ describe('nodeTypeInfos (P2-T2)', () => {
     expect(info.ports.inputs).toEqual([]);
     expect(info.ports.outputs).toEqual(['provider']);
     expect(info).not.toHaveProperty('inputSlots');
+  });
+
+  it('surfaces role:provider + provides:ai:tool for the PB-T6 tool nodes', () => {
+    for (const type of ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow']) {
+      const info = infos.find((i) => i.type === type)!;
+      expect(info, `missing ${type}`).toBeDefined();
+      expect(info.role).toBe('provider');
+      expect(info.provides).toBe('ai:tool');
+      expect(info.ports.inputs).toEqual([]);
+      expect(info.ports.outputs).toEqual(['provider']);
+      expect(info).not.toHaveProperty('inputSlots');
+    }
   });
 
   it('surfaces the PB-T5 inputSlots for the real ai.agent builtin', () => {

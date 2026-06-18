@@ -346,6 +346,10 @@ export const en: Record<keyof typeof fa, string> = {
   'nodes.ai.memoryKv.label': 'Chat Memory (KV)',
   'nodes.ai.memoryPostgres.label': 'Postgres Chat Memory',
   'nodes.ai.modelOpenai.label': 'OpenAI Chat Model',
+  'nodes.tool.httpRequest.label': 'HTTP Request Tool',
+  'nodes.tool.code.label': 'Code Tool',
+  'nodes.tool.think.label': 'Think Tool',
+  'nodes.tool.subflow.label': 'Workflow Tool',
 
   // ── node descriptions (param-panel header) ──
   'nodeDesc.tg.trigger': 'The flow entry point — runs when a matching message, command or button arrives.',
@@ -400,6 +404,14 @@ export const en: Record<keyof typeof fa, string> = {
     'Gives an AI Agent a conversation memory persisted in a Postgres table (the n8n "Postgres Chat Memory" node), selected by a Postgres credential. Attach it to the Agent\'s Memory slot. The table can be created automatically; each turn is stored as rows with the session key, role and content. The connection details stay on the server — this node only references the credential.',
   'nodeDesc.ai.modelOpenai':
     'Tells an AI Agent which model to call. Attach it to the Agent\'s Model slot (the dashed wire) and pick an OpenAI-compatible credential (base URL + key) plus a model name — works with OpenAI, OpenRouter, an Anthropic proxy or a local model. This node never calls the network itself; the Agent uses it to know which model and credential to use. The model must support tool/function calling.',
+  'nodeDesc.tool.httpRequest':
+    'Gives an AI Agent a tool that calls an external API. Attach it to the Agent\'s Tool slot. You fix the method, URL, headers and credential; you declare which arguments the model may supply — the Agent merges them into the query (GET) or JSON body. The credential is resolved on the server; the model never sees it.',
+  'nodeDesc.tool.code':
+    'Gives an AI Agent a tool that runs a small JavaScript snippet in the sandbox. Attach it to the Agent\'s Tool slot. The model\'s arguments are available as $json; whatever your code returns becomes the tool result. Same 10-second cap as the Code node.',
+  'nodeDesc.tool.think':
+    'Gives an AI Agent a "Think" scratchpad tool. Attach it to the Agent\'s Tool slot. Calling it does nothing but record the model\'s own reasoning and hand it back — a no-op that measurably improves multi-step tool use. It needs no credential and never touches the outside world.',
+  'nodeDesc.tool.subflow':
+    'Exposes another flow of this bot to an AI Agent as a single callable tool (the n8n "Workflow Tool"). Attach it to the Agent\'s Tool slot and pick a flow. The model\'s arguments become the child flow\'s input; the items its Return node produced become the tool result. Because flows are pausable/resumable, the tool can even wait for a human reply.',
 
   // ── db.postgres params (PB-T2) ──
   'param.db.postgres.operation': 'Operation',
@@ -504,6 +516,53 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.ai.modelOpenai.model': 'The model name as the provider expects it (e.g. gpt-4o-mini). It must support tool/function calling for the Agent to call tools.',
   'paramDesc.ai.modelOpenai.temperature': 'Sampling temperature 0–2. Lower is more deterministic. Leave blank for the provider default.',
   'paramDesc.ai.modelOpenai.max_tokens': 'Cap on tokens generated per model call. Leave blank for the provider default.',
+
+  // ── AI Agent tool nodes (PB-T6) ──
+  'param.tool.httpRequest.tool_name': 'Tool name',
+  'param.tool.httpRequest.description': 'Tool description',
+  'param.tool.httpRequest.method': 'Method',
+  'param.tool.httpRequest.url': 'URL',
+  'param.tool.httpRequest.credentialId': 'Credential',
+  'param.tool.httpRequest.headers': 'Headers',
+  'param.tool.httpRequest.body_type': 'Body type',
+  'param.tool.httpRequest.body': 'Body template',
+  'param.tool.httpRequest.timeout': 'Timeout',
+  'param.tool.httpRequest.params': 'Arguments the model may supply',
+  'paramDesc.tool.httpRequest.tool_name': 'The function name the model invokes (letters, digits, _ or -). Keep it short and descriptive, e.g. get_weather.',
+  'paramDesc.tool.httpRequest.description': 'What this tool does and when to use it — the model reads this to decide whether to call it.',
+  'paramDesc.tool.httpRequest.method': 'HTTP method. GET/HEAD send the model\'s arguments as query parameters; the others send them as a JSON body.',
+  'paramDesc.tool.httpRequest.url': 'The endpoint the tool calls. May contain {{ }} expressions resolved at run time.',
+  'paramDesc.tool.httpRequest.credentialId': 'Optional saved credential. Its auth headers are injected on the server — the model and the flow never see the secret.',
+  'paramDesc.tool.httpRequest.headers': 'Static headers always sent with the request.',
+  'paramDesc.tool.httpRequest.body_type': 'How to send the body for non-GET methods. JSON merges the model\'s arguments over your template.',
+  'paramDesc.tool.httpRequest.body': 'A JSON (or raw) body template; the model\'s arguments are merged over it for a JSON body.',
+  'paramDesc.tool.httpRequest.timeout': 'Per-request time budget (e.g. 30s). The host enforces its own cap.',
+  'paramDesc.tool.httpRequest.params': 'The arguments the model may fill. Each becomes a typed property of the tool; required ones are marked.',
+
+  'param.tool.code.tool_name': 'Tool name',
+  'param.tool.code.description': 'Tool description',
+  'param.tool.code.code': 'JavaScript',
+  'param.tool.code.timeout': 'Timeout',
+  'param.tool.code.params': 'Arguments the model may supply',
+  'paramDesc.tool.code.tool_name': 'The function name the model invokes (letters, digits, _ or -), e.g. run_code.',
+  'paramDesc.tool.code.description': 'What this tool does and when to use it — the model reads this to decide whether to call it.',
+  'paramDesc.tool.code.code': 'The tool\'s JavaScript. The model\'s arguments are available as $json; whatever you return becomes the tool result. Never expression-resolved — your code reaches the sandbox verbatim.',
+  'paramDesc.tool.code.timeout': 'Wall-clock budget per run; the host caps it at 10 seconds.',
+  'paramDesc.tool.code.params': 'The arguments the model may fill (available as $json.<name>).',
+
+  'param.tool.think.tool_name': 'Tool name',
+  'param.tool.think.description': 'Tool description',
+  'paramDesc.tool.think.tool_name': 'The function name the model invokes (letters, digits, _ or -). Usually just "think".',
+  'paramDesc.tool.think.description': 'When the model should pause to reason. Calling the tool records the thought and returns it unchanged.',
+
+  'param.tool.subflow.flow_id': 'Flow',
+  'param.tool.subflow.tool_name': 'Tool name',
+  'param.tool.subflow.description': 'Tool description',
+  'param.tool.subflow.params': 'Arguments the model may supply',
+  'paramDesc.tool.subflow.flow_id': 'The flow of this bot to expose as a tool. The model\'s arguments become its input; the items its Return node produced become the tool result.',
+  'paramDesc.tool.subflow.tool_name': 'The function name the model invokes. Leave blank to derive one from the flow id.',
+  'paramDesc.tool.subflow.description': 'What the flow does and when to call it — the model reads this to decide whether to use it.',
+  'paramDesc.tool.subflow.params': 'Optional declared arguments the model may fill. Leave empty to accept any JSON object.',
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',

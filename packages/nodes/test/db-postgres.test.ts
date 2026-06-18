@@ -27,10 +27,10 @@ function onlyCall(calls: DbQueryRequest[]): DbQueryRequest {
 }
 
 describe('registry (PB-T2)', () => {
-  it('registers db.postgres; registry is 47 types', () => {
+  it('registers db.postgres; registry is 51 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('db.postgres')).toBe(true);
-    expect(builtinNodes.length).toBe(47);
+    expect(builtinNodes.length).toBe(51);
   });
 
   it('db.postgres is a `data` node, main → main', () => {

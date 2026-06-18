@@ -216,6 +216,9 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       registry: opts.engine.registry,
       gateway: opts.engine.gateway,
       userStore: opts.engine.userStore,
+      // PC-T2: re-arm cron schedules when a v1 authoring write changes the
+      // active-flow set / graphs, exactly like the panel's flows API.
+      onFlowsChanged: () => void opts.engine!.scheduler.reconcile(),
     });
 
     // Collections layer (P3.5-T2 + P3.5-T5). Needs the raw sqlite handle for

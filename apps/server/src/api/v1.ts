@@ -6,6 +6,11 @@
  * router installs its own bearer-auth preHandler.
  *
  *   GET  /api/v1/node-types                                  → node catalog (PC-T1)
+ *   POST /api/v1/flows               { bot_id?, botId?, name, graph? } → create (PC-T2)
+ *   PATCH /api/v1/flows/:id          { name?, graph?, settings? }      → edit   (PC-T2)
+ *   POST /api/v1/flows/:id/validate                          → dry-run validate (PC-T2)
+ *   POST /api/v1/flows/:id/activate                          → activate         (PC-T2)
+ *   POST /api/v1/flows/:id/deactivate                        → deactivate       (PC-T2)
  *   POST /api/v1/flows/:id/trigger   { chat_id?, payload? }  → start a flow run
  *   POST /api/v1/bots/:id/send       { chat_id, text, ... }  → send a TG message
  *   GET  /api/v1/executions?flow_id=&bot_id=&status=&limit=  → list executions
@@ -23,16 +28,24 @@ import { randomUUID } from 'node:crypto';
 import type { Executor, NodeRegistry } from '@ctb/core';
 import {
   ApiSendMessageBodySchema,
+  CreateFlowBodySchema,
+  FlowGraphSchema,
   TriggerFlowBodySchema,
+  UpdateFlowBodySchema,
+  defaultFlowSettings,
+  problemStrings,
   userDisplayName,
+  validateFlowForActivation,
   type ExecutionStatus,
   type FlowItem,
+  type NodeSlotMeta,
 } from '@ctb/shared';
 import { keyboardToMarkup } from '@ctb/nodes';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { ZodType } from 'zod';
 import type { Db } from '../db/index';
-import { apiTokens, bots, executions, flows } from '../db/schema';
+import { apiTokens, bots, executions, flowVersions, flows } from '../db/schema';
 import type { SqliteFlowSource } from '../engine/flow-source';
 import type { TelegramGateway } from '../telegram/gateway';
 import type { SqliteUserStore } from '../engine/user-store';
@@ -63,12 +76,56 @@ export interface V1ApiDeps {
   registry: NodeRegistry;
   gateway: TelegramGateway;
   userStore: SqliteUserStore;
+  /**
+   * Called after a v1 authoring write changes which flows are active or what
+   * their graphs contain (PC-T2: activate / graph edit). Wired by the server to
+   * `scheduler.reconcile()` exactly like the panel's flows API, so a v1-authored
+   * `schedule.trigger` flow re-arms its cron job. Decoupled by design — v1 never
+   * imports the Scheduler (I3).
+   */
+  onFlowsChanged?: () => void;
   clock?: () => Date;
+}
+
+type FlowRow = typeof flows.$inferSelect;
+
+/** Public projection of a flow row for the v1 authoring surface (PC-T2). */
+function toPublicFlow(row: FlowRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    botId: row.botId,
+    name: row.name,
+    status: row.status,
+    graph: row.graph,
+    settings: row.settings ?? defaultFlowSettings(),
+    version: row.version,
+    updatedAt: row.updatedAt,
+  };
 }
 
 export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
   const { db, flowSource, executor, registry, gateway, userStore } = deps;
   const now = (): string => (deps.clock ?? (() => new Date()))().toISOString();
+  const flowsChanged = (): void => deps.onFlowsChanged?.();
+
+  // PC-T2: the SAME activation-validation inputs the panel's flows API uses
+  // (built once — registry defs are static per process). `paramSchemas` maps a
+  // node type to its Zod params schema; `nodeMeta` carries the PB-T1 typed
+  // sub-connection facts (role/slots/provides). Both feed the SHARED
+  // `validateFlowForActivation`, so a v1-authored flow is judged byte-identically
+  // to one built in the editor (I5 — no drift between surfaces).
+  const paramSchemas: ReadonlyMap<string, ZodType> = new Map(
+    registry.list().map((def) => [def.type, def.paramsSchema]),
+  );
+  const nodeMeta: ReadonlyMap<string, NodeSlotMeta> = new Map(
+    registry.list().map((def) => {
+      const m: NodeSlotMeta = {};
+      if (def.role) m.role = def.role;
+      if (def.inputSlots) m.inputSlots = def.inputSlots;
+      if (def.provides) m.provides = def.provides;
+      return [def.type, m] as const;
+    }),
+  );
 
   // PC-T1: the public node CATALOG. Computed ONCE — node defs are static for a
   // process lifetime, exactly like the internal `/api/node-types` (this is the
@@ -117,6 +174,166 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
     // bot-scoped) may read it — the node library is the SAME for every bot, so
     // there is nothing bot-specific to scope here.
     scope.get('/api/v1/node-types', async () => nodeCatalogPayload);
+
+    // ====================================================================
+    // PC-T2 — Flow authoring surface. An external agent can build, validate,
+    // and activate a flow (not just trigger one). Every write reuses the SAME
+    // shared schemas + validator as the panel's flows API (I5), so a v1-authored
+    // flow is identical to an editor-built one. Bot scope is enforced: a
+    // bot-scoped token may only author on its own bot.
+    // ====================================================================
+
+    // ---- POST /api/v1/flows ----------------------------------------------
+    // Create a draft flow. Body: { botId | bot_id, name, graph? } — graph
+    // defaults to an empty graph (CreateFlowBodySchema). The graph is validated
+    // by FlowGraphSchema; a draft is NOT activation-checked (that's /activate).
+    scope.post('/api/v1/flows', async (req, reply) => {
+      // Accept snake_case `bot_id` (the v1 convention) as an alias of `botId`.
+      const raw = (req.body ?? {}) as Record<string, unknown>;
+      const body =
+        raw['botId'] === undefined && raw['bot_id'] !== undefined
+          ? { ...raw, botId: raw['bot_id'] }
+          : raw;
+      const parsed = CreateFlowBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+      }
+      if (!tokenAllowsBot(req, parsed.data.botId)) {
+        return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+      }
+      const bot = db.select().from(bots).where(eq(bots.id, parsed.data.botId)).get();
+      if (!bot) return reply.code(400).send({ error: 'unknown_bot' });
+
+      const row: FlowRow = {
+        id: randomUUID(),
+        botId: parsed.data.botId,
+        name: parsed.data.name,
+        status: 'draft',
+        graph: parsed.data.graph,
+        settings: defaultFlowSettings(),
+        version: 1,
+        updatedAt: now(),
+      };
+      db.insert(flows).values(row).run();
+      return reply.code(201).send({ flow: toPublicFlow(row) });
+    });
+
+    // ---- PATCH /api/v1/flows/:id -----------------------------------------
+    // Edit name / graph / settings. A graph change snapshots the outgoing
+    // version (rollback stays available) and bumps `version`, exactly like the
+    // panel's PATCH. Editing an ACTIVE flow's graph re-arms its schedules.
+    scope.patch('/api/v1/flows/:id', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const parsed = UpdateFlowBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+      }
+      const row = db.select().from(flows).where(eq(flows.id, id)).get();
+      if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      if (!tokenAllowsBot(req, row.botId)) {
+        return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+      }
+
+      const patch: Partial<FlowRow> = { updatedAt: now() };
+      if (parsed.data.name !== undefined) patch.name = parsed.data.name;
+      if (parsed.data.settings !== undefined) {
+        // The error-handler must be another flow OF THE SAME BOT (mirrors the
+        // panel's PATCH rule) — a cross-bot handler can never run here, and a
+        // self-handler would loop on every failure.
+        const handlerId = parsed.data.settings.errorHandlerFlowId;
+        if (handlerId !== null) {
+          if (handlerId === id) {
+            return reply.code(400).send({ error: 'error_handler_self' });
+          }
+          const handler = db.select().from(flows).where(eq(flows.id, handlerId)).get();
+          if (!handler || handler.botId !== row.botId) {
+            return reply.code(400).send({ error: 'error_handler_not_same_bot' });
+          }
+        }
+        patch.settings = parsed.data.settings;
+      }
+      if (parsed.data.graph !== undefined) {
+        db.insert(flowVersions)
+          .values({
+            id: randomUUID(),
+            flowId: row.id,
+            version: row.version,
+            graph: row.graph,
+            createdAt: now(),
+          })
+          .run();
+        patch.graph = parsed.data.graph;
+        patch.version = row.version + 1;
+      }
+      db.update(flows).set(patch).where(eq(flows.id, id)).run();
+      const updated = db.select().from(flows).where(eq(flows.id, id)).get()!;
+      if (updated.status === 'active' && parsed.data.graph !== undefined) flowsChanged();
+      return { flow: toPublicFlow(updated) };
+    });
+
+    // ---- POST /api/v1/flows/:id/validate ---------------------------------
+    // Dry-run: report the activation problems of the STORED graph WITHOUT
+    // changing anything. `{ ok, problems[], nodeProblems[] }` — the same
+    // problem shape the panel's /activate returns on 422.
+    scope.post('/api/v1/flows/:id/validate', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const row = db.select().from(flows).where(eq(flows.id, id)).get();
+      if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      if (!tokenAllowsBot(req, row.botId)) {
+        return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+      }
+      const graph = FlowGraphSchema.safeParse(row.graph);
+      if (!graph.success) {
+        return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+      }
+      const nodeProblems = validateFlowForActivation(graph.data, paramSchemas, nodeMeta);
+      return {
+        ok: nodeProblems.length === 0,
+        problems: problemStrings(nodeProblems),
+        nodeProblems,
+      };
+    });
+
+    // ---- POST /api/v1/flows/:id/activate ---------------------------------
+    // Validate + flip to active. 422 with problems if not activatable.
+    scope.post('/api/v1/flows/:id/activate', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const row = db.select().from(flows).where(eq(flows.id, id)).get();
+      if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      if (!tokenAllowsBot(req, row.botId)) {
+        return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+      }
+      const graph = FlowGraphSchema.safeParse(row.graph);
+      if (!graph.success) {
+        return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+      }
+      const nodeProblems = validateFlowForActivation(graph.data, paramSchemas, nodeMeta);
+      if (nodeProblems.length > 0) {
+        return reply
+          .code(422)
+          .send({ error: 'not_activatable', problems: problemStrings(nodeProblems), nodeProblems });
+      }
+      db.update(flows).set({ status: 'active', updatedAt: now() }).where(eq(flows.id, id)).run();
+      flowsChanged();
+      return { ok: true, status: 'active' };
+    });
+
+    // ---- POST /api/v1/flows/:id/deactivate -------------------------------
+    scope.post('/api/v1/flows/:id/deactivate', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const row = db.select().from(flows).where(eq(flows.id, id)).get();
+      if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      if (!tokenAllowsBot(req, row.botId)) {
+        return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+      }
+      const res = db
+        .update(flows)
+        .set({ status: 'draft', updatedAt: now() })
+        .where(and(eq(flows.id, id), eq(flows.status, 'active')))
+        .run();
+      if (res.changes > 0) flowsChanged();
+      return { ok: true, status: 'draft' };
+    });
 
     // ---- POST /api/v1/flows/:id/trigger ----------------------------------
     scope.post('/api/v1/flows/:id/trigger', async (req, reply) => {

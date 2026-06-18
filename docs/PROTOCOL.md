@@ -89,11 +89,16 @@ preHandler.
 ```
 Authorization: Bearer ctb_<…>
 
-GET  /api/v1/node-types                                    (PC-T1) node catalog
-POST /api/v1/flows/:id/trigger        { chat_id?, payload? }
-POST /api/v1/bots/:id/send            { chat_id, text, parse_mode?, keyboard? }
-GET  /api/v1/executions?flow_id=&bot_id=&status=&limit=
-GET  /api/v1/users?bot_id=&limit=&offset=
+GET   /api/v1/node-types                                   (PC-T1) node catalog
+POST  /api/v1/flows                    { botId|bot_id, name, graph? }  (PC-T2) create
+PATCH /api/v1/flows/:id                { name?, graph?, settings? }    (PC-T2) edit
+POST  /api/v1/flows/:id/validate                                       (PC-T2) dry-run
+POST  /api/v1/flows/:id/activate                                       (PC-T2) activate
+POST  /api/v1/flows/:id/deactivate                                     (PC-T2) deactivate
+POST  /api/v1/flows/:id/trigger        { chat_id?, payload? }
+POST  /api/v1/bots/:id/send            { chat_id, text, parse_mode?, keyboard? }
+GET   /api/v1/executions?flow_id=&bot_id=&status=&limit=
+GET   /api/v1/users?bot_id=&limit=&offset=
 ```
 
 ### Tokens
@@ -133,6 +138,37 @@ DELETE /api/api-tokens/:id             → 204 (404 if unknown)
   in the editor catalog. Any valid token (instance-wide OR bot-scoped) may read
   it — the node library is identical for every bot, so nothing is bot-scoped
   here. The bytes are identical to the internal `/api/node-types`.
+#### Flow authoring (PC-T2)
+
+An external agent can **build and activate** a flow, not just trigger one — every
+write reuses the SAME shared schemas + validator as the panel's flows API (I5),
+so a v1-authored flow is identical to an editor-built one. A bot-scoped token may
+only author on its own bot (`403 token_not_authorized_for_bot`).
+
+- **`POST /api/v1/flows`** ✅ PC-T2 — create a **draft** flow. Body
+  `{ botId | bot_id, name, graph? }` (snake_case `bot_id` is accepted as an alias
+  of `botId`); `graph` defaults to an empty graph and is validated by
+  `FlowGraphSchema`. `400 invalid_body` on a bad body, `400 unknown_bot` if the
+  bot doesn't exist. `201 { flow }` (a fresh `version:1` draft). A draft is NOT
+  activation-checked here — call `/validate` or `/activate` for that.
+- **`PATCH /api/v1/flows/:id`** ✅ PC-T2 — edit `name` / `graph` / `settings`.
+  A `graph` change snapshots the outgoing version (rollback stays available) and
+  bumps `version`; editing an **active** flow's graph re-arms its cron schedules.
+  `settings.errorHandlerFlowId` must reference another flow OF THE SAME BOT
+  (`400 error_handler_self` / `400 error_handler_not_same_bot`).
+  `404 flow_not_found`. `200 { flow }`.
+- **`POST /api/v1/flows/:id/validate`** ✅ PC-T2 — **dry-run**: report the stored
+  graph's activation problems WITHOUT changing anything. `422 invalid_graph` if
+  the stored graph fails `FlowGraphSchema`; otherwise
+  `200 { ok, problems:[…strings], nodeProblems:[{ nodeId, message }] }` (the same
+  problem shape `/activate` returns on 422). `ok:true` ⇒ activatable.
+- **`POST /api/v1/flows/:id/activate`** ✅ PC-T2 — validate + flip to active.
+  `422 not_activatable { problems, nodeProblems }` if not activatable (the flow
+  stays a draft); `422 invalid_graph` on a malformed stored graph;
+  `200 { ok:true, status:"active" }`.
+- **`POST /api/v1/flows/:id/deactivate`** ✅ PC-T2 — flip an active flow back to
+  draft. `200 { ok:true, status:"draft" }` (idempotent on an already-draft flow).
+
 - **`POST /api/v1/flows/:id/trigger`** — starts a flow run (async, like the
   webhook async mode). `404 flow_not_found`; `422 invalid_graph` / `422
   no_trigger_node` if the flow has no enabled trigger node. The trigger item is

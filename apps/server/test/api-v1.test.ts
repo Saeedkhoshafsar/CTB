@@ -98,6 +98,20 @@ function triggerGraph(): FlowGraph {
   });
 }
 
+/** A structurally-valid graph that is NOT activatable — it has no trigger node. */
+function noTriggerGraph(): FlowGraph {
+  return FlowGraphSchema.parse({
+    nodes: [
+      {
+        id: 'set', type: 'data.setFields',
+        params: { fields: [{ target: 'json', name: 'seen', value: 'yes', op: 'set' }] },
+        position: { x: 0, y: 0 }, disabled: false,
+      },
+    ],
+    edges: [],
+  });
+}
+
 async function createBot(w: World, name = 'b'): Promise<string> {
   const { bot } = (
     await w.app.inject({
@@ -466,5 +480,206 @@ describe('v1 node catalog — GET /api/v1/node-types (PC-T1)', () => {
     expect(pub.statusCode).toBe(200);
     expect(internal.statusCode).toBe(200);
     expect(pub.json()).toEqual(internal.json());
+  });
+});
+
+describe('v1 flow authoring — POST/PATCH /api/v1/flows (PC-T2)', () => {
+  let w: World;
+  beforeEach(async () => { w = await makeWorld(); });
+  afterEach(async () => { await w.engine.gateway.stopAll(); await w.app.close(); });
+
+  it('missing bearer → 401 on create', async () => {
+    const res = await w.app.inject({ method: 'POST', url: '/api/v1/flows', payload: {} });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('POST creates a draft flow and a real row appears', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { botId, name: 'built by agent', graph: triggerGraph() },
+    });
+    expect(res.statusCode).toBe(201);
+    const flow = (res.json() as { flow: { id: string; status: string; version: number; botId: string } }).flow;
+    expect(flow.status).toBe('draft');
+    expect(flow.version).toBe(1);
+    expect(flow.botId).toBe(botId);
+    const row = w.db.select().from(schema.flows).where(eq(schema.flows.id, flow.id)).get()!;
+    expect(row.name).toBe('built by agent');
+  });
+
+  it('POST accepts snake_case bot_id as an alias of botId', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { bot_id: botId, name: 'snake', graph: triggerGraph() },
+    });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { flow: { botId: string } }).flow.botId).toBe(botId);
+  });
+
+  it('POST graph defaults to an empty graph when omitted', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { botId, name: 'empty' },
+    });
+    expect(res.statusCode).toBe(201);
+    const graph = (res.json() as { flow: { graph: { nodes: unknown[]; edges: unknown[] } } }).flow.graph;
+    expect(graph.nodes).toHaveLength(0);
+    expect(graph.edges).toHaveLength(0);
+  });
+
+  it('POST on an unknown bot → 400 unknown_bot', async () => {
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { botId: 'nope', name: 'x' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('unknown_bot');
+  });
+
+  it('PATCH a graph snapshots the old version and bumps version', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const created = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { botId, name: 'v1', graph: noTriggerGraph() },
+    });
+    const flowId = (created.json() as { flow: { id: string } }).flow.id;
+
+    const patched = await w.app.inject({
+      method: 'PATCH', url: `/api/v1/flows/${flowId}`, headers: bearer(token),
+      payload: { name: 'v2', graph: triggerGraph() },
+    });
+    expect(patched.statusCode).toBe(200);
+    const flow = (patched.json() as { flow: { name: string; version: number } }).flow;
+    expect(flow.name).toBe('v2');
+    expect(flow.version).toBe(2);
+    // The outgoing version is snapshotted for rollback.
+    const versions = w.db.select().from(schema.flowVersions).where(eq(schema.flowVersions.flowId, flowId)).all();
+    expect(versions).toHaveLength(1);
+    expect(versions[0]!.version).toBe(1);
+  });
+
+  it('PATCH on an unknown flow → 404 flow_not_found', async () => {
+    const token = (await createToken(w)).token;
+    const res = await w.app.inject({
+      method: 'PATCH', url: '/api/v1/flows/nope', headers: bearer(token), payload: { name: 'x' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('flow_not_found');
+  });
+});
+
+describe('v1 flow validate + activate (PC-T2)', () => {
+  let w: World;
+  beforeEach(async () => { w = await makeWorld(); });
+  afterEach(async () => { await w.engine.gateway.stopAll(); await w.app.close(); });
+
+  async function v1Create(token: string, botId: string, graph: FlowGraph): Promise<string> {
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(token),
+      payload: { botId, name: 'f', graph },
+    });
+    expect(res.statusCode).toBe(201);
+    return (res.json() as { flow: { id: string } }).flow.id;
+  }
+
+  it('validate a good flow → ok:true, no problems (nothing is saved/changed)', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const flowId = await v1Create(token, botId, triggerGraph());
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/v1/flows/${flowId}/validate`, headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; problems: string[] };
+    expect(body.ok).toBe(true);
+    expect(body.problems).toHaveLength(0);
+    // Still a draft — validate never mutates.
+    const row = w.db.select().from(schema.flows).where(eq(schema.flows.id, flowId)).get()!;
+    expect(row.status).toBe('draft');
+  });
+
+  it('validate a flow with no trigger → ok:false with a pointed problem', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const flowId = await v1Create(token, botId, noTriggerGraph());
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/v1/flows/${flowId}/validate`, headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; problems: string[] };
+    expect(body.ok).toBe(false);
+    expect(body.problems.some((p) => p.includes('no enabled trigger'))).toBe(true);
+  });
+
+  it('activate a good flow → active', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const flowId = await v1Create(token, botId, triggerGraph());
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/v1/flows/${flowId}/activate`, headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, status: 'active' });
+    const row = w.db.select().from(schema.flows).where(eq(schema.flows.id, flowId)).get()!;
+    expect(row.status).toBe('active');
+  });
+
+  it('activate a flow with no trigger → 422 not_activatable + problems', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const flowId = await v1Create(token, botId, noTriggerGraph());
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/v1/flows/${flowId}/activate`, headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json() as { error: string; problems: string[] };
+    expect(body.error).toBe('not_activatable');
+    expect(body.problems.length).toBeGreaterThan(0);
+    // Stays a draft on a failed activation.
+    const row = w.db.select().from(schema.flows).where(eq(schema.flows.id, flowId)).get()!;
+    expect(row.status).toBe('draft');
+  });
+
+  it('deactivate flips an active flow back to draft', async () => {
+    const botId = await createBot(w);
+    const token = (await createToken(w)).token;
+    const flowId = await v1Create(token, botId, triggerGraph());
+    await w.app.inject({ method: 'POST', url: `/api/v1/flows/${flowId}/activate`, headers: bearer(token) });
+    const res = await w.app.inject({
+      method: 'POST', url: `/api/v1/flows/${flowId}/deactivate`, headers: bearer(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, status: 'draft' });
+  });
+
+  it('a bot-scoped token cannot author/activate on another bot (403)', async () => {
+    const botA = await createBot(w, 'A');
+    const botB = await createBot(w, 'B');
+    const flowB = await createFlow(w, botB, triggerGraph()); // built via panel
+    const scopedA = (await createToken(w, { botId: botA })).token;
+
+    // create on B
+    const create = await w.app.inject({
+      method: 'POST', url: '/api/v1/flows', headers: bearer(scopedA),
+      payload: { botId: botB, name: 'x', graph: triggerGraph() },
+    });
+    expect(create.statusCode).toBe(403);
+    // patch / validate / activate / deactivate on B's flow
+    for (const path of [`/api/v1/flows/${flowB}`]) {
+      const r = await w.app.inject({ method: 'PATCH', url: path, headers: bearer(scopedA), payload: { name: 'y' } });
+      expect(r.statusCode).toBe(403);
+    }
+    for (const verb of ['validate', 'activate', 'deactivate']) {
+      const r = await w.app.inject({ method: 'POST', url: `/api/v1/flows/${flowB}/${verb}`, headers: bearer(scopedA) });
+      expect(r.statusCode).toBe(403);
+    }
   });
 });

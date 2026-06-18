@@ -89,6 +89,7 @@ preHandler.
 ```
 Authorization: Bearer ctb_<…>
 
+GET  /api/v1/node-types                                    (PC-T1) node catalog
 POST /api/v1/flows/:id/trigger        { chat_id?, payload? }
 POST /api/v1/bots/:id/send            { chat_id, text, parse_mode?, keyboard? }
 GET  /api/v1/executions?flow_id=&bot_id=&status=&limit=
@@ -119,6 +120,19 @@ DELETE /api/api-tokens/:id             → 204 (404 if unknown)
 
 ### Endpoints
 
+- **`GET /api/v1/node-types`** ✅ PC-T1 — the machine-readable **node catalog**:
+  the public bearer-auth promotion of the panel's internal `/api/node-types`. It
+  returns `{ nodeTypes: NodeTypeInfo[] }` where each entry is
+  `{ type, category, meta:{ labelKey, descriptionKey?, icon? }, ports:{ inputs[], outputs[] }, paramsJsonSchema, role?, inputSlots?, provides? }`.
+  This is the SAME projection the engine registry serves the editor, so the
+  catalog can never advertise a node the engine can't run; an external
+  builder/agent reads it to learn exactly what bricks exist (their JSON-Schema
+  params, their data ports, and — for the AI tier — their typed sub-connection
+  slots: a consumer's `inputSlots` and a provider's `role:'provider'`/`provides`).
+  `meta.labelKey`/`descriptionKey` are the i18n keys whose fa/en human text lives
+  in the editor catalog. Any valid token (instance-wide OR bot-scoped) may read
+  it — the node library is identical for every bot, so nothing is bot-scoped
+  here. The bytes are identical to the internal `/api/node-types`.
 - **`POST /api/v1/flows/:id/trigger`** — starts a flow run (async, like the
   webhook async mode). `404 flow_not_found`; `422 invalid_graph` / `422
   no_trigger_node` if the flow has no enabled trigger node. The trigger item is

@@ -9,7 +9,7 @@ CTB exposes three integration surfaces:
 | Direction | Surface | Auth | Section |
 |---|---|---|---|
 | **In** | per-flow **Webhook Trigger** — fire a specific flow, optionally sync (wait for a reply) | unguessable path secret + optional HMAC | [§ Webhook Trigger](#inbound-webhook-trigger--p4-t1) |
-| **In** | the **REST API v1** (`/api/v1/*`) — trigger flows, send messages, query users/executions | `Authorization: Bearer ctb_…` | [§ REST API](#inbound-rest-api-token-auth--p4-t3) |
+| **In** | the **REST API v1** (`/api/v1/*`) — trigger flows, send messages, query users/executions — and the **MCP server** (`POST /api/v1/mcp`) for AI agents | `Authorization: Bearer ctb_…` | [§ REST API](#inbound-rest-api-token-auth--p4-t3) · [§ MCP server](#mcp-server--ctb-as-a-tool-surface--pc-t3) |
 | **Out** | **instance webhooks** — CTB POSTs an event envelope to your URLs when things happen | optional HMAC signature CTB adds | [§ Outbound](#outbound-instance-webhooks--p4-t4) |
 
 Two end-to-end **n8n recipes** (the canonical "open protocol" use case) are at
@@ -99,6 +99,7 @@ POST  /api/v1/flows/:id/trigger        { chat_id?, payload? }
 POST  /api/v1/bots/:id/send            { chat_id, text, parse_mode?, keyboard? }
 GET   /api/v1/executions?flow_id=&bot_id=&status=&limit=
 GET   /api/v1/users?bot_id=&limit=&offset=
+POST  /api/v1/mcp                      JSON-RPC 2.0            (PC-T3) MCP server
 ```
 
 ### Tokens
@@ -188,6 +189,68 @@ only author on its own bot (`403 token_not_authorized_for_bot`).
 - **`GET /api/v1/users`** — `bot_id` required (`400 bot_id_required`). Optional
   `limit`/`offset`. Returns
   `{ users: [{ id, botId, tgUserId, profile, tags, firstSeen, lastSeen, displayName }] }`.
+
+## MCP server — CTB as a tool surface ✅ PC-T3
+
+CTB also speaks **MCP** (Model Context Protocol) so an *external* AI agent
+(Claude Desktop, an IDE assistant, another orchestrator) can discover the node
+library and build/run flows programmatically — the **inverse** of the
+`ai.mcpClient` node (P5-T3, where a CTB agent *consumes* a remote MCP server).
+
+- **Transport:** streamable-HTTP — a single endpoint, **`POST /api/v1/mcp`**,
+  speaking plain **JSON-RPC 2.0** (the wire format MCP is built on). No MCP SDK
+  dependency: the protocol is implemented natively *inside* the same bearer-auth
+  `/api/v1` scope, so it reuses the exact same token guard and the exact same
+  engine capabilities as the REST routes above (**no surface drift, I5** — a flow
+  built over MCP is byte-identical to one built over REST or in the editor).
+- **Auth:** `Authorization: Bearer ctb_…`. A bot-scoped token is bounded to its
+  bot on every tool exactly like the REST surface; missing/garbage token → `401`
+  before any JSON-RPC is parsed.
+- **Protocol version:** `2025-06-18`. `serverInfo` = `{ name:"ctb", version:"1" }`.
+
+### Methods
+
+- **`initialize`** → `{ protocolVersion, capabilities:{ tools }, serverInfo, instructions }`.
+- **`notifications/initialized`** (and any notification — a message with no `id`)
+  → `202`, no JSON-RPC body.
+- **`ping`** → `{}`.
+- **`tools/list`** → the six tools below, each with a JSON-Schema `inputSchema`.
+- **`tools/call` `{ name, arguments }`** → an MCP result with a single JSON
+  `content` text block. A *tool-level* problem (unknown bot, not found, bad args,
+  bot-scope violation) sets `isError:true` on the result (the call succeeded, the
+  tool reported a failure); a *protocol* problem (malformed JSON-RPC, unknown
+  method, unknown tool) returns a JSON-RPC `error` (`-32600/-32601/-32602/-32603`).
+
+### Tools
+
+- **`list_nodes`** — the node catalog (the **same** projection as
+  `GET /api/v1/node-types`): every node's `type`, `category`, `meta`, `ports`,
+  `paramsJsonSchema`, and typed sub-connection surface. Bot-agnostic — any valid
+  token may call it.
+- **`validate_flow` `{ graph }`** — dry-run the activation check; returns
+  `{ ok, problems[], nodeProblems[] }`. Nothing is saved.
+- **`create_flow` `{ bot_id, name, graph? }`** — create a **draft** flow (same
+  contract as `POST /api/v1/flows`, incl. the snake_case `bot_id` alias). Returns
+  `{ flow:{ id, botId, name, status:"draft", version } }`. Activate it afterwards
+  via the REST `/activate` route.
+- **`trigger_flow` `{ flow_id, chat_id?, payload? }`** — start a run (async,
+  fire-and-forget). Returns `{ ok:true, executionId }`; poll
+  `GET /api/v1/executions` for the outcome. The item carries `source:"mcp"`.
+- **`query_collection` `{ bot_id, collection, filter? }`** — read records from a
+  bot Collection by slug; `filter` is the standard record filter
+  (`where`/`sort`/`limit`/`offset`). Returns `{ records, total }`. Reports
+  `collections_not_available` when no collection store is wired.
+- **`send_message` `{ bot_id, chat_id, text, parse_mode? }`** — send a Telegram
+  message through the bot's centralized rate-limited sender (`parse_mode` is
+  `HTML`/`MarkdownV2`, matching the REST send surface). The bot must be running
+  (`bot_not_running` otherwise). Returns `{ ok:true, messageId }`.
+
+### Quick start (Claude Desktop / any MCP client)
+
+Point the client at `https://<your-ctb-host>/api/v1/mcp` with an
+`Authorization: Bearer ctb_…` header. The agent can then `list_nodes`,
+`validate_flow`, `create_flow`, activate via REST, and `trigger_flow` —
+assembling and running a CTB workflow end-to-end without the panel.
 
 ## Outbound: instance webhooks ✅ P4-T4
 

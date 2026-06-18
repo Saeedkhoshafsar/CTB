@@ -51,6 +51,8 @@ import type { TelegramGateway } from '../telegram/gateway';
 import type { SqliteUserStore } from '../engine/user-store';
 import { hashApiToken, parseBearer } from '../lib/api-token';
 import { nodeTypeInfos } from './node-types';
+import { registerMcpApi } from './mcp';
+import type { SqliteCollectionStore } from '../collections/store';
 
 const EXEC_STATUSES = new Set<ExecutionStatus>([
   'running',
@@ -76,6 +78,12 @@ export interface V1ApiDeps {
   registry: NodeRegistry;
   gateway: TelegramGateway;
   userStore: SqliteUserStore;
+  /**
+   * Collection store (optional) — reused by the MCP `query_collection` tool
+   * (PC-T3) so an external agent can read a bot's structured data. Absent ⇒
+   * the tool reports `collections_not_available`.
+   */
+  collectionStore?: SqliteCollectionStore | undefined;
   /**
    * Called after a v1 authoring write changes which flows are active or what
    * their graphs contain (PC-T2: activate / graph edit). Wired by the server to
@@ -174,6 +182,28 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
     // bot-scoped) may read it — the node library is the SAME for every bot, so
     // there is nothing bot-specific to scope here.
     scope.get('/api/v1/node-types', async () => nodeCatalogPayload);
+
+    // ---- POST /api/v1/mcp (PC-T3) ----------------------------------------
+    // CTB as an MCP *server*: a streamable-HTTP JSON-RPC endpoint exposing the
+    // builder capabilities (list_nodes / validate_flow / create_flow /
+    // trigger_flow / query_collection / send_message) to external AI agents.
+    // Mounted INSIDE this bearer-auth scope so it shares the same token guard;
+    // each tool reads the per-request token's bot scope via `tokenAllowsBot`'s
+    // source. Reuses the SAME engine handles + shared schemas as the REST
+    // routes above (I5 — a flow built over MCP equals one built over REST).
+    registerMcpApi({
+      scope,
+      db,
+      flowSource,
+      executor,
+      registry,
+      gateway,
+      collectionStore: deps.collectionStore,
+      tokenBotId: (req) =>
+        (req as FastifyRequest & { apiToken: AuthedToken }).apiToken.botId,
+      now,
+      onFlowsChanged: deps.onFlowsChanged,
+    });
 
     // ====================================================================
     // PC-T2 — Flow authoring surface. An external agent can build, validate,

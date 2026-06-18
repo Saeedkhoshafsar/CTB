@@ -40,10 +40,10 @@ function kvMemorySlot(raw: unknown = {}): AttachedProvider {
 }
 
 describe('registry (P5-T4)', () => {
-  it('registers ai.agent; registry is 47 types', () => {
+  it('registers ai.agent; registry is 51 types', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('ai.agent')).toBe(true);
-    expect(builtinNodes.length).toBe(47);
+    expect(builtinNodes.length).toBe(51);
   });
 
   it('is an `ai` node with main → main ports', () => {

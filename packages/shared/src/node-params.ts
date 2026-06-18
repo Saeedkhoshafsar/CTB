@@ -1497,6 +1497,131 @@ export const AiModelOpenaiParamsSchema = z.object({
 });
 export type AiModelOpenaiParams = z.infer<typeof AiModelOpenaiParamsSchema>;
 
+// ── AI Agent tool nodes (PB-T6) ──────────────────────────────────────────────
+
+/**
+ * The two fields EVERY tool node shares (PB-T6). `tool.httpRequest`,
+ * `tool.code`, `tool.think` and `tool.subflow` are all `role:'provider'` sub-
+ * nodes that fill an agent's `ai:tool` slot — their params are their contract.
+ * The agent turns each into an `AiToolSpec`, and the model uses these two fields
+ * to decide IF and WHEN to call the tool:
+ *  - `tool_name`   — the function name the model invokes (a valid identifier).
+ *  - `description` — what the tool does / when to use it (drives tool-selection).
+ * Both are kept separate from the tool's CONFIG (url/code/flow_id/…) so the same
+ * runtime can describe and run any tool node uniformly.
+ */
+const TOOL_NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
+
+/** A valid agent-tool function name (1–64 chars, letter/underscore start). */
+export const ToolNameSchema = z
+  .string()
+  .min(1)
+  .regex(TOOL_NAME_RE, 'tool_name must be a valid function name (letters, digits, _ or -, ≤64)');
+
+/**
+ * A single JSON-Schema-ish parameter row the model fills when calling a tool
+ * (PB-T6). Tool nodes expose a small, editor-friendly param table instead of
+ * raw JSON Schema: each row is one named argument with a type + description +
+ * required flag. The agent assembles these into the tool's `parameters` JSON
+ * Schema so the model knows what arguments to produce.
+ */
+export const ToolParamRowSchema = z.object({
+  /** Argument name as the model produces it (a valid identifier-ish key). */
+  name: z.string().min(1).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'parameter name must be a valid identifier'),
+  /** JSON type the model should emit for this argument. */
+  type: z.enum(['string', 'number', 'boolean', 'object', 'array']).default('string'),
+  /** What this argument means — the model reads it to fill the value. */
+  description: z.string().default(''),
+  /** Whether the model must supply this argument. */
+  required: z.boolean().default(false),
+});
+export type ToolParamRow = z.infer<typeof ToolParamRowSchema>;
+
+/**
+ * tool.httpRequest params (PB-T6). Exposes an HTTP call as an agent tool: the
+ * AUTHOR fixes the method + url template + headers/credential, and DECLARES which
+ * arguments the model may fill (`params` rows). At call time the agent merges the
+ * model's JSON args over the template (query/body) and runs it through
+ * `ctx.http.request` (host-limited, I6) — the model never sees the credential.
+ */
+export const ToolHttpRequestParamsSchema = z.object({
+  tool_name: ToolNameSchema.default('http_request'),
+  description: z.string().default('Make an HTTP request to an external API and return the response.'),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']).default('GET'),
+  /** URL the tool calls. May contain `{{ }}` expressions resolved at run time. */
+  url: z.string().min(1),
+  /** Optional stored credential; host injects its auth headers (I7). */
+  credentialId: z.string().default('').meta({ ctbWidget: 'credentialRef' }),
+  /** Static headers always sent with the request. */
+  headers: z.array(HttpKeyValueRowSchema).default([]),
+  /** body_type=json|raw: payload template; the model's args spread over it (json). */
+  body_type: z.enum(['none', 'json', 'raw']).default('none'),
+  body: z.string().default(''),
+  timeout: DurationStringSchema.optional(),
+  /** The arguments the MODEL may supply (merged into query for GET, body otherwise). */
+  params: z.array(ToolParamRowSchema).default([]),
+});
+export type ToolHttpRequestParams = z.infer<typeof ToolHttpRequestParamsSchema>;
+
+/**
+ * tool.code params (PB-T6). A sandboxed-JavaScript tool: the author writes a
+ * program whose `$json` is the model's call arguments; its `return` value is fed
+ * back to the model as the tool result. Runs through `ctx.code.run` (the
+ * @ctb/sandbox worker pool, I3/I6) with the same 10s host cap as `data.code`.
+ * `code` is raw (never expression-resolved — DL #16) on the NODE that wraps it.
+ */
+export const ToolCodeParamsSchema = z.object({
+  tool_name: ToolNameSchema.default('run_code'),
+  description: z.string().default('Run a small JavaScript snippet and return its result.'),
+  /** The tool's JavaScript. `$json` = the model's arguments; `return` = the result. */
+  code: z.string().min(1).meta({ ctbWidget: 'code' }),
+  timeout: DurationStringSchema.optional(),
+  /** The arguments the model may supply (available as `$json.<name>`). */
+  params: z.array(ToolParamRowSchema).default([]),
+});
+export type ToolCodeParams = z.infer<typeof ToolCodeParamsSchema>;
+
+/**
+ * tool.think params (PB-T6). The "Think" tool (n8n / the PLAN2 screenshot): a
+ * NO-OP scratchpad. Calling it does nothing but echo the model's own `thought`
+ * back — it gives the model a place to reason step-by-step mid-loop, which
+ * measurably improves multi-step tool use. Needs no capability and never touches
+ * the world (the purest possible tool).
+ */
+export const ToolThinkParamsSchema = z.object({
+  tool_name: ToolNameSchema.default('think'),
+  description: z
+    .string()
+    .default(
+      'Use this as a scratchpad to think step-by-step before acting. It records your reasoning and returns it unchanged.',
+    ),
+});
+export type ToolThinkParams = z.infer<typeof ToolThinkParamsSchema>;
+
+/**
+ * tool.subflow params (PB-T6). Exposes ANOTHER flow of the same bot as ONE named
+ * agent tool — the n8n "Workflow Tool", and CTB's killer feature since flows are
+ * already pausable/resumable. The model's JSON arguments become the child flow's
+ * entry `$json`; the items its `flow.return` produced become the tool result.
+ * Runs through `ctx.subflow.run` (P3-T1) so the same-bot + recursion-depth guards
+ * apply. Mirrors the `subflow` shape of the inline `AgentToolSource`.
+ */
+export const ToolSubflowParamsSchema = z.object({
+  /** The flow id to expose as a tool (editor renders a flow picker). */
+  flow_id: z.string().min(1).meta({ ctbWidget: 'flowRef' }),
+  /** The tool name the model sees; blank → derived from the flow id. */
+  tool_name: z.string().default(''),
+  /** What the tool does — the model reads this to decide when to call it. */
+  description: z.string().default(''),
+  /** Optional declared arguments the model may supply (else an open object). */
+  params: z.array(ToolParamRowSchema).default([]),
+}).superRefine((s, ctx) => {
+  if (s.tool_name.trim() !== '' && !TOOL_NAME_RE.test(s.tool_name.trim())) {
+    ctx.addIssue({ code: 'custom', message: 'tool_name must be a valid function name', path: ['tool_name'] });
+  }
+});
+export type ToolSubflowParams = z.infer<typeof ToolSubflowParamsSchema>;
+
 // ── db.postgres (PB-T2) ──────────────────────────────────────────────────────
 
 /**

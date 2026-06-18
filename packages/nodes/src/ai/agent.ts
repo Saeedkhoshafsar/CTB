@@ -46,7 +46,19 @@ import {
   type FlowItem,
   type NodeCtx,
   type NodeDef,
+  type ToolCodeParams,
+  type ToolHttpRequestParams,
+  type ToolParamRow,
+  type ToolSubflowParams,
+  type ToolThinkParams,
 } from '@ctb/shared';
+import { parseDuration } from '../lib/duration';
+
+/** PB-T6 dedicated tool provider node types — resolved into runners directly. */
+const TOOL_PROVIDER_TYPES = ['tool.httpRequest', 'tool.code', 'tool.think', 'tool.subflow'] as const;
+
+/** Hard wall-clock ceiling for a `tool.code` sandbox run (mirrors data.code, 10s). */
+const TOOL_CODE_TIMEOUT_CAP_MS = 10_000;
 
 /** Why the agent loop stopped. */
 export type AgentStopReason = 'final' | 'max_steps' | 'max_tool_calls' | 'max_tokens';
@@ -99,14 +111,20 @@ export const aiAgent: NodeDef<AiAgentParams> = {
     }
 
     // Resolve the attached tools into model specs + node-side runners. Tools come
-    // from BOTH the inline `tools` param AND any `ai:tool` provider slots. An mcp
-    // source expands into one tool per advertised server tool; a subflow source
-    // becomes a single named tool. Resolution failures (no MCP service, unknown
-    // flow) fail the node loudly — a misconfigured agent must not run blind.
+    // from THREE places: (1) the inline `tools` param (Phase-A mcp/subflow
+    // sources); (2) dedicated PB-T6 tool PROVIDER nodes wired into the `ai:tool`
+    // slot (`tool.httpRequest`/`tool.code`/`tool.think`/`tool.subflow`), resolved
+    // directly into runners; (3) slot providers whose params already match an
+    // inline source shape (forward-compat). An mcp source expands into one tool
+    // per advertised server tool; everything else becomes a single named tool.
+    // Resolution failures (no MCP service, unknown flow) fail the node loudly — a
+    // misconfigured agent must not run blind.
     let resolved: ResolvedTool[];
     try {
-      const slotSources = toolSourcesFromSlots(ctx, ctx.slots['ai:tool'] ?? []);
-      resolved = await resolveTools(ctx, [...params.tools, ...slotSources]);
+      const providers = ctx.slots['ai:tool'] ?? [];
+      const slotTools = resolveSlotTools(ctx, providers);
+      const slotSources = toolSourcesFromSlots(ctx, providers);
+      resolved = [...(await resolveTools(ctx, [...params.tools, ...slotSources])), ...slotTools];
     } catch (err) {
       return fail(`ai.agent: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -374,16 +392,17 @@ function resolveMemory(ctx: NodeCtx, provider: AttachedProvider | undefined): Ch
 }
 
 /**
- * Convert any attached `ai:tool` provider slots into `AgentToolSource`s so they
- * flow through the same `resolveTools` path as inline tools (PB-T5). The tool
- * PROVIDER nodes themselves land in PB-T6; until then a provider whose validated
- * params already match an `AgentToolSource` (`{type:'mcp'|'subflow', …}`) is
- * accepted, and anything else is skipped with a warning rather than crashing the
- * agent — forward-compatible with the dedicated tool nodes.
+ * Convert attached `ai:tool` provider slots into `AgentToolSource`s (PB-T5).
+ * Dedicated PB-T6 tool nodes (`tool.*`) are NOT handled here — `resolveSlotTools`
+ * turns those into runners directly. This path remains for forward-compat: a
+ * provider whose validated params already match an `AgentToolSource`
+ * (`{type:'mcp'|'subflow', …}`) is accepted; an unrecognized, non-`tool.*`
+ * provider is skipped with a warning rather than crashing the agent.
  */
 function toolSourcesFromSlots(ctx: NodeCtx, providers: readonly AttachedProvider[]): AgentToolSource[] {
   const sources: AgentToolSource[] = [];
   for (const provider of providers) {
+    if (isToolProviderType(provider.type)) continue; // handled by resolveSlotTools
     const p = provider.params as { type?: unknown };
     if (p && (p.type === 'mcp' || p.type === 'subflow')) {
       sources.push(provider.params as AgentToolSource);
@@ -392,6 +411,216 @@ function toolSourcesFromSlots(ctx: NodeCtx, providers: readonly AttachedProvider
     ctx.log('warn', `ai.agent: tool provider "${provider.nodeId}" (${provider.type}) is not a recognized tool source — skipped`);
   }
   return sources;
+}
+
+function isToolProviderType(type: string): type is (typeof TOOL_PROVIDER_TYPES)[number] {
+  return (TOOL_PROVIDER_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Resolve the dedicated PB-T6 tool PROVIDER nodes wired into the `ai:tool` slot
+ * into runnable tools. Each node type maps to one callable tool whose spec the
+ * model reads (name + description + parameter schema) and whose runner the agent
+ * invokes when the model calls it:
+ *  - `tool.httpRequest` → `ctx.http.request` (host-limited), model args merged
+ *    into the query (GET/HEAD) or JSON body.
+ *  - `tool.code`        → `ctx.code.run` (sandbox), model args visible as `$json`.
+ *  - `tool.think`       → a no-op scratchpad that echoes the model's `thought`.
+ *  - `tool.subflow`     → `ctx.subflow.run` (same-bot child flow as a tool).
+ * Duplicate tool names are dropped (first wins) so the model never sees an
+ * ambiguous tool set. A capability that a tool needs but the host hasn't wired
+ * (no `ctx.subflow`) throws → the agent fails loudly.
+ */
+function resolveSlotTools(ctx: NodeCtx, providers: readonly AttachedProvider[]): ResolvedTool[] {
+  const tools: ResolvedTool[] = [];
+  const seen = new Set<string>();
+  for (const provider of providers) {
+    if (!isToolProviderType(provider.type)) continue;
+    const tool = buildSlotTool(ctx, provider);
+    if (!tool) continue;
+    if (seen.has(tool.spec.name)) {
+      ctx.log('warn', `ai.agent: duplicate tool name "${tool.spec.name}" from "${provider.nodeId}" — skipped`);
+      continue;
+    }
+    seen.add(tool.spec.name);
+    tools.push(tool);
+  }
+  return tools;
+}
+
+/** Build one `ResolvedTool` from a dedicated tool provider node (PB-T6). */
+function buildSlotTool(ctx: NodeCtx, provider: AttachedProvider): ResolvedTool | null {
+  switch (provider.type) {
+    case 'tool.httpRequest':
+      return buildHttpTool(ctx, provider.params as ToolHttpRequestParams);
+    case 'tool.code':
+      return buildCodeTool(ctx, provider.params as ToolCodeParams);
+    case 'tool.think':
+      return buildThinkTool(provider.params as ToolThinkParams);
+    case 'tool.subflow':
+      return buildSubflowTool(ctx, provider.params as ToolSubflowParams);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Turn the author's declared `params` rows into a JSON-Schema `parameters`
+ * object for the model (PB-T6). No rows → an open object (the model may pass
+ * anything). Each row becomes one typed property; `required` rows are listed.
+ */
+function buildToolParameters(rows: readonly ToolParamRow[] | undefined): Record<string, unknown> {
+  if (!rows || rows.length === 0) return { type: 'object', additionalProperties: true };
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const row of rows) {
+    const prop: Record<string, unknown> = { type: row.type };
+    if (row.description.trim() !== '') prop.description = row.description;
+    properties[row.name] = prop;
+    if (row.required) required.push(row.name);
+  }
+  const schema: Record<string, unknown> = { type: 'object', properties, additionalProperties: false };
+  if (required.length > 0) schema.required = required;
+  return schema;
+}
+
+/** tool.httpRequest → a tool that calls an API; model args merge into query/body. */
+function buildHttpTool(ctx: NodeCtx, p: ToolHttpRequestParams): ResolvedTool {
+  const spec: AiToolSpec = {
+    name: p.tool_name,
+    description: p.description,
+    parameters: buildToolParameters(p.params),
+  };
+  return {
+    spec,
+    async run(args) {
+      // Credential auth headers form the base set (I7); static rows layer on top.
+      const headers: Record<string, string> = {};
+      if (p.credentialId.trim() !== '') {
+        if (!ctx.credentials) throw new Error('credentials are not available in this context');
+        const authHeaders = await ctx.credentials.authHeaders(p.credentialId);
+        if (!authHeaders) throw new Error(`credential "${p.credentialId}" not found`);
+        Object.assign(headers, authHeaders);
+      }
+      for (const row of p.headers) headers[row.name] = row.value;
+
+      // GET/HEAD have no body → the model's args become query params; otherwise
+      // they form the JSON body (merged over the author's body template).
+      const isBodyless = p.method === 'GET' || p.method === 'HEAD';
+      let url: string;
+      try {
+        const u = new URL(p.url);
+        if (isBodyless) for (const [k, v] of Object.entries(args)) u.searchParams.append(k, String(v));
+        url = u.toString();
+      } catch {
+        throw new Error(`invalid url "${p.url}"`);
+      }
+
+      let body: string | undefined;
+      if (!isBodyless && p.body_type !== 'none') {
+        if (p.body_type === 'json') {
+          const base = p.body.trim() !== '' ? safeJsonObject(p.body) : {};
+          body = JSON.stringify({ ...base, ...args });
+          if (!hasContentType(headers)) headers['content-type'] = 'application/json';
+        } else {
+          body = p.body;
+        }
+      } else if (!isBodyless && Object.keys(args).length > 0) {
+        // No body template but the model supplied args → send them as JSON.
+        body = JSON.stringify(args);
+        if (!hasContentType(headers)) headers['content-type'] = 'application/json';
+      }
+
+      const res = await ctx.http.request({
+        method: p.method,
+        url,
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        ...(body !== undefined ? { body } : {}),
+        ...(p.timeout ? { timeoutMs: parseDuration(p.timeout) } : {}),
+      });
+      const payload = { statusCode: res.status, body: res.body };
+      return JSON.stringify(payload);
+    },
+  };
+}
+
+/** tool.code → a tool that runs sandboxed JS; model args are visible as `$json`. */
+function buildCodeTool(ctx: NodeCtx, p: ToolCodeParams): ResolvedTool {
+  const spec: AiToolSpec = {
+    name: p.tool_name,
+    description: p.description,
+    parameters: buildToolParameters(p.params),
+  };
+  const timeoutMs = p.timeout ? Math.min(parseDuration(p.timeout), TOOL_CODE_TIMEOUT_CAP_MS) : TOOL_CODE_TIMEOUT_CAP_MS;
+  return {
+    spec,
+    async run(args) {
+      // The model's arguments are the single input item ($json = args).
+      const { value, logs } = await ctx.code.run(p.code, [{ json: args }], { timeoutMs });
+      for (const line of logs) ctx.log('debug', `tool.code(${p.tool_name}): ${line}`);
+      if (value === undefined || value === null) return '(no result)';
+      if (typeof value === 'string') return value;
+      return JSON.stringify(value);
+    },
+  };
+}
+
+/** tool.think → a no-op scratchpad: returns the model's own thought unchanged. */
+function buildThinkTool(p: ToolThinkParams): ResolvedTool {
+  const spec: AiToolSpec = {
+    name: p.tool_name,
+    description: p.description,
+    parameters: {
+      type: 'object',
+      properties: { thought: { type: 'string', description: 'Your step-by-step reasoning.' } },
+      required: ['thought'],
+      additionalProperties: false,
+    },
+  };
+  return {
+    spec,
+    async run(args) {
+      const thought = typeof args.thought === 'string' ? args.thought : JSON.stringify(args.thought ?? '');
+      return thought.trim() !== '' ? thought : '(noted)';
+    },
+  };
+}
+
+/** tool.subflow → a tool that runs another flow of the same bot (n8n Workflow Tool). */
+function buildSubflowTool(ctx: NodeCtx, p: ToolSubflowParams): ResolvedTool {
+  const name =
+    p.tool_name.trim() !== '' ? p.tool_name.trim() : `flow_${p.flow_id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  const spec: AiToolSpec = {
+    name,
+    description: p.description.trim() !== '' ? p.description : `Run the "${p.flow_id}" flow as a tool`,
+    parameters: buildToolParameters(p.params),
+  };
+  return {
+    spec,
+    async run(args) {
+      if (!ctx.subflow) throw new Error('sub-flow execution is not available — a subflow tool needs it');
+      const { items: returned } = await ctx.subflow.run(p.flow_id, [{ json: args }]);
+      if (returned.length === 0) return '(no output)';
+      if (returned.length === 1) return JSON.stringify(returned[0]!.json);
+      return JSON.stringify(returned.map((i) => i.json));
+    },
+  };
+}
+
+/** Parse a JSON object string for an http tool body template; `{}` on any failure. */
+function safeJsonObject(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    /* fall through */
+  }
+  return {};
+}
+
+/** Case-insensitive check for an existing content-type header. */
+function hasContentType(headers: Record<string, string>): boolean {
+  return Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
 }
 
 /**

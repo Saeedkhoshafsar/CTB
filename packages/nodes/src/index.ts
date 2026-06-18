@@ -19,6 +19,10 @@ import { aiMcpClient } from './ai/mcp-client';
 import { aiMemoryKv } from './ai/memory-kv';
 import { aiMemoryPostgres } from './ai/memory-postgres';
 import { aiModelOpenai } from './ai/model-openai';
+import { aiToolCode } from './ai/tool-code';
+import { aiToolHttpRequest } from './ai/tool-http-request';
+import { aiToolSubflow } from './ai/tool-subflow';
+import { aiToolThink } from './ai/tool-think';
 import { collectionRecordChanged } from './data/record-changed';
 import { dataCode } from './data/code';
 import { dataCollection } from './data/collection';
@@ -67,6 +71,10 @@ export { aiMcpClient } from './ai/mcp-client';
 export { aiMemoryKv } from './ai/memory-kv';
 export { aiMemoryPostgres } from './ai/memory-postgres';
 export { aiModelOpenai } from './ai/model-openai';
+export { aiToolCode } from './ai/tool-code';
+export { aiToolHttpRequest } from './ai/tool-http-request';
+export { aiToolSubflow } from './ai/tool-subflow';
+export { aiToolThink } from './ai/tool-think';
 export { collectionRecordChanged } from './data/record-changed';
 export { dataCode, normalizeReturn, CODE_TIMEOUT_CAP_MS } from './data/code';
 export { dataCollection } from './data/collection';
@@ -152,6 +160,10 @@ export const builtinNodes: NodeDef<never>[] = [
   aiMemoryKv,
   aiMemoryPostgres,
   aiModelOpenai,
+  aiToolHttpRequest,
+  aiToolCode,
+  aiToolThink,
+  aiToolSubflow,
   flowLoop,
   flowMerge,
   flowStopError,

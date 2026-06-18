@@ -331,10 +331,12 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
     a store hiccup is logged, never loses the reply). Blank provider `session_key`
     defaults to `<nodeId>:<chatId>` (per-node, per-chat isolation).
   - **`ai:tool`** *(repeatable)* — callable tools, merged **alongside** the
-    inline `tools` param and resolved through the same path. The dedicated tool
-    provider nodes land in **PB-T6**; until then a tool provider whose validated
-    params already match an `AgentToolSource` (`{type:'mcp'|'subflow', …}`) is
-    accepted, and anything else is skipped with a warning (forward-compatible).
+    inline `tools` param. The dedicated PB-T6 tool provider nodes
+    (`tool.httpRequest` / `tool.code` / `tool.think` / `tool.subflow`, see below)
+    are resolved **directly** into runnable tools; a non-`tool.*` provider whose
+    validated params already match an `AgentToolSource` (`{type:'mcp'|'subflow',
+    …}`) still flows through the inline path (forward-compatible); anything else
+    is skipped with a warning. Duplicate tool names are dropped (first wins).
 - Tools come from MCP server tools and/or other flows exposed as tools (from
   either the inline param or the `ai:tool` slots). I6/I7 hold — the node only
   ever passes a `credentialId`; the host resolves the key.
@@ -353,6 +355,40 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
 - A provider is never executed as a data step — the executor resolves it as the
   agent's config (`ctx.slots['ai:model'][0]`); its `execute()` fails loudly if a
   malformed graph ever routes data into it.
+
+### AI Agent tool nodes `+PB` (`tool.httpRequest`, `tool.code`, `tool.think`, `tool.subflow`) — PB-T6
+- **Role:** `provider`, **provides:** `ai:tool`. *Sub-nodes* (no data ports — a
+  single dashed `provider` wire) attached to an AI Agent's repeatable `ai:tool`
+  slot. Each turns into ONE callable tool: its `tool_name` + `description` are
+  what the model reads to decide IF/WHEN to call it, and its `params` rows become
+  the tool's JSON-Schema arguments (no rows → an open object). The agent resolves
+  these directly (`resolveSlotTools`), so they need no inline `AgentToolSource`.
+  Generic infrastructure (I2 — a tool is a capability, never a domain).
+- **`tool.httpRequest`** — the model calls an external API. The author fixes
+  `method` + `url` + `headers` + optional `credentialId`; at call time the agent
+  merges the model's args into the **query** (GET/HEAD) or the **JSON body**
+  (other methods, over the optional `body` template) and runs it through
+  `ctx.http.request` (host-limited, I6). Credential auth headers are injected
+  host-side (I7); the response `{statusCode, body}` is fed back to the model.
+- **`tool.code`** — the model runs sandboxed JavaScript. The model's arguments
+  are visible as `$json`; the program's `return` is the tool result. Runs through
+  `ctx.code.run` (the @ctb/sandbox worker pool, I3/I6) under the same **10s** cap
+  as `data.code`. `code` is **raw** (`rawParamKeys` — never `{{ }}`-resolved, DL
+  #16) so it reaches the sandbox verbatim.
+- **`tool.think`** — the "Think" tool (the PLAN2 screenshot): a **no-op
+  scratchpad**. Calling it does nothing but echo the model's own `thought` back,
+  giving it a place to reason step-by-step mid-loop (measurably improves
+  multi-step tool use). Needs **no** capability and never touches the world.
+- **`tool.subflow`** — another flow OF THE SAME BOT exposed as one named tool
+  (the n8n "Workflow Tool", and CTB's killer feature since flows are already
+  pausable/resumable). The model's JSON args become the child flow's entry
+  `$json`; the items its `flow.return` produced become the tool result. Runs
+  through `ctx.subflow.run` (P3-T1) so the same-bot + recursion-depth guards
+  apply; a blank `tool_name` is derived from the flow id (`flow_<id>`).
+- A provider is never executed as a data step — its `execute()` fails loudly if a
+  malformed graph ever routes data into it. Tool errors during a run are returned
+  to the model as `error: …` strings (never a node failure) so the agent can
+  recover by trying differently.
 
 ### Chat memory providers `+PB` (`ai.memoryKv`, `ai.memoryPostgres`) — PB-T4
 - **Role:** `provider`, **provides:** `ai:memory`. These are *sub-nodes* (no data

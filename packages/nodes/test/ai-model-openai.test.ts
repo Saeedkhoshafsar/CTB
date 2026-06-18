@@ -17,10 +17,10 @@ import { AiModelOpenaiParamsSchema } from '@ctb/shared';
 import { makeCtx } from './node-harness';
 
 describe('ai.modelOpenai — registration & contract (PB-T5)', () => {
-  it('is registered in the builtins; registry is 47 types', () => {
+  it('is registered in the builtins; registry is 51 types', () => {
     const types = builtinNodes.map((n) => n.type);
     expect(types).toContain('ai.modelOpenai');
-    expect(builtinNodes.length).toBe(47);
+    expect(builtinNodes.length).toBe(51);
   });
 
   it('is an ai:model provider with no data input and a single provider output', () => {

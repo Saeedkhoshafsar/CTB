@@ -1,19 +1,23 @@
 # CTB External Integration Protocol
 
 > The contract for talking to CTB from the outside world — n8n, scripts, AI
-> agents, other services — and for CTB talking back out. Completed across
-> Phase 4 (P4-T1 … P4-T5).
+> agents, other services — and for CTB talking back out. Built across Phase 4
+> (P4-T1 … P4-T5, the integration surfaces) and Phase C (PC-T1 … PC-T5, the open
+> **builder** surface — discover the node library and assemble flows from outside).
 
 CTB exposes three integration surfaces:
 
 | Direction | Surface | Auth | Section |
 |---|---|---|---|
 | **In** | per-flow **Webhook Trigger** — fire a specific flow, optionally sync (wait for a reply) | unguessable path secret + optional HMAC | [§ Webhook Trigger](#inbound-webhook-trigger--p4-t1) |
-| **In** | the **REST API v1** (`/api/v1/*`) — trigger flows, send messages, query users/executions — and the **MCP server** (`POST /api/v1/mcp`) for AI agents | `Authorization: Bearer ctb_…` | [§ REST API](#inbound-rest-api-token-auth--p4-t3) · [§ MCP server](#mcp-server--ctb-as-a-tool-surface--pc-t3) |
+| **In** | the **REST API v1** (`/api/v1/*`) — discover nodes, author/validate/activate flows, trigger flows, send messages, query users/executions — and the **MCP server** (`POST /api/v1/mcp`) for AI agents | `Authorization: Bearer ctb_…` | [§ REST API](#inbound-rest-api-token-auth--p4-t3) · [§ MCP server](#mcp-server--ctb-as-a-tool-surface--pc-t3) |
 | **Out** | **instance webhooks** — CTB POSTs an event envelope to your URLs when things happen | optional HMAC signature CTB adds | [§ Outbound](#outbound-instance-webhooks--p4-t4) |
 
-Two end-to-end **n8n recipes** (the canonical "open protocol" use case) are at
-the bottom: [§ n8n recipes](#n8n-recipes).
+The **[§ Authoring & MCP](#authoring--mcp--building-flows-from-outside--pc-t5)**
+chapter ties the catalog + authoring + MCP endpoints into one
+*discover → build → validate → activate → trigger* lifecycle (with `curl` + MCP
+recipes); two end-to-end **n8n recipes** (the canonical "open protocol" use case)
+are at the bottom: [§ n8n recipes](#n8n-recipes).
 
 ### Conventions
 
@@ -251,6 +255,143 @@ Point the client at `https://<your-ctb-host>/api/v1/mcp` with an
 `Authorization: Bearer ctb_…` header. The agent can then `list_nodes`,
 `validate_flow`, `create_flow`, activate via REST, and `trigger_flow` —
 assembling and running a CTB workflow end-to-end without the panel.
+
+## Authoring & MCP — building flows from outside ✅ PC-T5
+
+Phase C gives an external system — an n8n flow, a deploy script, or an AI agent
+(over MCP) — everything it needs to **discover the node library and assemble,
+validate, activate, and run a CTB flow without ever opening the editor**. This
+chapter ties the PC-T1…PC-T3 endpoints into one lifecycle and shows two
+copy-pasteable recipes.
+
+> The whole lifecycle below is exercised end-to-end against the **real** wired
+> engine + a fake Telegram transport by
+> [`apps/server/test/e2e-phaseC-authoring-demo.test.ts`](../apps/server/test/e2e-phaseC-authoring-demo.test.ts)
+> (walkthrough: [`docs/demos/phase-C-authoring.md`](demos/phase-C-authoring.md)).
+> Run it with:
+>
+> ```bash
+> npm run test --workspace=@ctb/server -- e2e-phaseC-authoring-demo
+> ```
+
+### The lifecycle: discover → build → validate → activate → trigger
+
+```
+            ┌──────────────────────── the same bearer token throughout ───────────────────────┐
+  DISCOVER  GET  /api/v1/node-types                 → the catalog: every node's type, ports,
+                                                       JSON-Schema params, and AI slot surface
+     BUILD  POST /api/v1/flows  { bot_id, name,     → a DRAFT flow assembled from ONLY catalog
+                                  graph }              node types (status:"draft", version:1)
+  VALIDATE  POST /api/v1/flows/:id/validate         → dry-run; { ok, problems, nodeProblems },
+                                                       nothing saved — fix until ok:true
+  ACTIVATE  POST /api/v1/flows/:id/activate         → 200 { status:"active" }  (or 422 with the
+                                                       problem list; the flow stays a draft)
+   TRIGGER  POST /api/v1/flows/:id/trigger          → 202 { executionId } (async)
+      POLL  GET  /api/v1/executions?flow_id=:id     → watch status reach done | error
+            └──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Two invariants make this safe to automate:
+
+- **The catalog is the single source of truth (I5).** `GET /api/v1/node-types`
+  is the *same* projection the editor and the engine registry use, so a node it
+  doesn't advertise cannot run. A graph referencing an unknown type (a domain
+  node like `shop.checkout` that, by **I2**, doesn't exist) fails `validate`
+  (`ok:false`) and `activate` (`422 not_activatable`) — you can never activate a
+  flow the engine can't execute.
+- **A v1-authored flow is byte-identical to an editor-built one (I5).** `create`
+  / `validate` / `activate` reuse the panel's exact shared schemas + validator,
+  so a flow assembled by a script behaves identically to one drawn on the canvas.
+
+The same five steps are available over **MCP** (PC-T3): `list_nodes` =
+`GET /node-types`, `validate_flow` = `/validate`, `create_flow` = `POST /flows`,
+`trigger_flow` = `/trigger`; activation is the REST `/activate` route. An MCP
+client (Claude Desktop, an IDE assistant) points at `POST /api/v1/mcp` and walks
+the identical lifecycle.
+
+### Recipe A — a script builds a flow with `curl`
+
+`$CTB` is your CTB origin; `$TOK` a bearer token; `$BOT` a bot id.
+
+```bash
+# 1. DISCOVER — learn the node types + their params (jq to scan the catalog)
+curl -s $CTB/api/v1/node-types -H "Authorization: Bearer $TOK" \
+  | jq '.nodeTypes[] | {type, category, inputs: .ports.inputs}'
+
+# 2. BUILD — assemble a 3-node draft from catalog types only
+FLOW=$(curl -s $CTB/api/v1/flows -H "Authorization: Bearer $TOK" \
+  -H 'Content-Type: application/json' -d '{
+    "bot_id": "'"$BOT"'",
+    "name": "agent-built greeting",
+    "graph": {
+      "nodes": [
+        { "id":"trig", "type":"flow.manualTrigger", "params":{ "sample":"{}" },
+          "position":{ "x":0,"y":0 }, "disabled":false },
+        { "id":"compose", "type":"data.setFields",
+          "params":{ "fields":[ { "target":"json","name":"greeting",
+            "value":"Hello from a script 👋","op":"set" } ] },
+          "position":{ "x":220,"y":0 }, "disabled":false },
+        { "id":"send", "type":"tg.sendMessage",
+          "params":{ "chat_id":"555","text":"{{ $json.greeting }}" },
+          "position":{ "x":440,"y":0 }, "disabled":false }
+      ],
+      "edges": [
+        { "id":"e1","from":{ "node":"trig","port":"main" },"to":{ "node":"compose","port":"main" } },
+        { "id":"e2","from":{ "node":"compose","port":"main" },"to":{ "node":"send","port":"main" } }
+      ]
+    }
+  }' | jq -r '.flow.id')
+
+# 3. VALIDATE — dry-run (expect { "ok": true })
+curl -s $CTB/api/v1/flows/$FLOW/validate -H "Authorization: Bearer $TOK" -X POST | jq
+
+# 4. ACTIVATE — flip the draft to active
+curl -s $CTB/api/v1/flows/$FLOW/activate -H "Authorization: Bearer $TOK" -X POST | jq
+
+# 5. TRIGGER — run it, then poll for the result
+EXEC=$(curl -s $CTB/api/v1/flows/$FLOW/trigger -H "Authorization: Bearer $TOK" \
+  -H 'Content-Type: application/json' -d '{ "chat_id": 555 }' | jq -r '.executionId')
+curl -s "$CTB/api/v1/executions?flow_id=$FLOW" -H "Authorization: Bearer $TOK" \
+  | jq '.executions[] | select(.id=="'"$EXEC"'") | .status'   # → "done"
+```
+
+The run sends `Hello from a script 👋` to chat `555` through the bot's
+centralized rate-limited sender — the `{{ $json.greeting }}` expression resolved
+against the `data.setFields` output, exactly as it would in an editor-built flow.
+
+### Recipe B — an AI agent builds a flow over MCP
+
+Point an MCP client at `POST /api/v1/mcp` (bearer token). A typical agent turn:
+
+```
+1. tools/call  list_nodes {}
+      → scan the catalog; pick flow.manualTrigger + data.setFields + tg.sendMessage
+2. tools/call  validate_flow { "graph": { …the assembled 3-node graph… } }
+      → { ok: true }   (iterate on the graph until ok)
+3. tools/call  create_flow   { "bot_id": "$BOT", "name": "agent flow",
+                               "graph": { …the validated graph… } }
+      → { flow: { id, status: "draft" } }
+4. (activate)  POST /api/v1/flows/<id>/activate        # REST — MCP create makes a draft
+5. tools/call  trigger_flow  { "flow_id": "<id>", "chat_id": 555 }
+      → { executionId };  then GET /api/v1/executions to confirm "done"
+```
+
+`validate_flow` lets the agent **self-correct before committing** — it returns
+the same `{ ok, problems, nodeProblems }` shape as the REST `/validate`, so a
+model can read a `nodeProblems[].message`, fix the offending node's params, and
+re-validate, never persisting a broken flow.
+
+### Quick reference — which surface for which job
+
+| You want… | Use | Endpoint(s) |
+|---|---|---|
+| to **see what bricks exist** (types, params, slots) | catalog | `GET /api/v1/node-types` · MCP `list_nodes` |
+| to **assemble a flow** from outside | authoring | `POST /api/v1/flows` · MCP `create_flow` |
+| to **check before committing** | dry-run validate | `POST /api/v1/flows/:id/validate` · MCP `validate_flow` |
+| to **make a flow live** | activate | `POST /api/v1/flows/:id/activate` |
+| to **run a flow now** | trigger | `POST /api/v1/flows/:id/trigger` · MCP `trigger_flow` |
+| to **watch the outcome** | poll | `GET /api/v1/executions?flow_id=` |
+| to **let an AI agent do all of the above** | MCP | `POST /api/v1/mcp` ([§ MCP server](#mcp-server--ctb-as-a-tool-surface--pc-t3)) |
 
 ## Outbound: instance webhooks ✅ P4-T4
 

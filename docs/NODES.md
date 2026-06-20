@@ -298,6 +298,15 @@ Generic SQL database nodes (invariant I2 — "Postgres" is infrastructure, never
 - **Runs ONCE per node run** (one SQL round-trip). The result is mapped per `return_mode`.
 - Fails LOUDLY when `ctx.db` is absent (no driver wired), the credential is missing/undecryptable/not a `mysql` credential, a `where`/`values` row is empty, an identifier is unsafe, a `delete`/`update` would touch many rows without `confirm_many`, or the database returns an error.
 
+### Connection hardening `+PD` (PD-T1)
+Both `postgres` and `mysql` credentials carry three hardening fields, set in the editor's Credentials form and enforced **host-side** (the node never sees them — invariant I6):
+
+- **`poolMax`** (1–100, default 5) — caps the number of concurrent pooled connections this credential may open, so a busy or looping flow can't exhaust the database's connection slots. Passed to the driver as `pg`'s `max` / `mysql2`'s `connectionLimit`.
+- **`statementTimeoutMs`** (0–600000, default 30000; 0 = no timeout) — a per-statement deadline. On Postgres it's applied at the session level (`-c statement_timeout=…`) so the **server** kills a runaway query and frees the connection; on MySQL it's passed as `mysql2`'s per-query `timeout`. A slow query fails the node instead of holding a connection open forever.
+- **`readOnly`** (default false) — when true, the credential refuses every write. **Defence in depth:** (1) the host marks each statement read/write — `select` is a read, an arbitrary `query` is conservatively a **write (fail-closed)**, and `insert`/`update`/`delete` are writes — and rejects a write before it ever reaches the driver; (2) a read-only Postgres pool *also* opens its sessions with `default_transaction_read_only=on`, so the **server** would refuse a write even if it slipped through. MySQL has no per-pool read-only DSN flag, so it relies on the host-side refusal. A safe way to let a flow read a production database without any risk of mutation.
+
+These fields default sensibly, so existing credentials keep working unchanged; the SQL-injection guarantees above (bound values, validated+quoted identifiers) are unaffected. A read-only credential lets a plain `select` through but fails an `insert`/`update`/`delete`/`query` with a clear *"credential is read-only — write statements are not allowed"* error.
+
 ---
 
 ## AI nodes `+P5`

@@ -241,6 +241,10 @@ export const dbPostgres: NodeDef<DbPostgresParams> = {
         credentialId: params.credentialId,
         sql: statement.sql,
         params: statement.values,
+        // PD-T1: tell the host whether this writes. `select` is a pure read; an
+        // arbitrary `query` is conservatively a write (fail-closed) so a
+        // read-only credential refuses it unless it's an explicit SELECT.
+        write: params.operation !== 'select',
       });
     } catch (err) {
       return fail(`db.postgres: ${err instanceof Error ? err.message : String(err)}`);

@@ -151,7 +151,7 @@ minimal agent, PB-T5 upgrades it to the attached-provider model.
 
 | Task | Scope |
 |---|---|
-| **PD-T1** | **DB connection pooling + safety** — pool limits, statement timeouts, read-only credential option, SQL-injection test battery for `db.postgres`/`db.mysql`. |
+| **PD-T1** ✅ | **DB connection pooling + safety** — pool limits, statement timeouts, read-only credential option, SQL-injection test battery for `db.postgres`/`db.mysql`. |
 | **PD-T2** | **Agent cost governance** — per-bot token/step budgets, daily caps, per-credential spend metering surfaced in the panel. |
 | **PD-T3** | **MCP/API rate limiting + audit** — per-token quotas, an audit log of authoring/trigger calls. |
 | **PD-T4** | **Node library docs site** — auto-generated from the catalog API: every node with params, examples, fa/en. The "the work is already done, just connect them" promise made browsable. |

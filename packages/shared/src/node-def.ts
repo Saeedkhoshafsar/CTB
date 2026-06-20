@@ -405,6 +405,14 @@ export interface DbQueryRequest {
   sql: string;
   /** Bind values for the placeholders, in order. */
   params: unknown[];
+  /**
+   * Whether this statement writes (PD-T1). The node sets it from its operation
+   * (`insert`/`update`/`delete` ⇒ true; `select` ⇒ false; an arbitrary `query`
+   * is conservatively true). A read-only credential makes the host REFUSE a
+   * write before it leaves CTB — defence in depth alongside the server-side
+   * read-only session. Absent ⇒ treated as a write (fail-closed).
+   */
+  write?: boolean;
 }
 
 /** The host's reply to a DbQueryRequest. */

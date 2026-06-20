@@ -95,6 +95,24 @@ export const PostgresSchema = z.object({
   password: z.string().optional(),
   /** Require TLS to the server (default false). */
   ssl: z.boolean().default(false),
+  /**
+   * Hardening (PD-T1). Max concurrent pooled connections this credential may open
+   * (1–100, default 5) — caps the blast radius of a busy/looping flow.
+   */
+  poolMax: z.coerce.number().int().min(1).max(100).default(5),
+  /**
+   * Per-statement timeout in milliseconds (PD-T1). 0 = no timeout (the driver
+   * default). Applied at the session level so a runaway query is killed by the
+   * server, not left to hold a connection. Default 30000 (30s).
+   */
+  statementTimeoutMs: z.coerce.number().int().min(0).max(600_000).default(30_000),
+  /**
+   * Read-only mode (PD-T1). When true the connection is opened read-only so the
+   * SERVER refuses any write (`default_transaction_read_only=on`), AND the host
+   * refuses write operations before they leave CTB — defence in depth. Default
+   * false. A safe choice for "let a flow read my production DB" without risk.
+   */
+  readOnly: z.boolean().default(false),
 });
 export type Postgres = z.infer<typeof PostgresSchema>;
 
@@ -119,6 +137,23 @@ export const MysqlSchema = z.object({
   password: z.string().optional(),
   /** Require TLS to the server (default false). */
   ssl: z.boolean().default(false),
+  /**
+   * Hardening (PD-T1). Max concurrent pooled connections (1–100, default 5) —
+   * `mysql2`'s `connectionLimit`.
+   */
+  poolMax: z.coerce.number().int().min(1).max(100).default(5),
+  /**
+   * Per-statement timeout in milliseconds (PD-T1). 0 = no timeout. `mysql2`
+   * supports a per-query `timeout`; the host passes it on every statement.
+   * Default 30000 (30s).
+   */
+  statementTimeoutMs: z.coerce.number().int().min(0).max(600_000).default(30_000),
+  /**
+   * Read-only mode (PD-T1). MySQL has no per-pool read-only DSN flag, so the host
+   * enforces it by refusing write operations before they leave CTB (the node
+   * marks each statement read/write). Default false.
+   */
+  readOnly: z.boolean().default(false),
 });
 export type Mysql = z.infer<typeof MysqlSchema>;
 

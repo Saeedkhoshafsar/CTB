@@ -64,11 +64,15 @@ async function main(): Promise<void> {
   engine.router.startTimeoutScanner();
   // Cron schedules (schedule.trigger) re-arm from the active flows in the DB.
   engine.scheduler.start();
+  // Live-voice call-event bus (trigger.callEvent) subscribes to the call service.
+  engine.callEventBus.start();
 
   const close = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
     engine.router.stopTimeoutScanner();
     engine.scheduler.stop();
+    engine.callEventBus.stop(); // unsubscribe from the call service (PE-T3)
+    engine.callSessionService.stop(); // leave any open live calls (PE-T2)
     await engine.gateway.stopAll();
     await app.close();
     await destroyDefaultSandboxPool(); // Code-node workers

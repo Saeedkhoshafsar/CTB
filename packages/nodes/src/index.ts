@@ -54,6 +54,7 @@ import { flowStopError } from './flow/stop-error';
 import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
 import { scheduleTrigger } from './flow/schedule-trigger';
+import { callEventTrigger } from './flow/call-event-trigger';
 import { webhookTrigger } from './flow/webhook-trigger';
 import { tgAnswerCallback } from './tg/answer-callback';
 import { tgChatAction } from './tg/chat-action';
@@ -113,6 +114,7 @@ export { flowStopError } from './flow/stop-error';
 export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
 export { scheduleTrigger } from './flow/schedule-trigger';
+export { callEventTrigger } from './flow/call-event-trigger';
 export { webhookTrigger } from './flow/webhook-trigger';
 export { tgAnswerCallback } from './tg/answer-callback';
 export { tgChatAction } from './tg/chat-action';
@@ -135,6 +137,7 @@ export const builtinNodes: NodeDef<never>[] = [
   collectionRecordChanged,
   webhookTrigger,
   scheduleTrigger,
+  callEventTrigger,
   tgSendMessage,
   tgSendMedia,
   tgGetFile,

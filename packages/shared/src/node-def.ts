@@ -353,6 +353,18 @@ export interface NodeCtx {
     query(req: DbQueryRequest): Promise<DbQueryResult>;
   } | null;
   /**
+   * Live-voice capability (`call.*` action nodes, Phase E / PE-T2). The host's
+   * long-lived Call Session Service joins the live Telegram call over MTProto
+   * (the Bot API has no call methods) using the resolved `voiceConnection`
+   * credential and streams PCM in/out — the node only ever invokes discrete
+   * actions (connect/speak/grantTurn/endTurn/mute/leave/status) through this
+   * interface; it never holds the socket (invariants I3/I4/I6). The connector
+   * (userbot/companion/external) is chosen by the credential, never the node
+   * type. Null when no voice runtime is wired (unit tests / a host without the
+   * Call Session Service) — a `call.*` node then fails with a clear error.
+   */
+  call: CallCapability | null;
+  /**
    * Attached sub-connection providers (PB-T5). A CONSUMER node (e.g. `ai.agent`)
    * reads the providers wired into its typed input slots here — each slot kind
    * (`ai:model`/`ai:memory`/`ai:tool`) maps to the provider node(s) attached to
@@ -593,6 +605,116 @@ export interface AiSpeechResult {
   audio: Uint8Array;
   /** The MIME type of the returned audio (derived from the requested format). */
   mime: string;
+}
+
+// ---------------------------------------------------------------------------
+// Live-voice capability (ctx.call) — Phase E / PE-T2
+// ---------------------------------------------------------------------------
+
+/**
+ * A live-call target (Phase E). `target` is a SETTING, never a node fork (PLAN2
+ * §E.1) — the SAME `ctx.call` handles a group/channel voice chat AND a 1:1 call.
+ * `kind` disambiguates the id space; the host's connector maps it to MTProto.
+ */
+export interface CallTargetRef {
+  kind: 'chat' | 'channel' | 'user';
+  /** Telegram numeric id (or @username for a channel/user) the host dials. */
+  id: number | string;
+}
+
+/**
+ * Moderation mode of a live call (Phase E). A SETTING on the trigger/connect
+ * node, not a node type:
+ *  - `support` — everyone may speak; the AI answers each caller (1:1 or open group).
+ *  - `lineup`  — a Q&A queue: listeners request the mic and the flow grants turns
+ *                one at a time (`order` sequential/random), e.g. a channel live stream.
+ */
+export type CallMode = 'support' | 'lineup';
+
+/** Turn order for `lineup` mode (Phase E). */
+export type CallTurnOrder = 'sequential' | 'random';
+
+/** What `ctx.call.speak` plays — synthesized TTS bytes, a stored file, or raw PCM. */
+export interface CallSpeakRequest {
+  /** The live call to play into. */
+  target: CallTargetRef;
+  /** Audio bytes to play (e.g. ai.textToSpeech output). Mutually exclusive with `fileId`/`pcm`. */
+  audio?: Uint8Array;
+  /** A CTB file id to play (read host-side via the file store). */
+  fileId?: string;
+  /** Raw 16-bit mono PCM + its sample rate (advanced; the connector resamples to the call rate). */
+  pcm?: { samples: Uint8Array; sampleRate: number };
+  /** MIME of `audio` when given (e.g. `audio/ogg`); the connector decodes to PCM. */
+  mime?: string;
+}
+
+/** A participant in a live call (Phase E) — used by the lineup queue + status. */
+export interface CallParticipant {
+  /** Telegram user id. */
+  userId: number | string;
+  /** Display name / @username when the connector knows it. */
+  name?: string;
+  /** True while this participant currently holds the mic (lineup) / is unmuted. */
+  speaking: boolean;
+}
+
+/** A snapshot of a live call's state (`ctx.call.status`). */
+export interface CallStatus {
+  /** True once `connect` has joined and media is flowing. */
+  connected: boolean;
+  /** The call's moderation mode. */
+  mode: CallMode;
+  /** Participants the connector currently sees. */
+  participants: CallParticipant[];
+  /** In lineup mode: the user whose turn is open, or null when no turn is granted. */
+  currentTurn: number | string | null;
+  /** In lineup mode: users waiting for a turn, in queue order. */
+  queue: (number | string)[];
+}
+
+/**
+ * Live-voice capability (Phase E / PE-T2). The host's long-lived Call Session
+ * Service exposes ONE typed interface that the `call.*` action nodes (PE-T4)
+ * invoke; the realtime media stream stays in the host (a node never holds a
+ * socket — invariant I4/I3), and the connector behind it (userbot now;
+ * companion/external later) is chosen ONLY by the referenced `voiceConnection`
+ * credential, never by node type (PLAN2 §E.1, "one interface, many adapters").
+ *
+ * Null when no Call Session Service is wired (unit tests / a host without the
+ * voice runtime) — a `call.*` node then fails with a clear error (invariant I6,
+ * no ambient authority). Every method throws on a connector/transport error so
+ * the node can surface it; messages never leak the session string (I7).
+ */
+export interface CallCapability {
+  /**
+   * Join/start a live call to `target` using the `voiceConnection` credential
+   * `credentialId`, in moderation `mode`. Resolves once media is flowing.
+   * Idempotent per target — connecting an already-live target is a no-op.
+   */
+  connect(req: {
+    credentialId: string;
+    target: CallTargetRef;
+    mode: CallMode;
+    /** lineup only: turn order when auto-advancing (default sequential). */
+    order?: CallTurnOrder;
+    /** lineup only: max seconds a granted turn may last before auto-advance (0 = no cap). */
+    maxTurnSeconds?: number;
+  }): Promise<void>;
+  /** Play audio into the call (TTS bytes / a file / PCM). */
+  speak(req: CallSpeakRequest): Promise<void>;
+  /**
+   * lineup: open the mic to the next queued listener (or a specific `userId`).
+   * Resolves with the user granted the turn, or null when the queue is empty.
+   */
+  grantTurn(req: { target: CallTargetRef; userId?: number | string }): Promise<number | string | null>;
+  /** lineup: close the current speaker's turn (the queue can then advance). */
+  endTurn(req: { target: CallTargetRef }): Promise<void>;
+  /** Mute (or unmute) a participant. */
+  mute(req: { target: CallTargetRef; userId: number | string; muted: boolean }): Promise<void>;
+  /** Leave/end the call. */
+  leave(req: { target: CallTargetRef }): Promise<void>;
+  /** A snapshot of the call's current state (participants, queue, turn). */
+  status(req: { target: CallTargetRef }): Promise<CallStatus>;
 }
 
 /** A record as seen by data.collection (the host's RecordPublic, minus host-only ids). */

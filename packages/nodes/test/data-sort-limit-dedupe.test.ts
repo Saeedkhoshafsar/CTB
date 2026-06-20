@@ -31,7 +31,7 @@ describe('data.sort + data.limit + data.removeDuplicates — registry', () => {
     expect(dataSort.category).toBe('data');
     expect(dataLimit.category).toBe('data');
     expect(dataRemoveDuplicates.category).toBe('data');
-    expect(builtinNodes.length).toBe(54);
+    expect(builtinNodes.length).toBe(55);
   });
 
   it('all three have main→main ports', () => {

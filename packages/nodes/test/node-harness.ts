@@ -10,6 +10,9 @@ import type {
   AiSpeechRequest,
   AiTranscribeRequest,
   AttachedProviders,
+  CallSpeakRequest,
+  CallStatus,
+  CallTargetRef,
   CollectionRecord,
   CtbUser,
   DbQueryRequest,
@@ -80,7 +83,19 @@ export interface FakeCtx extends NodeCtx {
   mcpCallCalls: McpCallToolRequest[];
   /** db.postgres (PB-T2): recorded SQL query requests. */
   dbCalls: DbQueryRequest[];
+  /** call.* (PE-T2): recorded ctx.call invocations by method. */
+  callCalls: CallInvocation[];
 }
+
+/** PE-T2: a single recorded ctx.call invocation (method + its request). */
+export type CallInvocation =
+  | { method: 'connect'; req: { credentialId: string; target: CallTargetRef; mode: string; order?: string; maxTurnSeconds?: number } }
+  | { method: 'speak'; req: CallSpeakRequest }
+  | { method: 'grantTurn'; req: { target: CallTargetRef; userId?: number | string } }
+  | { method: 'endTurn'; req: { target: CallTargetRef } }
+  | { method: 'mute'; req: { target: CallTargetRef; userId: number | string; muted: boolean } }
+  | { method: 'leave'; req: { target: CallTargetRef } }
+  | { method: 'status'; req: { target: CallTargetRef } };
 
 export function makeCtx(
   overrides: {
@@ -226,6 +241,18 @@ export function makeCtx(
      * params }`. Defaults to `{}` (no slots — every plain data node).
      */
     slots?: AttachedProviders;
+    /**
+     * PE-T2: live-voice capability (ctx.call). Pass `null` to simulate an
+     * instance with no Call Session Service (ctx.call === null). Omit → a
+     * recording fake whose connect/speak/grantTurn/… are no-ops that push into
+     * `callCalls` and return benign defaults.
+     */
+    call?:
+      | null
+      | {
+          status?: CallStatus | ((req: { target: CallTargetRef }) => CallStatus);
+          grantTurn?: number | string | null;
+        };
   } = {},
 ): FakeCtx {
   const sent: SentMessage[] = [];
@@ -258,6 +285,7 @@ export function makeCtx(
   const mcpListCalls: McpListToolsRequest[] = [];
   const mcpCallCalls: McpCallToolRequest[] = [];
   const dbCalls: DbQueryRequest[] = [];
+  const callCalls: CallInvocation[] = [];
   let nextRecordId = 1;
   const knownSlugs = new Set<string>(
     overrides.knownCollections ?? Object.keys(overrides.seedCollections ?? {}),
@@ -324,6 +352,7 @@ export function makeCtx(
     mcpListCalls,
     mcpCallCalls,
     dbCalls,
+    callCalls,
     async eval(template) {
       return template; // nodes receive pre-resolved params; ctx.eval rarely used in wave 1
     },
@@ -665,6 +694,46 @@ export function makeCtx(
               const res = overrides.db?.result;
               if (res) return typeof res === 'function' ? res(req) : res;
               return { rows: [], rowCount: 0 };
+            },
+          },
+    // PE-T2: live-voice capability. `call: null` simulates an instance with no
+    // Call Session Service; otherwise a recording fake that pushes every
+    // invocation into `callCalls` and returns benign defaults.
+    call:
+      overrides.call === null
+        ? null
+        : {
+            async connect(req) {
+              callCalls.push({ method: 'connect', req });
+            },
+            async speak(req) {
+              callCalls.push({ method: 'speak', req });
+            },
+            async grantTurn(req) {
+              callCalls.push({ method: 'grantTurn', req });
+              const g = overrides.call?.grantTurn;
+              return g === undefined ? (req.userId ?? null) : g;
+            },
+            async endTurn(req) {
+              callCalls.push({ method: 'endTurn', req });
+            },
+            async mute(req) {
+              callCalls.push({ method: 'mute', req });
+            },
+            async leave(req) {
+              callCalls.push({ method: 'leave', req });
+            },
+            async status(req) {
+              callCalls.push({ method: 'status', req });
+              const s = overrides.call?.status;
+              if (s) return typeof s === 'function' ? s(req) : s;
+              return {
+                connected: true,
+                mode: 'support',
+                participants: [],
+                currentTurn: null,
+                queue: [],
+              };
             },
           },
     // PB-T5: attached sub-connection providers (default: none).

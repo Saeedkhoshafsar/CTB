@@ -367,6 +367,40 @@ export class UpdateRouter {
   }
 
   /**
+   * Start a flow from a `trigger.callEvent` (Phase E / PE-T3). Like the
+   * recordChanged path this has NO implicit chat (chatId null — a voice flow
+   * answers over `ctx.call`, not a chat message). The host CallEventBus has
+   * already matched the trigger to the live call + event; we just enter the
+   * flow at the trigger node with the pre-built item. Never throws — a voice
+   * trigger failure must not break the live call or the next event.
+   */
+  async fireCallEvent(input: {
+    flow: RouterFlow;
+    entryNodeId: string;
+    botId: string;
+    item: FlowItem;
+  }): Promise<void> {
+    const executionId = this.newId();
+    try {
+      const result = await this.deps.executor.start({
+        executionId,
+        flow: { id: input.flow.id, name: input.flow.name },
+        graph: input.flow.graph,
+        botId: input.botId,
+        chatId: null,
+        userId: null,
+        entry: { nodeId: input.entryNodeId, items: { main: [input.item] } },
+      });
+      this.log(
+        'info',
+        `callEvent started execution ${executionId} (${input.flow.id}) → ${result.status}`,
+      );
+    } catch (err) {
+      this.log('error', `callEvent start failed for ${input.flow.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /**
    * Start a flow from a `collection.recordChanged` trigger (P3.5-T5). Unlike a
    * Telegram trigger this has NO implicit chat (chatId null — the flow must
    * resolve a chat itself if it sends messages, NODES.md). The record-write

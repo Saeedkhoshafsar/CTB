@@ -373,12 +373,14 @@ The six live-voice **action** nodes a flow uses to drive a call back — all pla
 
 - **`call.connect`** — join/start a call to `target` using a `voiceConnection` (`connection`), in `mode` (`support`/`lineup`) with lineup `order`/`maxTurnSeconds`. Idempotent per target.
 - **`call.speak`** — play audio into the call. `source:'file'` plays a CTB file id (e.g. `ai.textToSpeech` output `{{ $json.speech.fileId }}` — the **host** reads the bytes, I6); `source:'pcm'` plays a base64 16-bit-mono PCM blob + `pcmSampleRate`. The AI's voice reply.
-- **`call.grantTurn`** — *lineup*: open the mic to a specific `userId` (jumps the line) or the next in queue; saves the granted user id under `save_as` (default `granted`).
+- **`call.grantTurn`** — *lineup*: open the mic to a specific `userId` (jumps the line) or the next in queue; saves the granted user id under `save_as` (default `granted`). `userId` is **coerced from a number** (PE-T5) so an expression like `{{ $json.speakerId }}` that resolves to a numeric Telegram id is accepted; the host unifies it with the (numeric) queue entries by string.
 - **`call.endTurn`** — *lineup*: close the current speaker's turn so the queue can advance.
-- **`call.mute`** — mute (`muted:true`) / unmute a participant `userId`.
+- **`call.mute`** — mute (`muted:true`) / unmute a participant `userId` (also coerced from a numeric id, PE-T5).
 - **`call.leave`** — leave/end the call (idempotent; the host also auto-leaves on the duration cap).
 
-A typical 1:1 AI-support flow: `trigger.callEvent (mode:support, utteranceFinal)` → `ai.speechToText` → `ai.llmChat` → `ai.textToSpeech` → **`call.speak (source:file)`**. A channel Q&A moderator: `trigger.callEvent (mode:lineup, callJoined)` → `call.connect` … on `turnOpened`/utterance → `call.grantTurn` → `ai.*` → `call.speak` → `call.endTurn`.
+A typical 1:1 AI-support flow: `trigger.callEvent (mode:support, utteranceFinal)` → `ai.speechToText` → `ai.agent` → `ai.textToSpeech` → **`call.speak (source:file)`**. A channel Q&A moderator: `trigger.callEvent (mode:lineup, utteranceFinal)` → `call.grantTurn` → `ai.textToSpeech` → `call.speak` → `call.endTurn`.
+
+> 🎬 **Worked demo:** both scenarios — AI voice support (1:1) and the channel Q&A moderator — are built end-to-end from these same nodes (differing only in settings) and run on the real engine + Call Session Service in `docs/demos/phase-E-voice.md` (`apps/server/test/e2e-phaseE-voice-demo.test.ts`). See `docs/PROTOCOL.md` → **"Live voice"** for the transport, connector kinds, the `voiceConnection` credential, and the Telegram ToS posture.
 
 ---
 

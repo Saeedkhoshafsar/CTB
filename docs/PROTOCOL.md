@@ -440,6 +440,104 @@ re-validate, never persisting a broken flow.
 | to **watch the outcome** | poll | `GET /api/v1/executions?flow_id=` |
 | to **let an AI agent do all of the above** | MCP | `POST /api/v1/mcp` ([§ MCP server](#mcp-server--ctb-as-a-tool-surface--pc-t3)) |
 
+## Live voice — real-time Telegram calls ✅ PE
+
+Phase E adds **live voice**: a flow can *hear* a caller, *reason*, and *speak
+back in real time* on a Telegram call — in two scenarios served by the **same
+nodes** (behaviour is config, not forks — invariant I2):
+
+1. **AI voice support** — a Channel-Direct **1:1 voice call** an AI answers live.
+2. **Channel Q&A moderator** — a group / channel **live voice broadcast**
+   (پخش زنده) with a turn-taking line (`mode:'lineup'`).
+
+> 🎬 Both, built end-to-end from generic nodes and run on the real engine, are
+> documented in `docs/demos/phase-E-voice.md`. The node reference is `docs/NODES.md`
+> → **"Live voice"** (`trigger.callEvent` + the six `call.*` actions).
+
+### Why a separate transport
+
+Telegram's **Bot API has no call methods at all** — a bot token cannot join or
+stream a voice chat. Live audio therefore rides **MTProto over a Telegram USER
+session + WebRTC**, not the Bot API. CTB isolates that entire native dependency
+behind a single host-side `VoiceConnector` interface (invariant I3): `core` and
+`nodes` never import it. A flow only ever calls the typed **`ctx.call`**
+capability — it never holds a media socket (invariant I4). The long-lived
+**Call Session Service** (a sibling of the Scheduler) owns each connection, the
+inbound-audio VAD sink, and the per-call turn/queue state.
+
+### Connector kinds — "one interface, many adapters"
+
+The media engine is chosen **only** by the referenced `voiceConnection`
+credential's `kind`, never by node type:
+
+| `kind` | Transport | Required fields | Notes |
+|---|---|---|---|
+| `userbot` | MTProto USER session + WebRTC (e.g. a `pytgcalls`/`ntgcalls` engine) | `apiId`, `apiHash`, `session` | The real production adapter. A **user** account joins the call on the bot's behalf. |
+| `companion` | Same as `userbot`, kept distinct so a host can run a dedicated "companion" account | `apiId`, `apiHash`, `session` | Same resolution + fields as `userbot`. |
+| `external` | An out-of-process bridge service the host calls | `bridgeUrl` (+ optional `bridgeToken`) | For hosts that run the media engine as a separate sidecar/service. |
+| *(default)* `loopback` | In-memory, dependency-free echo connector | — | Ships as the safe default + the test connector. No secrets, no sockets; a host with no native engine still boots and the whole runtime is testable. |
+
+Resolution is **fail-closed** (`resolveVoiceConnection`, PE-T1): a credential
+that is not a `voiceConnection`, or is missing a field its `kind` requires,
+throws a **clear, secret-free** error rather than yielding a half-configured
+connector that fails mid-call. Swapping the loopback for the userbot adapter is a
+one-line change at the composition root — **zero** node/flow change (I2/I3).
+
+### The `voiceConnection` credential
+
+```jsonc
+// kind: 'userbot' | 'companion'
+{
+  "type": "voiceConnection",
+  "kind": "userbot",
+  "apiId": 123456,                 // MTProto app id  (my.telegram.org)
+  "apiHash": "…",                  // MTProto app hash         — encrypted at rest (I7)
+  "session": "1Ab…"               // MTProto USER session string — NEVER logged (I6/I7)
+}
+// kind: 'external'
+{ "type": "voiceConnection", "kind": "external",
+  "bridgeUrl": "https://voice-bridge.internal", "bridgeToken": "…" }
+```
+
+The secret `session` / `apiHash` / `bridgeToken` are **encrypted at rest** and
+stay **host-side only** — they are decrypted by the host when it resolves the
+credential and never reach node code, which only ever sees a `credentialId`
+(invariants I6/I7). The panel's **"test connection"** route —
+`POST /api/credentials/:id/voice-health` — decrypts host-side, validates
+fail-closed, and (with a real adapter wired) probes the login; the response is
+always leak-free: `{ ok, kind, account?, error? }`.
+
+### Hard caps (host safety)
+
+A live call is an open socket, so the Call Session Service enforces tunable hard
+caps (safe defaults): max concurrent calls host-wide (`25`), max concurrent
+calls per bot (`5`), and max wall-clock seconds per call (`3600`, then
+auto-leave). Exceeding a cap fails `connect` **loudly** (a node surfaces it)
+rather than silently overloading the host.
+
+### Telegram Terms-of-Service posture ⚠️
+
+Because live voice needs a **user account** (MTProto) — the Bot API cannot do
+it — operating this feature carries obligations the host operator owns:
+
+- **Use a session you are authorized to use.** The `session` must come from an
+  account the operator controls and has consent to automate. Automating a third
+  party's account, or joining calls without participants' awareness, is not
+  acceptable.
+- **Respect Telegram's Terms of Service and local law** on automation and on
+  recording/processing calls. Participants should be informed that an automated
+  agent is on the call (e.g. the moderator greeting in the Q&A demo doubles as
+  disclosure).
+- **CTB ships no session and dials nothing by default.** The default connector
+  is the in-memory `loopback`; a real call happens only after an operator
+  deliberately supplies a `userbot`/`external` `voiceConnection` credential.
+- **Secrets stay host-side and encrypted** (I6/I7). CTB never logs the session
+  and never exposes it to flow/node code.
+
+> In short: live voice is **opt-in, operator-configured, and accountable**. The
+> platform provides the mechanism behind a clean interface; the operator is
+> responsible for using it within Telegram's ToS and applicable law.
+
 ## Outbound: instance webhooks ✅ P4-T4
 
 CTB POSTs an event envelope to subscribed URLs when something happens. A

@@ -69,6 +69,7 @@ async function main(): Promise<void> {
     app.log.info({ signal }, 'shutting down');
     engine.router.stopTimeoutScanner();
     engine.scheduler.stop();
+    engine.callSessionService.stop(); // leave any open live calls (PE-T2)
     await engine.gateway.stopAll();
     await app.close();
     await destroyDefaultSandboxPool(); // Code-node workers

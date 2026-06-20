@@ -311,7 +311,7 @@ These fields default sensibly, so existing credentials keep working unchanged; t
 
 ## Live-voice connection `+PE` (PE-T1)
 
-> The full live-voice node set (`trigger.callEvent` + the `call.*` actions) lands in PE-T3/PE-T4; this section documents only the **credential** that PE-T1 ships — the seam every later voice node references.
+> The live-voice **nodes** (`trigger.callEvent` + the `call.*` actions) land in PE-T3/PE-T4; this section documents the **credential** (PE-T1) and the host **`ctx.call` capability + Call Session Service** (PE-T2) those nodes build on.
 
 A live Telegram call (a group/channel voice chat **or** a 1:1 call) cannot ride the Bot API — Telegram exposes **no** call methods there. The audio leg always travels over **MTProto via a USER session, never a bot token** (PLAN2 §E.0). The new **`voiceConnection`** credential carries that session, encrypted at rest (invariant I7); the host's Call Session Service (PE-T2) resolves it into a connector, so a flow author only ever references a `credentialId` and never sees the session string (invariants I6/I7).
 
@@ -324,6 +324,31 @@ The crucial design choice (PLAN2 §E.1 — *"the choice lives on the node/creden
 **Fail-closed resolution (the heart of PE-T1).** The host's `resolveVoiceConnection` is the one place that decides "is this connector usable?": a non-`voiceConnection` credential, or a `kind` missing its required fields (`userbot`/`companion` need `apiId`+`apiHash`+`session`; `external` needs `bridgeUrl`), throws a **clear, secret-free** error rather than returning a half-configured connector that would later fail mid-call. The panel's *"test connection"* route — `POST /api/credentials/:id/voice-health` — decrypts host-side, validates fail-closed, and (when a PE-T2 adapter is wired) probes the login; the response is always leak-free `{ ok, kind, account?, error? }`. PE-T1 ships **no media engine**, so with no adapter wired the health check honestly reports the credential as *structurally valid, login not yet attempted*.
 
 The connector is chosen **only** by which `voiceConnection` credential a voice node references — never by the node type. Whether the host's internal media engine is a JS-native adapter or a Python `pytgcalls` sidecar is an INTERNAL, swappable choice behind one `ctx.call` interface (PE-T2); it never touches a flow.
+
+### Call Session Service + `ctx.call` (PE-T2)
+
+The **Call Session Service** is the long-lived host runtime that owns every realtime Telegram call — a **sibling to the Scheduler** (both drive flows but live outside `core`). Flows stay stateless and event-driven: a node never holds a media socket (invariant **I4**) — it calls **one typed capability, `ctx.call`** ([`CallCapability`](../packages/shared/src/node-def.ts)), and the service holds the connection, the inbound-audio sink, and the turn state for the call's whole lifetime.
+
+`ctx.call` is **nullable** — `null` on a host with no voice runtime (or in unit tests), so a `call.*` node fails loudly rather than assuming ambient authority (invariant **I6**). Its methods:
+
+| method | what it does |
+| --- | --- |
+| `connect({ credentialId, target, mode, order?, maxTurnSeconds? })` | Join/start a call. Idempotent per target. `mode`/`order` are **settings** (below). |
+| `speak({ target, audio? \| fileId? \| pcm? })` | Play TTS bytes / a stored file / raw PCM into the call. |
+| `grantTurn({ target, userId? })` | **lineup:** open the mic to the next queued listener (or a specific `userId`); returns who got it, or `null` when the queue is empty. No-op (returns `null`) in `support`. |
+| `endTurn({ target })` | **lineup:** close the current speaker's turn so the queue can advance. |
+| `mute({ target, userId, muted })` | Mute/unmute a participant. |
+| `leave({ target })` | Leave/end the call. Idempotent. |
+| `status({ target })` | Snapshot `{ connected, mode, participants, currentTurn, queue }`. |
+
+**Behaviour = config (the two user scenarios, one node set — PLAN2 §E.1).** The SAME service serves both live-voice scenarios with NO new node types — `target` and `mode` are settings, not forks:
+
+- **Channel/group live broadcast with a Q&A line-up** → `mode:'lineup'`, `target.kind:'channel'|'chat'`. Listeners who speak are **queued**; the flow grants turns one at a time with `grantTurn`/`endTurn`, in `order:'sequential'|'random'`, with an optional `maxTurnSeconds` auto-advance.
+- **Channel Direct → 1:1 voice call an AI answers in real time** → `mode:'support'`, `target.kind:'user'`. Everyone may speak; each inbound utterance flows to the flow (PE-T3) and the AI replies via `speak`.
+
+**One interface, many adapters (I3).** The realtime media engine is a pluggable **`VoiceConnector`** chosen ONLY by the referenced `voiceConnection` credential. The native MTProto/WebRTC engine stays isolated in `apps/server` behind that interface, so `core`/`nodes` never import it. The default **`LoopbackVoiceConnector`** carries **no native dependency** — the whole service is testable without MTProto, and a host runs without it installed; swapping in the userbot engine is a one-line change at the composition root (`wire.ts`), zero node/flow change.
+
+**Hard caps = config with safe defaults (I4).** `connect` fails *loudly* past any cap rather than overloading the host: **max concurrent calls** (host-wide), **max calls per bot**, and **max call duration** (auto-leave). Defaults live in `DEFAULT_CALL_CAPS`; override per host via `WireOptions.callCaps`.
 
 ---
 

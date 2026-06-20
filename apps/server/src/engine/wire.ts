@@ -53,6 +53,13 @@ import { UpdateRouter } from './router';
 import { SqliteExecutionStore } from './sqlite-store';
 import { SqliteUserStore } from './user-store';
 import { Scheduler } from '../triggers/schedule';
+import {
+  CallSessionService,
+  makeVoiceCredentialResolver,
+  type CallCaps,
+} from '../triggers/call-session';
+import { LoopbackVoiceConnector } from './loopback-connector';
+import type { VoiceConnector } from './voice-connector';
 import { WebhookDispatcher } from './webhook-dispatcher';
 
 export interface WireOptions {
@@ -102,6 +109,18 @@ export interface WireOptions {
    * tests provide a fake (no socket). Omitted ⇒ the real `mysql2`-backed factory.
    */
   mysqlPoolFactory?: MysqlPoolFactory;
+  /**
+   * Live-voice media adapter for the Call Session Service (PE-T2). Injectable so
+   * tests use a deterministic loopback and a host swaps in the userbot MTProto
+   * engine with zero node/flow change (PLAN2 §E.1, invariant I3). Omitted ⇒ the
+   * dependency-free {@link LoopbackVoiceConnector} default.
+   */
+  voiceConnector?: VoiceConnector;
+  /**
+   * Hard caps for live calls (PE-T2, PLAN2 §E.1) — max concurrent calls (host
+   * + per-bot) and max call duration. Safe defaults applied per-field when omitted.
+   */
+  callCaps?: Partial<CallCaps>;
 }
 
 /** Default sub-flow recursion-depth cap (PLAN.md P3-T1 "recursion depth cap"). */
@@ -130,6 +149,14 @@ export interface Engine {
    * `reconcile()` is re-run whenever a flow is activated/deactivated/edited.
    */
   scheduler: Scheduler;
+  /**
+   * Live-voice Call Session Service (PE-T2) — the long-lived host runtime that
+   * owns every realtime Telegram call (a sibling to the scheduler). Always
+   * present; backs the `ctx.call` capability. The server lifecycle calls
+   * `stop()` at shutdown to leave any open calls; PE-T3's `trigger.callEvent`
+   * subscribes via `onUtterance`.
+   */
+  callSessionService: CallSessionService;
   /**
    * Outbound instance-webhook dispatcher (P4-T4). Always present; fires
    * `execution.finished`/`execution.failed` (from the execution store) and
@@ -1095,6 +1122,37 @@ export function wireEngine(opts: WireOptions): Engine {
   const rateLimiter = new RateLimiter(() => clock().getTime());
   const auditStore = new SqliteApiAuditStore(opts.db, clock);
 
+  // Live-voice Call Session Service (PE-T2) — the long-lived host runtime behind
+  // `ctx.call`. It owns the realtime media connection (a node never holds a
+  // socket — I4) and the per-call turn state. The media engine is a pluggable
+  // VoiceConnector chosen by the `voiceConnection` credential (default: the
+  // dependency-free loopback, so a host runs without MTProto — I3). Credential
+  // decryption stays HERE (the host owns the key — I6/I7): the resolver reads +
+  // decrypts the row and hands the service a fail-closed ResolvedVoiceConnection.
+  const decryptVoiceCredential = (credentialId: string): CredentialData | null => {
+    const row = opts.db
+      .select()
+      .from(credentialsTable)
+      .where(eq(credentialsTable.id, credentialId))
+      .get();
+    if (!row) return null;
+    try {
+      return JSON.parse(decrypt(row.dataEnc, credentialKey)) as CredentialData;
+    } catch {
+      return null;
+    }
+  };
+  const callSessionService = new CallSessionService({
+    connector: opts.voiceConnector ?? new LoopbackVoiceConnector(),
+    resolveCredential: makeVoiceCredentialResolver(decryptVoiceCredential),
+    readFile: (fileId) => {
+      const { bytes, mime } = fileStore.readLocal(fileId);
+      return Promise.resolve({ bytes, mime });
+    },
+    ...(opts.callCaps ? { caps: opts.callCaps } : {}),
+    log,
+  });
+
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
   // Forward refs: the subflow capability needs executor + flowSource, but those
@@ -1403,6 +1461,11 @@ export function wireEngine(opts: WireOptions): Engine {
     // plain object; the host owns the pg pool (I3) and the DSN never reaches
     // node code (I6/I7).
     db: dbCapability.capability,
+    // Live-voice (ctx.call, PE-T2). The credential selects the connector, so a
+    // per-bot+flow factory bound to the long-lived Call Session Service; the host
+    // owns the media socket + turn state (I4) and the session secret never reaches
+    // node code (I6/I7).
+    call: (botId, flowId) => callSessionService.capabilityFor(botId, flowId),
     log: stepLogger,
     clock,
   };
@@ -1512,6 +1575,7 @@ export function wireEngine(opts: WireOptions): Engine {
     flowSource,
     userStore,
     scheduler,
+    callSessionService,
     webhookDispatcher,
     fileStore,
     aiUsageStore,

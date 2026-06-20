@@ -180,6 +180,17 @@ export interface ExecutorServices {
    * stored files are owned by the right bot.
    */
   files?: (botId: string) => NonNullable<NodeCtx['files']>;
+  /**
+   * Live-voice capability for the `call.*` action nodes (Phase E / PE-T2) —
+   * optional: ctx.call is null without it. The host's long-lived Call Session
+   * Service joins the live Telegram call over MTProto (the Bot API has no call
+   * methods) using the resolved `voiceConnection` credential and streams PCM
+   * in/out, so the node never holds the socket (invariants I3/I4/I6); the
+   * connector (userbot/companion/external) is selected by the credential, never
+   * the node type. A per-(bot,flow) factory so a session is scoped to the run
+   * that opened it, mirroring `ai`.
+   */
+  call?: (botId: string, flowId: string) => NonNullable<NodeCtx['call']>;
   log?: StepLogger;
   evalOptions?: EvaluateOptions;
   clock?: () => Date;
@@ -631,6 +642,7 @@ export class Executor {
       mcp: executor.services.mcp ?? null,
       db: executor.services.db ?? null,
       files: executor.services.files ? executor.services.files(exec.botId) : null,
+      call: executor.services.call ? executor.services.call(exec.botId, flow.id) : null,
     };
   }
 

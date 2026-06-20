@@ -1,0 +1,126 @@
+{
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger.callEvent",
+      "params": {
+        "connection": "cred-voice",
+        "targetKind": "user",
+        "targetId": "900",
+        "events": ["utteranceFinal"],
+        "mode": "support"
+      },
+      "position": { "x": 0, "y": 0 },
+      "note": "Live-voice ENTRY (PE-T3). Fires once per finalized caller utterance on a 1:1 support call. The host segments the inbound audio, persists it as a CTB file id (audio/l16), and starts this flow CHATLESS with $json = { event:'utteranceFinal', target, mode:'support', speakerId, audioFileId, audioMime, audioSampleRate }."
+    },
+    {
+      "id": "transcribe",
+      "type": "ai.speechToText",
+      "params": {
+        "credentialId": "cred-openai",
+        "model": "whisper-1",
+        "source": "file",
+        "audio_source": "{{ $json.audioFileId }}",
+        "language": "fa",
+        "save_as": "transcript"
+      },
+      "position": { "x": 240, "y": 0 },
+      "note": "STT leg (PB-T7 reused!). source:'file' reads the host-persisted utterance bytes via ctx.files.read — the SAME node the chat voice demo used, now fed by the call event's audioFileId instead of a Telegram file_id. The text lands at $json.transcript.text."
+    },
+    {
+      "id": "model",
+      "type": "ai.modelOpenai",
+      "params": { "credentialId": "cred-openai", "model": "openai/gpt-4o-mini", "temperature": 0.3 },
+      "position": { "x": 480, "y": -180 },
+      "note": "ai:model PROVIDER (PB-T5): which model + credential the agent calls. Reused verbatim — Phase E adds NO AI nodes."
+    },
+    {
+      "id": "memory",
+      "type": "ai.memoryPostgres",
+      "params": {
+        "credentialId": "cred-postgres",
+        "table": "ctb_chat_memory",
+        "session_key": "call-{{ $json.target.id }}",
+        "memory_window": 10,
+        "auto_create": true
+      },
+      "position": { "x": 480, "y": 180 },
+      "note": "ai:memory PROVIDER (PB-T4): rolling conversation memory keyed by the CALL target (not a chat id — a live call has no chat). The agent replays prior turns of this call before answering."
+    },
+    {
+      "id": "think",
+      "type": "tool.think",
+      "params": {
+        "tool_name": "think",
+        "description": "Use this scratchpad to reason step-by-step before answering the caller."
+      },
+      "position": { "x": 720, "y": -180 },
+      "note": "ai:tool PROVIDER (PB-T6): the Think reasoning scratchpad."
+    },
+    {
+      "id": "lookup",
+      "type": "tool.httpRequest",
+      "params": {
+        "method": "GET",
+        "url": "https://api.example.com/orders",
+        "tool_name": "order_status",
+        "description": "Look up the live status of a customer order by its id.",
+        "params": [
+          { "name": "orderId", "type": "string", "description": "The order id to look up", "required": true }
+        ]
+      },
+      "position": { "x": 720, "y": 180 },
+      "note": "ai:tool PROVIDER (PB-T6): an HTTP tool the model can call to fetch a live order status."
+    },
+    {
+      "id": "agent",
+      "type": "ai.agent",
+      "params": {
+        "model": "gpt-4o-mini",
+        "system_prompt": "You are a friendly Persian voice-support agent on a live phone call. Answer the caller concisely and naturally for speech. Use the order_status tool when they ask about an order, and the think tool to plan multi-step answers.",
+        "user_prompt": "{{ $json.transcript.text }}",
+        "max_steps": 6,
+        "max_tool_calls": 12,
+        "save_as": "ai"
+      },
+      "position": { "x": 960, "y": 0 },
+      "note": "The orchestrator (PB-T5): turns the transcribed question into a reply at $json.ai.reply, using the model/memory/tool providers via its typed slots."
+    },
+    {
+      "id": "synthesize",
+      "type": "ai.textToSpeech",
+      "params": {
+        "credentialId": "cred-openai",
+        "model": "tts-1",
+        "text": "{{ $json.ai.reply }}",
+        "voice": "alloy",
+        "format": "pcm",
+        "save_as": "speech"
+      },
+      "position": { "x": 1200, "y": 0 },
+      "note": "TTS leg (PB-T7 reused!). Synthesizes the agent's reply to audio via ctx.ai.speech, stores the bytes via ctx.files.write, and surfaces a CTB file id at $json.speech.fileId. format:'pcm' suits playing straight into the call."
+    },
+    {
+      "id": "say",
+      "type": "call.speak",
+      "params": {
+        "targetKind": "user",
+        "targetId": "{{ $json.target.id }}",
+        "source": "file",
+        "fileId": "{{ $json.speech.fileId }}"
+      },
+      "position": { "x": 1440, "y": 0 },
+      "note": "Live-voice ACTION (PE-T4). Plays the synthesized reply INTO the call via ctx.call.speak — source:'file' so the HOST reads the stored bytes (the node never touches raw audio, I6). This closes the real-time voice loop: the caller hears the AI answer back."
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "trigger", "port": "main" }, "to": { "node": "transcribe", "port": "main" } },
+    { "id": "e2", "from": { "node": "transcribe", "port": "main" }, "to": { "node": "agent", "port": "main" } },
+    { "id": "s_model", "from": { "node": "model", "port": "provider" }, "to": { "node": "agent", "port": "ai:model" } },
+    { "id": "s_memory", "from": { "node": "memory", "port": "provider" }, "to": { "node": "agent", "port": "ai:memory" } },
+    { "id": "s_think", "from": { "node": "think", "port": "provider" }, "to": { "node": "agent", "port": "ai:tool" } },
+    { "id": "s_lookup", "from": { "node": "lookup", "port": "provider" }, "to": { "node": "agent", "port": "ai:tool" } },
+    { "id": "e3", "from": { "node": "agent", "port": "main" }, "to": { "node": "synthesize", "port": "main" } },
+    { "id": "e4", "from": { "node": "synthesize", "port": "main" }, "to": { "node": "say", "port": "main" } }
+  ]
+}

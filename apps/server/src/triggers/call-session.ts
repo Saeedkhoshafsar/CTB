@@ -322,9 +322,12 @@ export class CallSessionService {
 
     let next: number | string | null = null;
     if (req.userId !== undefined) {
-      // Explicit grant — pull them out of the queue if present.
+      // Explicit grant — pull them out of the queue if present. Compare by string
+      // so a numeric queue entry and a string `userId` (e.g. coerced from a
+      // `{{ $json.speakerId }}` expression) unify, like matchCallEvent does.
       next = req.userId;
-      session.queue = session.queue.filter((u) => u !== req.userId);
+      const wanted = String(req.userId);
+      session.queue = session.queue.filter((u) => String(u) !== wanted);
     } else if (session.queue.length > 0) {
       if (session.order === 'random') {
         const i = Math.floor(Math.random() * session.queue.length);

@@ -1276,8 +1276,12 @@ export type CallSpeakParams = z.infer<typeof CallSpeakParamsSchema>;
 export const CallGrantTurnParamsSchema = z.object({
   targetKind: CallTargetKindSchema.default('channel'),
   targetId: z.string().min(1),
-  /** Optional explicit user to grant (jumps the line); blank = the next in queue. */
-  userId: z.string().default(''),
+  /**
+   * Optional explicit user to grant (jumps the line); blank = the next in queue.
+   * Coerced from a number so a `{{ $json.speakerId }}` expression that resolves
+   * to a numeric Telegram id is accepted (PE-T5).
+   */
+  userId: z.coerce.string().default(''),
   /** Where the granted user id is saved on each output item (blank = don't save). */
   save_as: z.string().default('granted'),
 });
@@ -1294,8 +1298,8 @@ export type CallEndTurnParams = z.infer<typeof CallEndTurnParamsSchema>;
 export const CallMuteParamsSchema = z.object({
   targetKind: CallTargetKindSchema.default('channel'),
   targetId: z.string().min(1),
-  /** The participant to (un)mute (expression). */
-  userId: z.string().min(1),
+  /** The participant to (un)mute (expression; coerced from a numeric Telegram id). */
+  userId: z.coerce.string().min(1),
   /** True to mute, false to unmute. */
   muted: z.boolean().default(true),
 });

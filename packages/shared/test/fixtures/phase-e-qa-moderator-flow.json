@@ -1,0 +1,73 @@
+{
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger.callEvent",
+      "params": {
+        "connection": "cred-voice",
+        "targetKind": "channel",
+        "targetId": "-100500",
+        "events": ["utteranceFinal"],
+        "mode": "lineup",
+        "order": "sequential",
+        "maxTurnSeconds": 0
+      },
+      "position": { "x": 0, "y": 0 },
+      "note": "Live-voice ENTRY (PE-T3) in LINEUP mode. The SAME node as the support demo — only the settings differ (target is a channel, mode:'lineup'). A listener asking to speak surfaces as an utteranceFinal; the host has already queued them. $json carries { event, target, mode:'lineup', speakerId, audioFileId, ... }."
+    },
+    {
+      "id": "grant",
+      "type": "call.grantTurn",
+      "params": {
+        "targetKind": "channel",
+        "targetId": "{{ $json.target.id }}",
+        "userId": "{{ $json.speakerId }}",
+        "save_as": "granted"
+      },
+      "position": { "x": 240, "y": 0 },
+      "note": "Live-voice ACTION (PE-T4). Opens the mic to this listener (explicit userId = jump them to the front; blank would pop the next in queue per the call's order). The granted user id is saved at $json.granted so the greeting can address them."
+    },
+    {
+      "id": "greeting",
+      "type": "ai.textToSpeech",
+      "params": {
+        "credentialId": "cred-openai",
+        "model": "tts-1",
+        "text": "نوبت شما رسید. بفرمایید سؤالتان را بپرسید.",
+        "voice": "nova",
+        "format": "pcm",
+        "save_as": "speech"
+      },
+      "position": { "x": 480, "y": 0 },
+      "note": "TTS leg (PB-T7 reused!). Synthesizes the moderator's 'it's your turn' prompt to audio and stores it as a CTB file id at $json.speech.fileId. No AI node was added for Phase E — the broadcast moderator reuses the same TTS node."
+    },
+    {
+      "id": "announce",
+      "type": "call.speak",
+      "params": {
+        "targetKind": "channel",
+        "targetId": "{{ $json.target.id }}",
+        "source": "file",
+        "fileId": "{{ $json.speech.fileId }}"
+      },
+      "position": { "x": 720, "y": 0 },
+      "note": "Live-voice ACTION (PE-T4). Plays the moderator prompt into the channel broadcast so every listener hears who has the mic. source:'file' → the host reads the stored bytes (I6)."
+    },
+    {
+      "id": "close",
+      "type": "call.endTurn",
+      "params": {
+        "targetKind": "channel",
+        "targetId": "{{ $json.target.id }}"
+      },
+      "position": { "x": 960, "y": 0 },
+      "note": "Live-voice ACTION (PE-T4). Closes the current speaker's turn so the queue can advance — the next utteranceFinal re-enters this flow and grants the next person. Together grant→speak→endTurn implement a Q&A line entirely from generic nodes + settings (invariant I2)."
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "trigger", "port": "main" }, "to": { "node": "grant", "port": "main" } },
+    { "id": "e2", "from": { "node": "grant", "port": "main" }, "to": { "node": "greeting", "port": "main" } },
+    { "id": "e3", "from": { "node": "greeting", "port": "main" }, "to": { "node": "announce", "port": "main" } },
+    { "id": "e4", "from": { "node": "announce", "port": "main" }, "to": { "node": "close", "port": "main" } }
+  ]
+}

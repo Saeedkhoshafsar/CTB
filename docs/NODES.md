@@ -329,7 +329,7 @@ These fields default sensibly, so existing credentials keep working unchanged; t
 
 ## Live-voice connection `+PE` (PE-T1)
 
-> The live-voice **trigger** (`trigger.callEvent`) landed in PE-T3 (see *Live-voice Trigger* under §Triggers); the `call.*` **action** nodes land in PE-T4. This section documents the **credential** (PE-T1) and the host **`ctx.call` capability + Call Session Service** (PE-T2) those nodes build on.
+> The live-voice **trigger** (`trigger.callEvent`) landed in PE-T3 (see *Live-voice Trigger* under §Triggers); the six `call.*` **action** nodes landed in PE-T4 (see *`call.*` action nodes* below). This section documents the **credential** (PE-T1) and the host **`ctx.call` capability + Call Session Service** (PE-T2) those nodes build on.
 
 A live Telegram call (a group/channel voice chat **or** a 1:1 call) cannot ride the Bot API — Telegram exposes **no** call methods there. The audio leg always travels over **MTProto via a USER session, never a bot token** (PLAN2 §E.0). The new **`voiceConnection`** credential carries that session, encrypted at rest (invariant I7); the host's Call Session Service (PE-T2) resolves it into a connector, so a flow author only ever references a `credentialId` and never sees the session string (invariants I6/I7).
 
@@ -367,6 +367,18 @@ The **Call Session Service** is the long-lived host runtime that owns every real
 **One interface, many adapters (I3).** The realtime media engine is a pluggable **`VoiceConnector`** chosen ONLY by the referenced `voiceConnection` credential. The native MTProto/WebRTC engine stays isolated in `apps/server` behind that interface, so `core`/`nodes` never import it. The default **`LoopbackVoiceConnector`** carries **no native dependency** — the whole service is testable without MTProto, and a host runs without it installed; swapping in the userbot engine is a one-line change at the composition root (`wire.ts`), zero node/flow change.
 
 **Hard caps = config with safe defaults (I4).** `connect` fails *loudly* past any cap rather than overloading the host: **max concurrent calls** (host-wide), **max calls per bot**, and **max call duration** (auto-leave). Defaults live in `DEFAULT_CALL_CAPS`; override per host via `WireOptions.callCaps`.
+
+### `call.*` action nodes (PE-T4)
+The six live-voice **action** nodes a flow uses to drive a call back — all plain flow-category nodes (`main` in/out) that go through the one typed **`ctx.call`** capability (the host holds the media; a node never touches a socket — invariants I3/I4/I6). Each names a `target` (kind + id, `targetId` an expression so it reads `{{ $json.target.id }}` from the trigger item) — a **setting**, never a node fork — so the SAME six nodes serve both scenarios. Every node **fails loud** when `ctx.call === null` (no Call Session Service wired) or the connector errors.
+
+- **`call.connect`** — join/start a call to `target` using a `voiceConnection` (`connection`), in `mode` (`support`/`lineup`) with lineup `order`/`maxTurnSeconds`. Idempotent per target.
+- **`call.speak`** — play audio into the call. `source:'file'` plays a CTB file id (e.g. `ai.textToSpeech` output `{{ $json.speech.fileId }}` — the **host** reads the bytes, I6); `source:'pcm'` plays a base64 16-bit-mono PCM blob + `pcmSampleRate`. The AI's voice reply.
+- **`call.grantTurn`** — *lineup*: open the mic to a specific `userId` (jumps the line) or the next in queue; saves the granted user id under `save_as` (default `granted`).
+- **`call.endTurn`** — *lineup*: close the current speaker's turn so the queue can advance.
+- **`call.mute`** — mute (`muted:true`) / unmute a participant `userId`.
+- **`call.leave`** — leave/end the call (idempotent; the host also auto-leaves on the duration cap).
+
+A typical 1:1 AI-support flow: `trigger.callEvent (mode:support, utteranceFinal)` → `ai.speechToText` → `ai.llmChat` → `ai.textToSpeech` → **`call.speak (source:file)`**. A channel Q&A moderator: `trigger.callEvent (mode:lineup, callJoined)` → `call.connect` … on `turnOpened`/utterance → `call.grantTurn` → `ai.*` → `call.speak` → `call.endTurn`.
 
 ---
 

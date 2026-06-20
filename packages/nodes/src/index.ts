@@ -55,6 +55,12 @@ import { flowSwitch } from './flow/switch';
 import { flowWait } from './flow/wait';
 import { scheduleTrigger } from './flow/schedule-trigger';
 import { callEventTrigger } from './flow/call-event-trigger';
+import { callConnect } from './call/connect';
+import { callSpeak } from './call/speak';
+import { callGrantTurn } from './call/grant-turn';
+import { callEndTurn } from './call/end-turn';
+import { callMute } from './call/mute';
+import { callLeave } from './call/leave';
 import { webhookTrigger } from './flow/webhook-trigger';
 import { tgAnswerCallback } from './tg/answer-callback';
 import { tgChatAction } from './tg/chat-action';
@@ -115,6 +121,12 @@ export { flowSwitch } from './flow/switch';
 export { flowWait } from './flow/wait';
 export { scheduleTrigger } from './flow/schedule-trigger';
 export { callEventTrigger } from './flow/call-event-trigger';
+export { callConnect } from './call/connect';
+export { callSpeak } from './call/speak';
+export { callGrantTurn } from './call/grant-turn';
+export { callEndTurn } from './call/end-turn';
+export { callMute } from './call/mute';
+export { callLeave } from './call/leave';
 export { webhookTrigger } from './flow/webhook-trigger';
 export { tgAnswerCallback } from './tg/answer-callback';
 export { tgChatAction } from './tg/chat-action';
@@ -182,6 +194,12 @@ export const builtinNodes: NodeDef<never>[] = [
   flowExecuteSubFlow,
   flowReturn,
   flowRespondToWebhook,
+  callConnect,
+  callSpeak,
+  callGrantTurn,
+  callEndTurn,
+  callMute,
+  callLeave,
   aiLlmChat,
   aiClassify,
   aiExtract,

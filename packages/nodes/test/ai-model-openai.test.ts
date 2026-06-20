@@ -20,7 +20,7 @@ describe('ai.modelOpenai — registration & contract (PB-T5)', () => {
   it('is registered in the builtins; registry is 53 types', () => {
     const types = builtinNodes.map((n) => n.type);
     expect(types).toContain('ai.modelOpenai');
-    expect(builtinNodes.length).toBe(55);
+    expect(builtinNodes.length).toBe(61);
   });
 
   it('is an ai:model provider with no data input and a single provider output', () => {

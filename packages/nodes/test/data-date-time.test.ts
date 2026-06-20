@@ -33,7 +33,7 @@ describe('data.dateTime — registry', () => {
     const reg = registerBuiltinNodes(new NodeRegistry());
     expect(reg.has('data.dateTime')).toBe(true);
     expect(dataDateTime.category).toBe('data');
-    expect(builtinNodes.length).toBe(55);
+    expect(builtinNodes.length).toBe(61);
   });
 
   it('has main→main ports', () => {

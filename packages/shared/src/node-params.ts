@@ -1227,6 +1227,87 @@ export const CallEventTriggerParamsSchema = z.object({
 });
 export type CallEventTriggerParams = z.infer<typeof CallEventTriggerParamsSchema>;
 
+// ── call.* action nodes (PE-T4) ───────────────────────────────────────────────
+//
+// The six live-voice ACTION nodes a flow uses to drive a call back: connect /
+// speak / grantTurn / endTurn / mute / leave. All go through `ctx.call` (I6) so
+// they work identically across every connector kind + target type (PLAN2 §E.1).
+// Each names a `target` (kind + id) — a SETTING, never a node fork — and `targetId`
+// is an expression so it can read `{{ $json.target.id }}` from the trigger item.
+
+/** The live call an action addresses — kind + id (id is an expression). */
+const CallTargetKindSchema = z.enum(['chat', 'channel', 'user']);
+
+/** call.connect — join/start a live call to `target` using a `voiceConnection`. */
+export const CallConnectParamsSchema = z.object({
+  /** Which `voiceConnection` credential connects the audio (PE-T1). */
+  connection: z
+    .string()
+    .min(1)
+    .meta({ ctbWidget: 'credentialRef', credentialType: 'voiceConnection' }),
+  targetKind: CallTargetKindSchema.default('user'),
+  /** Telegram numeric id (or @username), an expression — e.g. `{{ $json.target.id }}`. */
+  targetId: z.string().min(1),
+  /** Moderation mode — answer everyone (support) or run a Q&A queue (lineup). */
+  mode: z.enum(['support', 'lineup']).default('support'),
+  /** lineup only: turn order when auto-advancing. */
+  order: z.enum(['sequential', 'random']).default('sequential'),
+  /** lineup only: max seconds a granted turn lasts before auto-advance (0 = no cap). */
+  maxTurnSeconds: z.number().int().min(0).max(3600).default(0),
+});
+export type CallConnectParams = z.infer<typeof CallConnectParamsSchema>;
+
+/** call.speak — play audio into the call (a stored file id, or one-shot TTS/PCM via `source`). */
+export const CallSpeakParamsSchema = z.object({
+  targetKind: CallTargetKindSchema.default('user'),
+  targetId: z.string().min(1),
+  /** Where the audio comes from: a CTB file id (e.g. ai.textToSpeech output) or raw PCM bytes. */
+  source: z.enum(['file', 'pcm']).default('file'),
+  /** `source:file` — a CTB file id to play (expression, e.g. `{{ $json.speech.fileId }}`). */
+  fileId: z.string().default(''),
+  /** `source:pcm` — a base64 16-bit-mono PCM blob (advanced; expression). */
+  pcmBase64: z.string().default(''),
+  /** `source:pcm` — the PCM sample rate in Hz. */
+  pcmSampleRate: z.number().int().min(8000).max(48000).default(16000),
+});
+export type CallSpeakParams = z.infer<typeof CallSpeakParamsSchema>;
+
+/** call.grantTurn — lineup: open the mic to the next queued listener (or a specific user). */
+export const CallGrantTurnParamsSchema = z.object({
+  targetKind: CallTargetKindSchema.default('channel'),
+  targetId: z.string().min(1),
+  /** Optional explicit user to grant (jumps the line); blank = the next in queue. */
+  userId: z.string().default(''),
+  /** Where the granted user id is saved on each output item (blank = don't save). */
+  save_as: z.string().default('granted'),
+});
+export type CallGrantTurnParams = z.infer<typeof CallGrantTurnParamsSchema>;
+
+/** call.endTurn — lineup: close the current speaker's turn (the queue can then advance). */
+export const CallEndTurnParamsSchema = z.object({
+  targetKind: CallTargetKindSchema.default('channel'),
+  targetId: z.string().min(1),
+});
+export type CallEndTurnParams = z.infer<typeof CallEndTurnParamsSchema>;
+
+/** call.mute — mute (or unmute) a participant. */
+export const CallMuteParamsSchema = z.object({
+  targetKind: CallTargetKindSchema.default('channel'),
+  targetId: z.string().min(1),
+  /** The participant to (un)mute (expression). */
+  userId: z.string().min(1),
+  /** True to mute, false to unmute. */
+  muted: z.boolean().default(true),
+});
+export type CallMuteParams = z.infer<typeof CallMuteParamsSchema>;
+
+/** call.leave — leave/end the call. */
+export const CallLeaveParamsSchema = z.object({
+  targetKind: CallTargetKindSchema.default('user'),
+  targetId: z.string().min(1),
+});
+export type CallLeaveParams = z.infer<typeof CallLeaveParamsSchema>;
+
 // ── ai.llmChat (P5-T1) ───────────────────────────────────────────────────────
 
 /**

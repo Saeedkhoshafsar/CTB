@@ -177,6 +177,14 @@ either; invariant I6).
   in the editor catalog. Any valid token (instance-wide OR bot-scoped) may read
   it — the node library is identical for every bot, so nothing is bot-scoped
   here. The bytes are identical to the internal `/api/node-types`.
+  - **In-panel docs site ✅ PD-T4.** The same catalog (via the panel's internal
+    `/api/node-types`) is rendered as a browsable, bilingual (fa/en) reference at
+    the editor's **`/docs`** route ("Node Library" in the nav). Nothing is
+    hardcoded: a pure transform groups every node by category and shows its
+    params (key, required, type summary, default, description — derived from the
+    same `paramsJsonSchema`), ports, and typed-connection facts, with a free-text
+    search. It's the human face of this endpoint — "the work is already done,
+    just connect them," made browsable.
 #### Flow authoring (PC-T2)
 
 An external agent can **build and activate** a flow, not just trigger one — every

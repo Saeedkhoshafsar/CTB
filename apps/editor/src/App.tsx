@@ -7,6 +7,7 @@
  *   /bots/:botId/flows      — flows of one bot
  *   /flows/:flowId          — flow editor (canvas lands in P2-T2)
  *   /executions             — executions inspector (lands in P2-T5)
+ *   /docs                   — node library docs site (PD-T4)
  */
 import { useEffect } from 'react';
 import {
@@ -26,6 +27,7 @@ import { ExecutionsPage } from './pages/ExecutionsPage';
 import { FlowEditorPage } from './pages/FlowEditorPage';
 import { FlowsPage } from './pages/FlowsPage';
 import { LoginPage } from './pages/LoginPage';
+import { NodeDocsPage } from './pages/NodeDocsPage';
 import { UsersPage } from './pages/UsersPage';
 import { useAuth } from './stores/auth';
 
@@ -60,6 +62,9 @@ function Shell() {
           </NavLink>
           <NavLink to="/credentials" className={({ isActive }) => (isActive ? 'active' : '')}>
             {t('nav.credentials')}
+          </NavLink>
+          <NavLink to="/docs" className={({ isActive }) => (isActive ? 'active' : '')}>
+            {t('nav.docs')}
           </NavLink>
         </nav>
         <span className="spacer" />
@@ -104,6 +109,7 @@ export function App() {
             <Route path="/flows/:flowId" element={<FlowEditorPage />} />
             <Route path="/executions" element={<ExecutionsPage />} />
             <Route path="/credentials" element={<CredentialsPage />} />
+            <Route path="/docs" element={<NodeDocsPage />} />
             <Route path="*" element={<Navigate to="/bots" replace />} />
           </Route>
         </Route>

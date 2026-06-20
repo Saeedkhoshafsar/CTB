@@ -48,6 +48,10 @@ export function CredentialsPage() {
   const [pgUser, setPgUser] = useState('postgres');
   const [pgPassword, setPgPassword] = useState('');
   const [pgSsl, setPgSsl] = useState(false);
+  // PD-T1 hardening (string-bound so the number inputs stay controlled).
+  const [pgPoolMax, setPgPoolMax] = useState('5');
+  const [pgStmtTimeout, setPgStmtTimeout] = useState('30000');
+  const [pgReadOnly, setPgReadOnly] = useState(false);
   // MySQL / MariaDB: either a single connectionString OR discrete fields (PB-T3).
   const [myHost, setMyHost] = useState('localhost');
   const [myPort, setMyPort] = useState('3306');
@@ -55,6 +59,9 @@ export function CredentialsPage() {
   const [myUser, setMyUser] = useState('root');
   const [myPassword, setMyPassword] = useState('');
   const [mySsl, setMySsl] = useState(false);
+  const [myPoolMax, setMyPoolMax] = useState('5');
+  const [myStmtTimeout, setMyStmtTimeout] = useState('30000');
+  const [myReadOnly, setMyReadOnly] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -80,12 +87,18 @@ export function CredentialsPage() {
     setPgUser('postgres');
     setPgPassword('');
     setPgSsl(false);
+    setPgPoolMax('5');
+    setPgStmtTimeout('30000');
+    setPgReadOnly(false);
     setMyHost('localhost');
     setMyPort('3306');
     setMyDatabase('');
     setMyUser('root');
     setMyPassword('');
     setMySsl(false);
+    setMyPoolMax('5');
+    setMyStmtTimeout('30000');
+    setMyReadOnly(false);
   };
 
   const buildData = (): CredentialData => {
@@ -105,8 +118,15 @@ export function CredentialsPage() {
           : { type, url: mcpUrl, apiKey: mcpApiKey };
       case 'postgres': {
         // Discrete host/port/db/user/pass form. Blank fields are omitted so the
-        // server applies pg's own defaults; ssl is an explicit toggle.
-        const data: CredentialData = { type, ssl: pgSsl };
+        // server applies pg's own defaults; ssl is an explicit toggle. The PD-T1
+        // hardening fields (pool size / statement timeout / read-only) are always
+        // sent (the Zod schema would default them anyway).
+        const data: CredentialData = {
+          type, ssl: pgSsl,
+          poolMax: Number(pgPoolMax) || 5,
+          statementTimeoutMs: Number(pgStmtTimeout) || 0,
+          readOnly: pgReadOnly,
+        };
         if (pgHost.trim() !== '') data.host = pgHost.trim();
         if (pgPort.trim() !== '') data.port = Number(pgPort);
         if (pgDatabase.trim() !== '') data.database = pgDatabase.trim();
@@ -117,7 +137,12 @@ export function CredentialsPage() {
       case 'mysql': {
         // Mirror of the postgres form (PB-T3). Blank fields omitted so the
         // server applies mysql2's own defaults; ssl is an explicit toggle.
-        const data: CredentialData = { type, ssl: mySsl };
+        const data: CredentialData = {
+          type, ssl: mySsl,
+          poolMax: Number(myPoolMax) || 5,
+          statementTimeoutMs: Number(myStmtTimeout) || 0,
+          readOnly: myReadOnly,
+        };
         if (myHost.trim() !== '') data.host = myHost.trim();
         if (myPort.trim() !== '') data.port = Number(myPort);
         if (myDatabase.trim() !== '') data.database = myDatabase.trim();
@@ -354,6 +379,30 @@ export function CredentialsPage() {
                 />
                 <span className="label-text">{t('credentials.field.pgSsl')}</span>
               </label>
+              <label>
+                <span className="label-text">{t('credentials.field.poolMax')}</span>
+                <input
+                  dir="ltr" type="number" min={1} max={100}
+                  value={pgPoolMax} onChange={(e) => setPgPoolMax(e.target.value)}
+                  placeholder="5"
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.statementTimeoutMs')}</span>
+                <input
+                  dir="ltr" type="number" min={0} max={600000}
+                  value={pgStmtTimeout} onChange={(e) => setPgStmtTimeout(e.target.value)}
+                  placeholder="30000"
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <input
+                  type="checkbox"
+                  checked={pgReadOnly}
+                  onChange={(e) => setPgReadOnly(e.target.checked)}
+                />
+                <span className="label-text">{t('credentials.field.readOnly')}</span>
+              </label>
             </>
           )}
 
@@ -414,6 +463,30 @@ export function CredentialsPage() {
                   onChange={(e) => setMySsl(e.target.checked)}
                 />
                 <span className="label-text">{t('credentials.field.mySsl')}</span>
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.poolMax')}</span>
+                <input
+                  dir="ltr" type="number" min={1} max={100}
+                  value={myPoolMax} onChange={(e) => setMyPoolMax(e.target.value)}
+                  placeholder="5"
+                />
+              </label>
+              <label>
+                <span className="label-text">{t('credentials.field.statementTimeoutMs')}</span>
+                <input
+                  dir="ltr" type="number" min={0} max={600000}
+                  value={myStmtTimeout} onChange={(e) => setMyStmtTimeout(e.target.value)}
+                  placeholder="30000"
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <input
+                  type="checkbox"
+                  checked={myReadOnly}
+                  onChange={(e) => setMyReadOnly(e.target.checked)}
+                />
+                <span className="label-text">{t('credentials.field.readOnly')}</span>
               </label>
             </>
           )}

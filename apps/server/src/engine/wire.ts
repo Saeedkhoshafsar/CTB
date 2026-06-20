@@ -631,6 +631,8 @@ export interface DbPool {
     params: unknown[],
   ): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>;
   end(): Promise<void>;
+  /** Effective read-only flag the pool was opened with (PD-T1) — host enforces writes. */
+  readOnly?: boolean;
 }
 
 /** A resolved DB connection config (postgres OR mysql — same discrete fields). */
@@ -642,6 +644,12 @@ export interface DbPoolConfig {
   user?: string;
   password?: string;
   ssl: boolean;
+  /** Max pooled connections (PD-T1 hardening). */
+  poolMax: number;
+  /** Per-statement timeout in ms (PD-T1); 0 = no timeout. */
+  statementTimeoutMs: number;
+  /** Open the connection read-only so the server refuses writes (PD-T1). */
+  readOnly: boolean;
 }
 
 /** Factory that turns a resolved `postgres` credential into a pool. */
@@ -695,7 +703,15 @@ function makeDb(
         `credential "${credentialId}" is not a ${dialect === 'mysql' ? 'MySQL' : 'Postgres'} credential`,
       );
     }
-    const cfg: DbPoolConfig = { ssl: data.ssl };
+    // PD-T1 hardening: pool size, statement timeout, and read-only all come from
+    // the credential (defaults applied by the Zod schema). They are passed to the
+    // factory so the real driver enforces them at the connection level.
+    const cfg: DbPoolConfig = {
+      ssl: data.ssl,
+      poolMax: data.poolMax,
+      statementTimeoutMs: data.statementTimeoutMs,
+      readOnly: data.readOnly,
+    };
     if (data.connectionString !== undefined) cfg.connectionString = data.connectionString;
     if (data.host !== undefined) cfg.host = data.host;
     if (data.port !== undefined) cfg.port = data.port;
@@ -703,6 +719,9 @@ function makeDb(
     if (data.user !== undefined) cfg.user = data.user;
     if (data.password !== undefined) cfg.password = data.password;
     const pool = dialect === 'mysql' ? mysqlFactory(cfg) : pgFactory(cfg);
+    // Remember the read-only intent so the host can fail a write closed even when
+    // the factory (e.g. a test fake) doesn't surface it (fail-closed default).
+    if (pool.readOnly === undefined) pool.readOnly = cfg.readOnly;
     pools.set(credentialId, pool);
     return pool;
   }
@@ -712,6 +731,13 @@ function makeDb(
       async query(req) {
         const dialect = req.dialect ?? 'postgres';
         const pool = resolvePool(req.credentialId, dialect);
+        // Read-only enforcement (PD-T1): a missing `write` flag is treated as a
+        // write (fail-closed), so a read-only credential refuses it before it
+        // ever reaches the driver — defence in depth alongside the server-side
+        // read-only session a read-only Postgres pool also opens.
+        if (pool.readOnly && req.write !== false) {
+          throw new Error('credential is read-only — write statements are not allowed');
+        }
         const res = await pool.query(req.sql, req.params);
         return { rows: res.rows, rowCount: res.rowCount ?? res.rows.length };
       },
@@ -744,7 +770,18 @@ function pgPoolFactory(cfg: DbPoolConfig): DbPool {
   if (cfg.database !== undefined) opts.database = cfg.database;
   if (cfg.user !== undefined) opts.user = cfg.user;
   if (cfg.password !== undefined) opts.password = cfg.password;
-  return new Pool(opts) as unknown as DbPool;
+  // PD-T1 hardening, all enforced by the SERVER at the connection level:
+  //  • max — cap concurrent connections,
+  //  • statement_timeout — the server kills a runaway query,
+  //  • default_transaction_read_only — the server refuses any write.
+  opts.max = cfg.poolMax;
+  const sessionOpts: string[] = [];
+  if (cfg.statementTimeoutMs > 0) sessionOpts.push(`-c statement_timeout=${cfg.statementTimeoutMs}`);
+  if (cfg.readOnly) sessionOpts.push('-c default_transaction_read_only=on');
+  if (sessionOpts.length > 0) opts.options = sessionOpts.join(' ');
+  const pool = new Pool(opts) as unknown as DbPool;
+  pool.readOnly = cfg.readOnly;
+  return pool;
 }
 
 /**
@@ -769,16 +806,25 @@ function mysqlPoolFactory(cfg: DbPoolConfig): DbPool {
   if (cfg.database !== undefined) opts.database = cfg.database;
   if (cfg.user !== undefined) opts.user = cfg.user;
   if (cfg.password !== undefined) opts.password = cfg.password;
+  // PD-T1: cap concurrent connections (mysql2's `connectionLimit`). MySQL has no
+  // per-pool read-only DSN flag, so read-only is enforced host-side (makeDb
+  // refuses write statements); the per-statement timeout is applied per query.
+  opts.connectionLimit = cfg.poolMax;
+  const timeoutMs = cfg.statementTimeoutMs;
   // `createPool` accepts a uri or discrete fields. The promise wrapper gives us
   // an async query() we can adapt to the DbPool contract.
   const rawPool =
     cfg.connectionString !== undefined
-      ? mysql.createPool(cfg.connectionString)
+      ? mysql.createPool({ uri: cfg.connectionString, connectionLimit: cfg.poolMax })
       : mysql.createPool(opts);
   const pool = rawPool.promise();
   return {
+    readOnly: cfg.readOnly,
     async query(sql: string, params: unknown[]) {
-      const [result] = await pool.query(sql, params);
+      // mysql2 supports a per-query timeout; the server aborts a slow statement.
+      const [result] = await (timeoutMs > 0
+        ? pool.query({ sql, timeout: timeoutMs }, params)
+        : pool.query(sql, params));
       if (Array.isArray(result)) {
         // SELECT (or a query node returning rows): RowDataPacket[].
         return { rows: result as Record<string, unknown>[], rowCount: result.length };

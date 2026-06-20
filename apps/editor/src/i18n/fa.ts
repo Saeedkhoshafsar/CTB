@@ -71,6 +71,9 @@ export const fa = {
   'credentials.field.myUser': 'کاربر',
   'credentials.field.myPassword': 'رمز عبور',
   'credentials.field.mySsl': 'استفاده از SSL',
+  'credentials.field.poolMax': 'حداکثر اتصال‌ها',
+  'credentials.field.statementTimeoutMs': 'مهلت هر دستور (میلی‌ثانیه، ۰ = بدون محدودیت)',
+  'credentials.field.readOnly': 'فقط‌خواندنی (رد نوشتن)',
   'credentials.secret.hint':
     'مقدار محرمانه فقط یک‌بار ارسال و رمزنگاری‌شده ذخیره می‌شود؛ هرگز دوباره نمایش داده نمی‌شود. برای تغییر، حذف و دوباره بسازید.',
   'credentials.create': 'ساخت اعتبارنامه',

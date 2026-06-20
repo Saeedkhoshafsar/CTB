@@ -244,6 +244,9 @@ export const dbMysql: NodeDef<DbMysqlParams> = {
         dialect: 'mysql',
         sql: statement.sql,
         params: statement.values,
+        // PD-T1: `select` is a pure read; an arbitrary `query` is conservatively
+        // a write so a read-only credential refuses it unless it's a SELECT.
+        write: params.operation !== 'select',
       });
     } catch (err) {
       return fail(`db.mysql: ${err instanceof Error ? err.message : String(err)}`);

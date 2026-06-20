@@ -73,6 +73,9 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.field.myUser': 'User',
   'credentials.field.myPassword': 'Password',
   'credentials.field.mySsl': 'Use SSL',
+  'credentials.field.poolMax': 'Max connections',
+  'credentials.field.statementTimeoutMs': 'Statement timeout (ms, 0 = none)',
+  'credentials.field.readOnly': 'Read-only (refuse writes)',
   'credentials.secret.hint':
     'The secret value is sent once and stored encrypted; it is never shown again. To change it, delete and recreate.',
   'credentials.create': 'Create credential',

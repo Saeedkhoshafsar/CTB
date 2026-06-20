@@ -128,6 +128,97 @@ describe('credentials API (P3-T4)', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('invalid_body');
   });
+
+  // --- Phase E / PE-T1: voiceConnection credential + health route -----------
+
+  it('create a voiceConnection (userbot) → session encrypted, never leaked (I7)', async () => {
+    const SESSION = '1BVtsOXYZsecretsession0123456789';
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/credentials', cookies: w.cookie,
+      payload: {
+        name: 'My userbot',
+        data: {
+          type: 'voiceConnection', kind: 'userbot',
+          apiId: 1234567, apiHash: 'abcdef0123456789', session: SESSION,
+        },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const { credential } = res.json();
+    expect(credential.type).toBe('voiceConnection');
+    // The session string must NEVER leave the server (invariant I7).
+    expect(JSON.stringify(res.json())).not.toContain(SESSION);
+    expect(credential.hint).toBe('userbot · ••••6789');
+    // ...but it IS stored encrypted and recoverable with the key.
+    const row = w.db.select().from(credentialsTable).all()[0]!;
+    expect(row.dataEnc).not.toContain(SESSION);
+    const data = JSON.parse(decrypt(row.dataEnc, deriveKey(SECRET)));
+    expect(data.session).toBe(SESSION);
+  });
+
+  it('voice-health: a well-formed userbot is structurally valid (no adapter yet, PE-T1)', async () => {
+    const created = await w.app.inject({
+      method: 'POST', url: '/api/credentials', cookies: w.cookie,
+      payload: {
+        name: 'vc', data: {
+          type: 'voiceConnection', kind: 'userbot',
+          apiId: 1234567, apiHash: 'h', session: 's3ss10n',
+        },
+      },
+    });
+    const id = created.json().credential.id;
+    const health = await w.app.inject({
+      method: 'POST', url: `/api/credentials/${id}/voice-health`, cookies: w.cookie,
+    });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().health.ok).toBe(true);
+    expect(health.json().health.kind).toBe('userbot');
+    expect(health.json().health.error).toMatch(/not wired yet/);
+  });
+
+  it('voice-health: an incomplete userbot fails closed {ok:false} (PE-T1)', async () => {
+    // session blank/omitted → server stores it, the health probe fails closed.
+    const created = await w.app.inject({
+      method: 'POST', url: '/api/credentials', cookies: w.cookie,
+      payload: {
+        name: 'vc-bad', data: {
+          type: 'voiceConnection', kind: 'userbot', apiId: 1234567, apiHash: 'h',
+        },
+      },
+    });
+    const id = created.json().credential.id;
+    const health = await w.app.inject({
+      method: 'POST', url: `/api/credentials/${id}/voice-health`, cookies: w.cookie,
+    });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().health.ok).toBe(false);
+    expect(health.json().health.error).toMatch(/missing its session string/);
+  });
+
+  it('voice-health: 404 unknown id, 409 on a non-voice credential', async () => {
+    const notFound = await w.app.inject({
+      method: 'POST', url: '/api/credentials/nope/voice-health', cookies: w.cookie,
+    });
+    expect(notFound.statusCode).toBe(404);
+
+    const created = await w.app.inject({
+      method: 'POST', url: '/api/credentials', cookies: w.cookie,
+      payload: { name: 'b', data: { type: 'httpBearerAuth', token: 'tok123456' } },
+    });
+    const id = created.json().credential.id;
+    const wrong = await w.app.inject({
+      method: 'POST', url: `/api/credentials/${id}/voice-health`, cookies: w.cookie,
+    });
+    expect(wrong.statusCode).toBe(409);
+    expect(wrong.json().error).toBe('not_a_voice_connection');
+  });
+
+  it('voice-health requires auth (401 without cookie)', async () => {
+    const res = await w.app.inject({
+      method: 'POST', url: '/api/credentials/any/voice-health',
+    });
+    expect(res.statusCode).toBe(401);
+  });
 });
 
 describe('credential resolver → auth headers (P3-T4)', () => {
@@ -144,5 +235,23 @@ describe('credential resolver → auth headers (P3-T4)', () => {
   it('hint never reveals more than the last 4 chars', () => {
     expect(credentialHint({ type: 'httpBearerAuth', token: 'abcdefghij' })).toBe('Bearer ••••ghij');
     expect(credentialHint({ type: 'httpHeaderAuth', headerName: 'H', headerValue: 'xy' })).toBe('H: ••••');
+  });
+
+  it('voiceConnection hint shows the kind + a masked session, never the secret (PE-T1)', () => {
+    expect(
+      credentialHint({
+        type: 'voiceConnection', kind: 'userbot',
+        apiId: 1, apiHash: 'h', session: '1BVtsOsecret9876',
+      }),
+    ).toBe('userbot · ••••9876');
+    expect(
+      credentialHint({ type: 'voiceConnection', kind: 'external', bridgeUrl: 'https://b.example.com' }),
+    ).toBe('external · https://b.example.com');
+    // A connector that injects no HTTP headers (it's resolved into a media engine).
+    expect(
+      credentialAuthHeaders({
+        type: 'voiceConnection', kind: 'userbot', apiId: 1, apiHash: 'h', session: 's',
+      }),
+    ).toEqual({});
   });
 });

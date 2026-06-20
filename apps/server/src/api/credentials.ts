@@ -24,6 +24,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/index';
 import { credentials } from '../db/schema';
 import { decrypt, encrypt } from '../lib/crypto';
+import { validateVoiceConnection, type VoiceConnector } from '../engine/voice-connector';
 
 type CredentialRow = typeof credentials.$inferSelect;
 
@@ -50,6 +51,13 @@ export interface CredentialsApiDeps {
   db: Db;
   key: Buffer;
   clock?: () => Date;
+  /**
+   * Optional voice-connector adapter (Phase E / PE-T2). When provided, the
+   * `voice-health` route probes a real login; when absent (PE-T1), it reports
+   * the credential as structurally valid but not yet logged in. Lets the panel
+   * "test connection" without a media engine wired.
+   */
+  voiceConnector?: VoiceConnector;
 }
 
 export function registerCredentialsApi(app: FastifyInstance, deps: CredentialsApiDeps): void {
@@ -66,6 +74,30 @@ export function registerCredentialsApi(app: FastifyInstance, deps: CredentialsAp
     const row = db.select().from(credentials).where(eq(credentials.id, id)).get();
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return { credential: toPublic(row, key) };
+  });
+
+  /**
+   * Voice-connection health (Phase E / PE-T1). Decrypts the credential HOST-side
+   * (the session never leaves the server, I7), validates it fail-closed, and —
+   * when a connector adapter is wired (PE-T2) — probes the login. The response
+   * is leak-free: `{ok, kind, account?, error?}`. 404 on an unknown id, 409 when
+   * the credential isn't a `voiceConnection`.
+   */
+  app.post('/api/credentials/:id/voice-health', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = db.select().from(credentials).where(eq(credentials.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (row.type !== 'voiceConnection') {
+      return reply.code(409).send({ error: 'not_a_voice_connection' });
+    }
+    let data: CredentialData;
+    try {
+      data = JSON.parse(decrypt(row.dataEnc, key)) as CredentialData;
+    } catch {
+      return reply.code(409).send({ error: 'undecryptable' });
+    }
+    const health = await validateVoiceConnection(id, data, deps.voiceConnector);
+    return { health };
   });
 
   app.post('/api/credentials', async (req, reply) => {

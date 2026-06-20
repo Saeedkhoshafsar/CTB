@@ -22,6 +22,7 @@ const TYPES: CredentialType[] = [
   'mcpServer',
   'postgres',
   'mysql',
+  'voiceConnection',
 ];
 
 export function CredentialsPage() {
@@ -62,6 +63,13 @@ export function CredentialsPage() {
   const [myPoolMax, setMyPoolMax] = useState('5');
   const [myStmtTimeout, setMyStmtTimeout] = useState('30000');
   const [myReadOnly, setMyReadOnly] = useState(false);
+  // Voice connection (Phase E / PE-T1) — userbot first; companion/external forward-shaped.
+  const [vcKind, setVcKind] = useState<'userbot' | 'companion' | 'external'>('userbot');
+  const [vcApiId, setVcApiId] = useState('');
+  const [vcApiHash, setVcApiHash] = useState('');
+  const [vcSession, setVcSession] = useState('');
+  const [vcBridgeUrl, setVcBridgeUrl] = useState('');
+  const [vcBridgeToken, setVcBridgeToken] = useState('');
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -99,6 +107,12 @@ export function CredentialsPage() {
     setMyPoolMax('5');
     setMyStmtTimeout('30000');
     setMyReadOnly(false);
+    setVcKind('userbot');
+    setVcApiId('');
+    setVcApiHash('');
+    setVcSession('');
+    setVcBridgeUrl('');
+    setVcBridgeToken('');
   };
 
   const buildData = (): CredentialData => {
@@ -148,6 +162,19 @@ export function CredentialsPage() {
         if (myDatabase.trim() !== '') data.database = myDatabase.trim();
         if (myUser.trim() !== '') data.user = myUser.trim();
         if (myPassword !== '') data.password = myPassword;
+        return data;
+      }
+      case 'voiceConnection': {
+        // The `kind` selects the connector (PE-T1). For userbot/companion the
+        // operator supplies api_id/api_hash + an MTProto session string; for
+        // external they supply a bridge URL/token. Blank fields are omitted so
+        // the server can reject an incomplete connector (fail-closed, PE-T2).
+        const data: CredentialData = { type, kind: vcKind };
+        if (vcApiId.trim() !== '') data.apiId = Number(vcApiId);
+        if (vcApiHash.trim() !== '') data.apiHash = vcApiHash.trim();
+        if (vcSession.trim() !== '') data.session = vcSession.trim();
+        if (vcBridgeUrl.trim() !== '') data.bridgeUrl = vcBridgeUrl.trim();
+        if (vcBridgeToken.trim() !== '') data.bridgeToken = vcBridgeToken.trim();
         return data;
       }
     }
@@ -488,6 +515,87 @@ export function CredentialsPage() {
                 />
                 <span className="label-text">{t('credentials.field.readOnly')}</span>
               </label>
+            </>
+          )}
+
+          {type === 'voiceConnection' && (
+            <>
+              <label>
+                <span className="label-text">{t('credentials.field.vcKind')}</span>
+                <select
+                  value={vcKind}
+                  onChange={(e) =>
+                    setVcKind(e.target.value as 'userbot' | 'companion' | 'external')
+                  }
+                >
+                  <option value="userbot">{t('credentials.vcKind.userbot')}</option>
+                  <option value="companion">{t('credentials.vcKind.companion')}</option>
+                  <option value="external">{t('credentials.vcKind.external')}</option>
+                </select>
+              </label>
+
+              {(vcKind === 'userbot' || vcKind === 'companion') && (
+                <>
+                  <label>
+                    <span className="label-text">{t('credentials.field.vcApiId')}</span>
+                    <input
+                      dir="ltr"
+                      type="number"
+                      value={vcApiId}
+                      onChange={(e) => setVcApiId(e.target.value)}
+                      placeholder="1234567"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span className="label-text">{t('credentials.field.vcApiHash')}</span>
+                    <input
+                      dir="ltr"
+                      type="password"
+                      value={vcApiHash}
+                      onChange={(e) => setVcApiHash(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span className="label-text">{t('credentials.field.vcSession')}</span>
+                    <textarea
+                      dir="ltr"
+                      rows={3}
+                      value={vcSession}
+                      onChange={(e) => setVcSession(e.target.value)}
+                      placeholder="1BVtsO... (MTProto session string)"
+                      required
+                    />
+                  </label>
+                </>
+              )}
+
+              {vcKind === 'external' && (
+                <>
+                  <label>
+                    <span className="label-text">{t('credentials.field.vcBridgeUrl')}</span>
+                    <input
+                      dir="ltr"
+                      value={vcBridgeUrl}
+                      onChange={(e) => setVcBridgeUrl(e.target.value)}
+                      placeholder="https://voice-bridge.example.com"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span className="label-text">{t('credentials.field.vcBridgeToken')}</span>
+                    <input
+                      dir="ltr"
+                      type="password"
+                      value={vcBridgeToken}
+                      onChange={(e) => setVcBridgeToken(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+
+              <span className="hint">{t('credentials.vc.hint')}</span>
             </>
           )}
 

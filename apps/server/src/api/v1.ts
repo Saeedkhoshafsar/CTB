@@ -53,6 +53,8 @@ import { hashApiToken, parseBearer } from '../lib/api-token';
 import { nodeTypeInfos } from './node-types';
 import { registerMcpApi } from './mcp';
 import type { SqliteCollectionStore } from '../collections/store';
+import type { RateLimiter } from '../lib/rate-limiter';
+import type { SqliteApiAuditStore } from '../engine/audit-store';
 
 const EXEC_STATUSES = new Set<ExecutionStatus>([
   'running',
@@ -69,6 +71,61 @@ interface AuthedToken {
   id: string;
   /** Bot scope, or null = instance-wide. */
   botId: string | null;
+  /** Per-token rate limit (requests / 60s); 0 = unlimited (PD-T3). */
+  rateLimitPerMin: number;
+}
+
+/**
+ * The TARGET bot of an audited call (PD-T3), stashed by the route once it has
+ * resolved which bot the action touches (from the body, the flow, or the path).
+ * The audit hook reads this so a row's `botId` is the bot that was acted upon —
+ * not the token's scope (an instance-wide token has no scope, yet still creates
+ * flows for a specific bot). Absent ⇒ the hook falls back to the token scope.
+ */
+type AuditCtxRequest = FastifyRequest & { auditBotId?: string | null };
+
+/** Record the bot an audited route is acting on, for the audit hook to read. */
+function markAuditBot(req: FastifyRequest, botId: string | null): void {
+  (req as AuditCtxRequest).auditBotId = botId;
+}
+
+/**
+ * Audit map (PD-T3) — which `/api/v1/*` calls get an audit row, keyed by
+ * `METHOD /api/v1/<first-segment>`. Only authoring + trigger + send calls are
+ * audited (the "who built/ran what" question); plain reads (node-types,
+ * executions, users) are not. The `:id` resource is read from req.params at
+ * record time. MCP calls audit themselves inside the JSON-RPC handler scope,
+ * so the bare `POST /api/v1/mcp` is intentionally absent here.
+ */
+const AUDITED: Record<string, { action: string }> = {
+  'POST /api/v1/flows': { action: 'flow.create' },
+  'PATCH /api/v1/flows': { action: 'flow.update' },
+  'POST /api/v1/flows/validate': { action: 'flow.validate' },
+  'POST /api/v1/flows/activate': { action: 'flow.activate' },
+  'POST /api/v1/flows/deactivate': { action: 'flow.deactivate' },
+  'POST /api/v1/flows/trigger': { action: 'flow.trigger' },
+  'POST /api/v1/bots/send': { action: 'bot.send' },
+};
+
+/**
+ * Reduce a concrete request path to its audit key by collapsing the resource id.
+ * `POST /api/v1/flows/abc123/activate` → `POST /api/v1/flows/activate`;
+ * `PATCH /api/v1/flows/abc123` → `PATCH /api/v1/flows`;
+ * `POST /api/v1/bots/abc/send` → `POST /api/v1/bots/send`.
+ */
+function auditKey(method: string, path: string): string {
+  // Strip query string + trailing slash; keep only the /api/v1 path.
+  const clean = path.split('?')[0]!.replace(/\/+$/, '');
+  const parts = clean.split('/'); // ['', 'api', 'v1', 'flows', ':id', 'activate']
+  // Collapse a `:id` segment that sits right after a known collection.
+  if (parts[3] === 'flows' && parts.length >= 5) {
+    const tail = parts[5]; // 'activate' | 'validate' | … | undefined (= PATCH)
+    return tail ? `${method} /api/v1/flows/${tail}` : `${method} /api/v1/flows`;
+  }
+  if (parts[3] === 'bots' && parts[5] === 'send') {
+    return `${method} /api/v1/bots/send`;
+  }
+  return `${method} ${clean}`;
 }
 
 export interface V1ApiDeps {
@@ -93,6 +150,19 @@ export interface V1ApiDeps {
    */
   onFlowsChanged?: () => void;
   clock?: () => Date;
+  /**
+   * Per-token rate limiter (PD-T3). Checked in the bearer-auth preHandler using
+   * the token's `rateLimitPerMin`; over the limit ⇒ 429 + `retry-after`. The
+   * host owns it (one instance shared across all v1 routes) — a process-local
+   * sliding window is the correct scope for CTB's single-process architecture.
+   */
+  rateLimiter: RateLimiter;
+  /**
+   * Append-only audit log (PD-T3). An `onResponse` hook records one row per
+   * AUDITED authoring/trigger/send call (who, what, target, status). The host
+   * owns the table (I6); a token can never read its own audit.
+   */
+  auditStore: SqliteApiAuditStore;
 }
 
 type FlowRow = typeof flows.$inferSelect;
@@ -159,6 +229,17 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       if (!row) {
         return reply.code(401).send({ error: 'invalid_token' });
       }
+      // PD-T3: per-token rate limit. Checked BEFORE last-used is stamped so a
+      // rejected request leaves no side effect but the 429 itself. `0` =
+      // unlimited (the limiter is a no-op). On breach, emit RFC-7231
+      // `retry-after` (seconds) so a well-behaved client backs off.
+      const verdict = deps.rateLimiter.check(row.id, row.rateLimitPerMin);
+      if (!verdict.allowed) {
+        void reply.header('retry-after', String(verdict.retryAfterSec));
+        return reply
+          .code(429)
+          .send({ error: 'rate_limited', retryAfterSec: verdict.retryAfterSec });
+      }
       // Stamp last-used (best-effort; never block the request on it).
       try {
         db.update(apiTokens).set({ lastUsedAt: now() }).where(eq(apiTokens.id, row.id)).run();
@@ -168,7 +249,39 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       (req as FastifyRequest & { apiToken: AuthedToken }).apiToken = {
         id: row.id,
         botId: row.botId,
+        rateLimitPerMin: row.rateLimitPerMin,
       };
+    });
+
+    // PD-T3 audit hook. Runs AFTER the route has chosen its status code, so the
+    // log reflects reality (a 403/422/404 is recorded exactly like a 201/202).
+    // Only AUDITED authoring/trigger/send calls get a row — plain reads do not.
+    // A request rejected at auth (401/429) has no `apiToken`, so it's skipped
+    // here (the rate-limit 429 is the abuse signal, not the audit log).
+    scope.addHook('onResponse', async (req, reply) => {
+      const tok = (req as FastifyRequest & { apiToken?: AuthedToken }).apiToken;
+      if (!tok) return; // unauthenticated / rate-limited — nothing to attribute
+      const key = auditKey(req.method, req.url);
+      const audited = AUDITED[key];
+      if (!audited) return; // not an audited surface
+      const params = (req.params ?? {}) as { id?: string };
+      // Prefer the TARGET bot the route resolved (markAuditBot); fall back to
+      // the token's own scope when the route didn't get far enough to resolve one.
+      const auditBotId = (req as AuditCtxRequest).auditBotId;
+      try {
+        deps.auditStore.record({
+          tokenId: tok.id,
+          botId: auditBotId !== undefined ? auditBotId : tok.botId,
+          action: audited.action,
+          method: req.method,
+          route: key,
+          targetId: params.id ?? null,
+          status: reply.statusCode,
+        });
+      } catch (err) {
+        // Audit is best-effort — never let a logging failure break the response.
+        req.log.error({ err }, 'v1 audit record failed');
+      }
     });
 
     /** A bot-scoped token may only act on its own bot. */
@@ -228,6 +341,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       if (!parsed.success) {
         return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
       }
+      markAuditBot(req, parsed.data.botId);
       if (!tokenAllowsBot(req, parsed.data.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -260,6 +374,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       }
       const row = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      markAuditBot(req, row.botId);
       if (!tokenAllowsBot(req, row.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -309,6 +424,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       const { id } = req.params as { id: string };
       const row = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      markAuditBot(req, row.botId);
       if (!tokenAllowsBot(req, row.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -330,6 +446,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       const { id } = req.params as { id: string };
       const row = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      markAuditBot(req, row.botId);
       if (!tokenAllowsBot(req, row.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -353,6 +470,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       const { id } = req.params as { id: string };
       const row = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!row) return reply.code(404).send({ error: 'flow_not_found' });
+      markAuditBot(req, row.botId);
       if (!tokenAllowsBot(req, row.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -375,6 +493,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
 
       const flowRow = db.select().from(flows).where(eq(flows.id, id)).get();
       if (!flowRow) return reply.code(404).send({ error: 'flow_not_found' });
+      markAuditBot(req, flowRow.botId);
       if (!tokenAllowsBot(req, flowRow.botId)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -431,6 +550,7 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
       if (!parsed.success) {
         return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
       }
+      markAuditBot(req, id);
       if (!tokenAllowsBot(req, id)) {
         return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
       }
@@ -529,6 +649,36 @@ export function registerV1Api(app: FastifyInstance, deps: V1ApiDeps): void {
           displayName: userDisplayName(r.user),
         })),
       };
+    });
+
+    // ---- GET /api/v1/audit (PD-T3) ---------------------------------------
+    // The audit trail of authoring/trigger/send calls. Scope mirrors every
+    // other v1 read: an instance-wide token sees all entries (optionally
+    // filtered by `bot_id`), a bot-scoped token sees ONLY its own bot's
+    // entries (its scope is forced regardless of the query). `limit` caps at
+    // the store's max (500). Most-recent-first.
+    scope.get('/api/v1/audit', async (req, reply) => {
+      const q = req.query as { bot_id?: string; token_id?: string; limit?: string };
+      const tok = (req as FastifyRequest & { apiToken: AuthedToken }).apiToken;
+
+      // A bot-scoped token is locked to its own bot. An instance-wide token may
+      // narrow to one bot via `bot_id`.
+      let botId: string | undefined;
+      if (tok.botId !== null) {
+        if (q.bot_id !== undefined && !tokenAllowsBot(req, q.bot_id)) {
+          return reply.code(403).send({ error: 'token_not_authorized_for_bot' });
+        }
+        botId = tok.botId;
+      } else if (q.bot_id !== undefined) {
+        botId = q.bot_id;
+      }
+
+      const entries = deps.auditStore.list({
+        ...(botId !== undefined ? { botId } : {}),
+        ...(q.token_id !== undefined ? { tokenId: q.token_id } : {}),
+        ...(q.limit !== undefined ? { limit: Number(q.limit) } : {}),
+      });
+      return { entries };
     });
   });
 }

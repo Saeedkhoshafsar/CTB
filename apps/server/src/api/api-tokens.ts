@@ -32,6 +32,7 @@ function toPublic(row: TokenRow): ApiTokenPublic {
     name: row.name,
     prefix: row.prefix,
     botId: row.botId,
+    rateLimitPerMin: row.rateLimitPerMin,
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
   };
@@ -69,6 +70,7 @@ export function registerApiTokensApi(app: FastifyInstance, deps: ApiTokensApiDep
       tokenHash: gen.tokenHash,
       prefix: gen.prefix,
       botId,
+      rateLimitPerMin: parsed.data.rateLimitPerMin,
       createdAt: now(),
       lastUsedAt: null,
     };

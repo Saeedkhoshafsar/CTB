@@ -96,6 +96,22 @@ export interface TaggedUtterance {
   utterance: CallUtterance;
 }
 
+/** The non-utterance call events PE-T3's `trigger.callEvent` fires on. */
+export type CallLifecycleKind = 'callJoined' | 'turnOpened' | 'callLeft';
+
+/** A lifecycle event tagged with the call it came from (for PE-T3's trigger). */
+export interface CallLifecycleEvent {
+  kind: CallLifecycleKind;
+  botId: string;
+  flowId: string;
+  target: CallTargetRef;
+  mode: CallMode;
+  /** turnOpened: the user just granted the mic. */
+  currentTurn?: number | string | null;
+  /** lineup: the waiting line at the moment of the event. */
+  queue?: (number | string)[];
+}
+
 /** One live call the service is holding. */
 interface CallSession {
   botId: string;
@@ -135,6 +151,8 @@ export class CallSessionService {
   private readonly clock: () => number;
   /** Listeners for finalized utterances (PE-T3's `trigger.callEvent` subscribes here). */
   private readonly utteranceListeners = new Set<(u: TaggedUtterance) => void>();
+  /** Listeners for non-utterance call events — callJoined/turnOpened/callLeft (PE-T3). */
+  private readonly lifecycleListeners = new Set<(e: CallLifecycleEvent) => void>();
 
   constructor(private readonly deps: CallSessionDeps) {
     this.caps = { ...DEFAULT_CALL_CAPS, ...deps.caps };
@@ -170,6 +188,16 @@ export class CallSessionService {
   onUtterance(cb: (u: TaggedUtterance) => void): () => void {
     this.utteranceListeners.add(cb);
     return () => this.utteranceListeners.delete(cb);
+  }
+
+  /**
+   * Subscribe to the non-utterance call events — `callJoined` / `turnOpened` /
+   * `callLeft` — across all calls. The PE-T3 CallEventBus uses this to start a
+   * flow on those events. Returns an unsubscribe fn.
+   */
+  onLifecycle(cb: (e: CallLifecycleEvent) => void): () => void {
+    this.lifecycleListeners.add(cb);
+    return () => this.lifecycleListeners.delete(cb);
   }
 
   /**
@@ -271,6 +299,7 @@ export class CallSessionService {
 
     this.sessions.set(key, session);
     this.log('info', `call connected ${key} mode=${req.mode}${req.mode === 'lineup' ? ` order=${session.order}` : ''}`);
+    this.emitLifecycle(session, 'callJoined');
   }
 
   private async speak(botId: string, req: CallSpeakRequest): Promise<void> {
@@ -310,6 +339,7 @@ export class CallSessionService {
       // Open the mic: mark the granted speaker as holding it (others stay muted
       // in lineup). The connector-level (un)mute lands with the userbot adapter.
       this.markSpeaking(session, next, true);
+      this.emitLifecycle(session, 'turnOpened');
       // Auto-advance after maxTurnSeconds (0 = host holds it open until endTurn).
       if (session.maxTurnSeconds > 0) {
         const timer = setTimeout(() => {
@@ -348,6 +378,8 @@ export class CallSessionService {
     this.sessions.delete(key);
     await this.deps.connector.leave(session.target);
     this.log('info', `call left ${key}`);
+    // Fire AFTER teardown/delete so a listener sees the call already gone.
+    this.emitLifecycle(session, 'callLeft');
   }
 
   private status(botId: string, target: CallTargetRef): CallStatus {
@@ -393,6 +425,26 @@ export class CallSessionService {
         cb(tagged);
       } catch (err) {
         this.log('error', `call utterance listener failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
+  /** Fan a non-utterance call event to the lifecycle subscribers (PE-T3). */
+  private emitLifecycle(session: CallSession, kind: CallLifecycleKind): void {
+    const event: CallLifecycleEvent = {
+      kind,
+      botId: session.botId,
+      flowId: session.flowId,
+      target: { kind: session.target.kind, id: session.target.id },
+      mode: session.mode,
+      currentTurn: session.currentTurn,
+      queue: [...session.queue],
+    };
+    for (const cb of [...this.lifecycleListeners]) {
+      try {
+        cb(event);
+      } catch (err) {
+        this.log('error', `call lifecycle listener failed: ${err instanceof Error ? err.message : err}`);
       }
     }
   }

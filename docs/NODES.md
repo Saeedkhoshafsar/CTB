@@ -46,6 +46,24 @@ Starts a flow when a record in a Collection is created/updated/deleted (from the
 - No implicit chat: flows using Telegram nodes must resolve a chat themselves (e.g. `chat` expression on Send Message reading `{{ $json.record.customer_chat_id }}`), same rule as Webhook Trigger's `target_chat`.
 - Loop guard: writes performed by a flow that was itself started by this trigger do not re-trigger (depth 1).
 
+### Live-voice Trigger `+PE` ✅ (`trigger.callEvent`)
+Starts a flow on a **live Telegram call** event — the entry point for both live-voice scenarios. The host **Call-event bus** (`apps/server/src/triggers/call-events.ts`, sibling of the record-write bus) watches the Call Session Service's utterance + lifecycle streams and, when an event matches an *active* flow's trigger target, builds the item and starts the run. One generic trigger serves **both** scenarios via config (invariant **I2**).
+
+- **Outputs:** 1 (`main`)
+- **Parameters:**
+  - `connection`: a `voiceConnection` credential ref (PE-T1) — chooses the connector, never seen by the node.
+  - `targetKind`: `chat | channel | user` (disambiguates the id space; both group + 1:1).
+  - `targetId`: Telegram numeric id (or `@username`) of the call to watch.
+  - `events`: subset of `callJoined | utteranceFinal | turnOpened | callLeft` (≥1; default `[utteranceFinal]`).
+  - `mode`: `support` (answer everyone — 1:1 AI) | `lineup` (Q&A turn queue — group/channel broadcast).
+  - `order` (lineup): `sequential | random` turn order.
+  - `maxTurnSeconds` (lineup): auto-advance a granted turn after N seconds (`0` = no cap).
+  - `autoAdvance` (lineup): open the next queued turn automatically when one ends.
+- **Emits:** `{ json: { event, target:{kind,id}, mode, speakerId?, audioFileId?, audioMime?, audioSampleRate?, currentTurn?, queue? } }`
+  - `utteranceFinal` carries the segmented PCM as a **CTB file id** (`audioFileId`, `audio/l16`) so the flow's `ai.speechToText` transcribes it — a node never touches raw audio bytes (invariant **I6**). The audio is persisted **once** even when several flows match the same utterance.
+  - lifecycle events (`callJoined`/`turnOpened`/`callLeft`) carry `currentTurn`/`queue` for the flow to branch on.
+- **No implicit chat:** like the Record-Changed and Webhook triggers, the run starts with `chatId = null` — a voice flow answers over **`ctx.call`** (not a chat message). One run per matching flow per event; the dispatch never throws, so a trigger failure can't break the live call.
+
 ### Manual Trigger `M`
 - "Test flow" button in editor; emits a configurable sample payload.
 
@@ -311,7 +329,7 @@ These fields default sensibly, so existing credentials keep working unchanged; t
 
 ## Live-voice connection `+PE` (PE-T1)
 
-> The live-voice **nodes** (`trigger.callEvent` + the `call.*` actions) land in PE-T3/PE-T4; this section documents the **credential** (PE-T1) and the host **`ctx.call` capability + Call Session Service** (PE-T2) those nodes build on.
+> The live-voice **trigger** (`trigger.callEvent`) landed in PE-T3 (see *Live-voice Trigger* under §Triggers); the `call.*` **action** nodes land in PE-T4. This section documents the **credential** (PE-T1) and the host **`ctx.call` capability + Call Session Service** (PE-T2) those nodes build on.
 
 A live Telegram call (a group/channel voice chat **or** a 1:1 call) cannot ride the Bot API — Telegram exposes **no** call methods there. The audio leg always travels over **MTProto via a USER session, never a bot token** (PLAN2 §E.0). The new **`voiceConnection`** credential carries that session, encrypted at rest (invariant I7); the host's Call Session Service (PE-T2) resolves it into a connector, so a flow author only ever references a `credentialId` and never sees the session string (invariants I6/I7).
 

@@ -1169,6 +1169,64 @@ export const ScheduleTriggerParamsSchema = z.object({
 });
 export type ScheduleTriggerParams = z.infer<typeof ScheduleTriggerParamsSchema>;
 
+// ── trigger.callEvent (Phase E / PE-T3) ──────────────────────────────────────
+
+/**
+ * trigger.callEvent — the live-voice ENTRY node (Phase E). ONE node covers every
+ * scenario through SETTINGS (PLAN2 §E.1, invariant I2 applied to voice): a 1:1
+ * Direct→AI call AND a group/channel live broadcast with a Q&A line-up are the
+ * SAME node, differing only in `target` + `mode`.
+ *
+ * The HOST owns the realtime call (the Call Session Service, PE-T2): it joins the
+ * call over MTProto, segments inbound audio with VAD, and starts this flow on
+ * each subscribed event — so the node itself is a pure pass-through (like
+ * `schedule.trigger` / `collection.recordChanged`); by the time `execute()` runs
+ * the host has already built the item.
+ *
+ * Settings (this is where "configurable" lives — every fork is an enum/flag, no
+ * privileged mode):
+ *  - `connection`: which `voiceConnection` credential connects the audio (the
+ *    connector kind — userbot/companion/external — is chosen by THAT credential,
+ *    never here; PE-T1).
+ *  - `target`: the call to join — `kind` (chat/channel/user) + `id`. The same
+ *    node handles a group voice chat AND a 1:1 call.
+ *  - `events`: which call events fire the flow (≥1) —
+ *      `callJoined`     — the host joined/started the call;
+ *      `utteranceFinal` — a caller finished speaking (the item carries the audio
+ *                         as a CTB file id, ready for `ai.speechToText`);
+ *      `turnOpened`     — lineup: the mic was granted to a listener;
+ *      `callLeft`       — the call ended.
+ *  - `mode`: `support` (everyone may speak — answer each caller) | `lineup` (a
+ *    Q&A queue — listeners request the mic, the flow grants turns).
+ *  - lineup-only: `order` (`sequential`|`random`), `maxTurnSeconds` (0 = no cap),
+ *    `autoAdvance` (open the next turn automatically when one ends).
+ */
+export const CallEventTriggerParamsSchema = z.object({
+  /** Which `voiceConnection` credential connects the audio (PE-T1). */
+  connection: z
+    .string()
+    .min(1)
+    .meta({ ctbWidget: 'credentialRef', credentialType: 'voiceConnection' }),
+  /** The call to join — `kind` disambiguates the id space; both group + 1:1. */
+  targetKind: z.enum(['chat', 'channel', 'user']).default('user'),
+  /** Telegram numeric id (or @username) of the chat/channel/user to dial. */
+  targetId: z.string().min(1),
+  /** Which call events start the flow (at least one). */
+  events: z
+    .array(z.enum(['callJoined', 'utteranceFinal', 'turnOpened', 'callLeft']))
+    .min(1)
+    .default(['utteranceFinal']),
+  /** Moderation mode — answer everyone (support) or run a Q&A queue (lineup). */
+  mode: z.enum(['support', 'lineup']).default('support'),
+  /** lineup only: turn order when granting/auto-advancing. */
+  order: z.enum(['sequential', 'random']).default('sequential'),
+  /** lineup only: max seconds a granted turn lasts before auto-advance (0 = no cap). */
+  maxTurnSeconds: z.number().int().min(0).max(3600).default(0),
+  /** lineup only: open the next queued turn automatically when one ends. */
+  autoAdvance: z.boolean().default(false),
+});
+export type CallEventTriggerParams = z.infer<typeof CallEventTriggerParamsSchema>;
+
 // ── ai.llmChat (P5-T1) ───────────────────────────────────────────────────────
 
 /**

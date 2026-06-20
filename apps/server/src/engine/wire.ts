@@ -58,6 +58,7 @@ import {
   makeVoiceCredentialResolver,
   type CallCaps,
 } from '../triggers/call-session';
+import { CallEventBus } from '../triggers/call-events';
 import { LoopbackVoiceConnector } from './loopback-connector';
 import type { VoiceConnector } from './voice-connector';
 import { WebhookDispatcher } from './webhook-dispatcher';
@@ -157,6 +158,13 @@ export interface Engine {
    * subscribes via `onUtterance`.
    */
   callSessionService: CallSessionService;
+  /**
+   * Live-voice call-event bus (PE-T3) — subscribes to the Call Session Service's
+   * utterance + lifecycle streams and fires `trigger.callEvent` flows. Always
+   * present; the server lifecycle calls `start()` after boot and `stop()` at
+   * shutdown.
+   */
+  callEventBus: CallEventBus;
   /**
    * Outbound instance-webhook dispatcher (P4-T4). Always present; fires
    * `execution.finished`/`execution.failed` (from the execution store) and
@@ -1525,6 +1533,17 @@ export function wireEngine(opts: WireOptions): Engine {
   // and the flows API re-runs reconcile() on activate/deactivate/edit.
   const scheduler = new Scheduler({ db: opts.db, flowSource, router, userStore, log, clock });
 
+  // Call-event bus (PE-T3) — subscribes to the Call Session Service's utterance
+  // + lifecycle streams and fires `trigger.callEvent` flows. Built here (it needs
+  // the router); the server lifecycle calls start()/stop() (main.ts).
+  const callEventBus = new CallEventBus({
+    service: callSessionService,
+    flowSource,
+    router,
+    fileStore,
+    log,
+  });
+
   // Outbound instance webhooks (P4-T4). The dispatcher owns delivery; the two
   // event sources (execution store + user store) hand it built envelopes via
   // listeners attached here so neither store imports the dispatcher.
@@ -1576,6 +1595,7 @@ export function wireEngine(opts: WireOptions): Engine {
     userStore,
     scheduler,
     callSessionService,
+    callEventBus,
     webhookDispatcher,
     fileStore,
     aiUsageStore,

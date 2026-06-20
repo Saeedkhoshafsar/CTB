@@ -157,6 +157,57 @@ export const MysqlSchema = z.object({
 });
 export type Mysql = z.infer<typeof MysqlSchema>;
 
+/**
+ * Voice-connection credential (Phase E / PE-T1) — abstracts **who connects the
+ * audio** to a live Telegram call. The Bot API exposes NO call methods, so the
+ * audio leg always rides **MTProto via a user session, NOT a bot token**; this
+ * credential carries that session (encrypted at rest, I7) and the host's Call
+ * Session Service (PE-T2) resolves it into a connector.
+ *
+ * The crucial design choice (Phase E §E.1, the user's "choice lives on the node"
+ * principle): a `kind` discriminator selects the connector WITHOUT a node change.
+ * `userbot` ships first (the only thing that can join a call today); the schema is
+ * forward-shaped so `companion` (a delegated helper account added beside our bot —
+ * the `@myidbot`-style idea) and `external` (a 3rd-party voice bridge) drop in
+ * later as new `kind` variants, each behind the SAME `ctx.call` interface. A flow
+ * author never picks a transport — they pick this credential and toggle node
+ * settings (I2 generic-only applied to voice).
+ *
+ * Only the secret half lives here; the node carries a `credentialId`, never the
+ * session string (I6/I7). The host (PE-T2) logs in, reports health in the panel,
+ * and **fails closed** on an invalid/expired session.
+ */
+export const VoiceConnectionSchema = z.object({
+  type: z.literal('voiceConnection'),
+  /**
+   * Connector kind — the one fork that is a SETTING, not a node/phase decision.
+   * `userbot` shipped first; `companion`/`external` are forward-shaped so adding
+   * them is a host adapter + this enum value, never a flow change (Phase E §E.0).
+   */
+  kind: z.enum(['userbot', 'companion', 'external']).default('userbot'),
+  /**
+   * Telegram `api_id` from https://my.telegram.org (the operator's own app).
+   * Required for `userbot`/`companion` (MTProto login); unused by `external`.
+   */
+  apiId: z.coerce.number().int().positive().optional(),
+  /** Telegram `api_hash` paired with `apiId`. */
+  apiHash: z.string().min(1).max(255).optional(),
+  /**
+   * A pre-generated MTProto **session string** for the operator's user account
+   * (e.g. produced by a GramJS/Telethon login). This is what actually joins the
+   * call — it is a USER session, never a bot token. Encrypted at rest (I7).
+   */
+  session: z.string().min(1).optional(),
+  /**
+   * For `external` connectors: the base URL of a 3rd-party voice bridge the host
+   * talks to instead of logging in via MTProto. Forward-shaped (unused today).
+   */
+  bridgeUrl: z.string().url().max(2048).optional(),
+  /** Optional bearer token for the `external` bridge. */
+  bridgeToken: z.string().optional(),
+});
+export type VoiceConnection = z.infer<typeof VoiceConnectionSchema>;
+
 /** The encrypted half of every credential — discriminated by `type`. */
 export const CredentialDataSchema = z.discriminatedUnion('type', [
   HttpHeaderAuthSchema,
@@ -166,6 +217,7 @@ export const CredentialDataSchema = z.discriminatedUnion('type', [
   McpServerSchema,
   PostgresSchema,
   MysqlSchema,
+  VoiceConnectionSchema,
 ]);
 export type CredentialData = z.infer<typeof CredentialDataSchema>;
 
@@ -177,6 +229,7 @@ export const CredentialTypeSchema = z.enum([
   'mcpServer',
   'postgres',
   'mysql',
+  'voiceConnection',
 ]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
@@ -232,6 +285,7 @@ export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   mcpServer: 'MCP Server',
   postgres: 'Postgres Database',
   mysql: 'MySQL / MariaDB Database',
+  voiceConnection: 'Voice Connection (live calls)',
 };
 
 /**
@@ -286,6 +340,14 @@ export function credentialHint(data: CredentialData): string {
       const db = data.database ?? '?';
       return `${host}:${port}/${db}`;
     }
+    case 'voiceConnection': {
+      // Never expose the session string; show the kind + a masked session tail.
+      if (data.kind === 'external') {
+        return data.bridgeUrl ? `external · ${data.bridgeUrl}` : 'external · (no bridge)';
+      }
+      const sess = data.session ? mask(data.session) : '(no session)';
+      return `${data.kind} · ${sess}`;
+    }
   }
 }
 
@@ -325,6 +387,11 @@ export function credentialAuthHeaders(data: CredentialData): Record<string, stri
     case 'mysql':
       // A database connection injects no HTTP headers — it's resolved into a
       // connection pool host-side (ctx.db), not into request headers.
+      return {};
+    case 'voiceConnection':
+      // A voice connection injects no HTTP headers — the host's Call Session
+      // Service (PE-T2) resolves it into an MTProto/WebRTC connector, never a
+      // request header.
       return {};
   }
 }

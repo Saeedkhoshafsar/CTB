@@ -309,6 +309,24 @@ These fields default sensibly, so existing credentials keep working unchanged; t
 
 ---
 
+## Live-voice connection `+PE` (PE-T1)
+
+> The full live-voice node set (`trigger.callEvent` + the `call.*` actions) lands in PE-T3/PE-T4; this section documents only the **credential** that PE-T1 ships — the seam every later voice node references.
+
+A live Telegram call (a group/channel voice chat **or** a 1:1 call) cannot ride the Bot API — Telegram exposes **no** call methods there. The audio leg always travels over **MTProto via a USER session, never a bot token** (PLAN2 §E.0). The new **`voiceConnection`** credential carries that session, encrypted at rest (invariant I7); the host's Call Session Service (PE-T2) resolves it into a connector, so a flow author only ever references a `credentialId` and never sees the session string (invariants I6/I7).
+
+The crucial design choice (PLAN2 §E.1 — *"the choice lives on the node/credential, not the roadmap"*): a **`kind`** discriminator selects the connector **without a node change**, so the same generic voice nodes cover every scenario (invariant I2 applied to voice):
+
+- **`userbot`** (shipped first — the only thing that can join a call today): the operator's own user account. Fields: `apiId` + `apiHash` (from `my.telegram.org`) + a pre-generated MTProto **session string**.
+- **`companion`** (forward-shaped): a delegated helper account added beside the bot in a group — the `@myidbot`-style idea — using the same MTProto login fields. Drops in as a connector adapter + this `kind` value, **zero** flow change.
+- **`external`** (forward-shaped): a 3rd-party voice bridge reached over HTTP. Fields: `bridgeUrl` + optional `bridgeToken`.
+
+**Fail-closed resolution (the heart of PE-T1).** The host's `resolveVoiceConnection` is the one place that decides "is this connector usable?": a non-`voiceConnection` credential, or a `kind` missing its required fields (`userbot`/`companion` need `apiId`+`apiHash`+`session`; `external` needs `bridgeUrl`), throws a **clear, secret-free** error rather than returning a half-configured connector that would later fail mid-call. The panel's *"test connection"* route — `POST /api/credentials/:id/voice-health` — decrypts host-side, validates fail-closed, and (when a PE-T2 adapter is wired) probes the login; the response is always leak-free `{ ok, kind, account?, error? }`. PE-T1 ships **no media engine**, so with no adapter wired the health check honestly reports the credential as *structurally valid, login not yet attempted*.
+
+The connector is chosen **only** by which `voiceConnection` credential a voice node references — never by the node type. Whether the host's internal media engine is a JS-native adapter or a Python `pytgcalls` sidecar is an INTERNAL, swappable choice behind one `ctx.call` interface (PE-T2); it never touches a flow.
+
+---
+
 ## AI nodes `+P5`
 
 ### LLM Chat

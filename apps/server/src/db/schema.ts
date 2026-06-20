@@ -171,11 +171,42 @@ export const apiTokens = sqliteTable(
     prefix: text('prefix').notNull(),
     /** Optional bot scope: null = instance-wide; else restricted to this bot. */
     botId: text('bot_id').references(() => bots.id, { onDelete: 'cascade' }),
+    /** Per-token rate limit (requests / 60s); 0 = unlimited (PD-T3). */
+    rateLimitPerMin: integer('rate_limit_per_min').notNull().default(120),
     createdAt: text('created_at').notNull(),
     /** Last time a request authenticated with this token (null = never used). */
     lastUsedAt: text('last_used_at'),
   },
   (t) => [uniqueIndex('api_tokens_hash_unique').on(t.tokenHash)],
+);
+
+/**
+ * API audit log (PD-T3) — one row per authoring/trigger call on the public
+ * `/api/v1/*` surface, so an operator can see who built/ran what, when, and
+ * with which token. The host owns it; tokens never read their own audit.
+ * `token_id` is a soft reference (set null on revoke) so history survives a
+ * deleted token.
+ */
+export const apiAudit = sqliteTable(
+  'api_audit',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tokenId: text('token_id').references(() => apiTokens.id, { onDelete: 'set null' }),
+    /** Bot the call targeted, or null for instance-wide / unscoped reads. */
+    botId: text('bot_id'),
+    /** Coarse action verb — `flow.create`, `flow.activate`, `flow.trigger`, … */
+    action: text('action').notNull(),
+    method: text('method').notNull(),
+    route: text('route').notNull(),
+    /** Affected resource id (flow id, execution id, bot id…), when known. */
+    targetId: text('target_id'),
+    status: integer('status').notNull(),
+    ts: text('ts').notNull(),
+  },
+  (t) => [
+    index('api_audit_ts_idx').on(t.ts),
+    index('api_audit_token_idx').on(t.tokenId),
+  ],
 );
 
 /**

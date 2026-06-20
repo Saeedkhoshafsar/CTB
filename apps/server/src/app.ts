@@ -224,6 +224,10 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       // PC-T2: re-arm cron schedules when a v1 authoring write changes the
       // active-flow set / graphs, exactly like the panel's flows API.
       onFlowsChanged: () => void opts.engine!.scheduler.reconcile(),
+      // PD-T3: per-token rate limiting + append-only audit log. Both owned by
+      // the engine (one instance per process) so they survive across requests.
+      rateLimiter: opts.engine.rateLimiter,
+      auditStore: opts.engine.auditStore,
     });
 
     // Collections layer (P3.5-T2 + P3.5-T5). Needs the raw sqlite handle for

@@ -39,6 +39,8 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
 import { bots as botsTable, credentials as credentialsTable, execLogs, kvStore } from '../db/schema';
 import { SqliteAiUsageStore } from './ai-usage-store';
+import { SqliteApiAuditStore } from './audit-store';
+import { RateLimiter } from '../lib/rate-limiter';
 import { decrypt, deriveKey } from '../lib/crypto';
 import type BetterSqlite3 from 'better-sqlite3';
 import { TelegramGateway } from '../telegram/gateway';
@@ -145,6 +147,19 @@ export interface Engine {
    * AI-usage / AI-budget REST endpoints reuse THIS instance.
    */
   aiUsageStore: SqliteAiUsageStore;
+  /**
+   * Per-token rate limiter (PD-T3) — a process-local sliding window the v1
+   * bearer-auth preHandler checks against each token's `rateLimitPerMin`. One
+   * instance for the process lifetime (the right scope for CTB's single-process
+   * architecture); a restart resets the windows (acceptable for an abuse guard).
+   */
+  rateLimiter: RateLimiter;
+  /**
+   * Append-only API audit log (PD-T3) — the host's record of every authoring /
+   * trigger / send call on `/api/v1/*` (who, what, target, status). The v1
+   * `onResponse` hook writes rows; the panel reads them. Host owns the table (I6).
+   */
+  auditStore: SqliteApiAuditStore;
   /**
    * Drain the `db.postgres` connection pools (PB-T2). Always present; the server
    * lifecycle calls it at shutdown so open Postgres sockets are closed cleanly.
@@ -1074,6 +1089,12 @@ export function wireEngine(opts: WireOptions): Engine {
   // per-run `ctx.ai.chat` wrapper) and the panel's AI-usage view.
   const aiUsageStore = new SqliteAiUsageStore(opts.db, clock);
 
+  // PD-T3 — public-API hardening. The rate limiter is a process-local sliding
+  // window (single-process scope); the audit store appends one row per audited
+  // `/api/v1/*` call. Both are wired into the v1 router by app.ts.
+  const rateLimiter = new RateLimiter(() => clock().getTime());
+  const auditStore = new SqliteApiAuditStore(opts.db, clock);
+
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
   // Forward refs: the subflow capability needs executor + flowSource, but those
@@ -1494,6 +1515,8 @@ export function wireEngine(opts: WireOptions): Engine {
     webhookDispatcher,
     fileStore,
     aiUsageStore,
+    rateLimiter,
+    auditStore,
     closeDbPools: () => dbCapability.closeAll(),
     ...(collectionStore ? { collectionStore } : {}),
     ...(recordEventBus ? { recordEventBus } : {}),

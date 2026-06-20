@@ -430,8 +430,17 @@ export const CreateApiTokenBodySchema = z.object({
   name: z.string().min(1).max(120),
   /** Optional bot scope; omit/null = instance-wide (all bots & flows). */
   botId: z.string().min(1).nullish(),
+  /**
+   * Per-token rate limit (PD-T3) — max `/api/v1/*` requests allowed per rolling
+   * 60s window. `0` = unlimited. Defaults to {@link DEFAULT_API_RATE_LIMIT}.
+   * Enforced host-side; a breach answers `429` with a `retry-after` header.
+   */
+  rateLimitPerMin: z.coerce.number().int().min(0).max(100_000).default(120),
 });
 export type CreateApiTokenBody = z.infer<typeof CreateApiTokenBodySchema>;
+
+/** Default per-token rate limit (requests / 60s) when one isn't specified. */
+export const DEFAULT_API_RATE_LIMIT = 120;
 
 /** Public projection of an API token — NEVER carries the secret, only a prefix. */
 export interface ApiTokenPublic {
@@ -441,8 +450,37 @@ export interface ApiTokenPublic {
   prefix: string;
   /** Bot scope, or null for instance-wide. */
   botId: string | null;
+  /** Per-token rate limit (requests / 60s); 0 = unlimited (PD-T3). */
+  rateLimitPerMin: number;
   createdAt: string;
   lastUsedAt: string | null;
+}
+
+/**
+ * One audited `/api/v1/*` call (PD-T3). The host records every authoring/trigger
+ * call so an operator can see who built/ran what, when, and with which token.
+ */
+export interface ApiAuditEntry {
+  id: number;
+  /** The token that made the call (null if it was later revoked). */
+  tokenId: string | null;
+  /** Bot the call targeted, or null for instance-wide / unscoped reads. */
+  botId: string | null;
+  /** Coarse action verb — e.g. `flow.create`, `flow.activate`, `flow.trigger`. */
+  action: string;
+  /** HTTP method + path (e.g. `POST /api/v1/flows`). */
+  method: string;
+  route: string;
+  /** Affected resource id (flow id, execution id, bot id…), when known. */
+  targetId: string | null;
+  /** HTTP status the call returned. */
+  status: number;
+  ts: string;
+}
+
+/** `GET /api/v1/audit` response — most-recent-first audit entries. */
+export interface ApiAuditList {
+  entries: ApiAuditEntry[];
 }
 
 /** The create response — the ONLY time the full plaintext token is revealed. */

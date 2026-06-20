@@ -103,6 +103,7 @@ POST  /api/v1/flows/:id/trigger        { chat_id?, payload? }
 POST  /api/v1/bots/:id/send            { chat_id, text, parse_mode?, keyboard? }
 GET   /api/v1/executions?flow_id=&bot_id=&status=&limit=
 GET   /api/v1/users?bot_id=&limit=&offset=
+GET   /api/v1/audit?bot_id=&token_id=&limit=               (PD-T3) audit trail
 POST  /api/v1/mcp                      JSON-RPC 2.0            (PC-T3) MCP server
 ```
 
@@ -112,7 +113,7 @@ Created/listed/revoked from the panel (admin only) via `/api/api-tokens`:
 
 ```
 GET    /api/api-tokens                 → { tokens: ApiTokenPublic[] }
-POST   /api/api-tokens                 { name, botId? } → 201 { apiToken: ApiTokenCreated }
+POST   /api/api-tokens                 { name, botId?, rateLimitPerMin? } → 201 { apiToken: ApiTokenCreated }
 DELETE /api/api-tokens/:id             → 204 (404 if unknown)
 ```
 
@@ -125,8 +126,41 @@ DELETE /api/api-tokens/:id             → 204 (404 if unknown)
   flow's bot, `:id`, `bot_id` filter, or users' `bot_id` — returns
   `403 token_not_authorized_for_bot`, and `GET /executions` is silently filtered
   to the token's own bot.
+- `rateLimitPerMin` is optional (default **120**, `0` = unlimited) — the
+  per-token request cap (see [Rate limiting & audit](#rate-limiting--audit-pd-t3)).
 - A successful auth stamps `last_used_at` (best-effort). Missing/garbage header →
   `401 missing_bearer_token`; unknown hash → `401 invalid_token`.
+
+### Rate limiting & audit ✅ PD-T3
+
+The bearer surface is hardened with a **per-token rate limit** and an
+**append-only audit log** — both owned by the host (the bearer edge never sees
+either; invariant I6).
+
+- **Rate limiting.** Every token carries `rateLimitPerMin` (default 120). The
+  bearer-auth preHandler checks an in-memory **sliding window** (60 s) keyed by
+  the token; once a token exceeds its cap in the window, the request is refused
+  with `429 { error:"rate_limited", retryAfterSec }` **and** an RFC-7231
+  `Retry-After` (seconds) header. `0` = unlimited. The window is process-local —
+  the right scope for CTB's single-process architecture, and a restart simply
+  resets the windows (it can never *under*-count within a window). A rejected
+  check does **not** record a hit (so a blocked caller doesn't push its own
+  recovery further out), and a rate-limited call is **not** audited (it never
+  reached an authenticated handler).
+- **Audit log.** Every **authoring / trigger / send** call writes one row to
+  `api_audit` (the host owns the table): `{ id, tokenId, botId, action, method,
+  route, targetId, status, ts }`. `botId` is the **target** bot the call acted
+  on (resolved from the body / flow / path — not the token's scope), `action` is
+  the logical operation (`flow.create`, `flow.update`, `flow.validate`,
+  `flow.activate`, `flow.deactivate`, `flow.trigger`, `bot.send`), and `status`
+  is the response code — so a `403`/`422` is recorded just like a `201`/`202`.
+  Plain reads (`node-types`, `executions`, `users`, `audit` itself) are **not**
+  audited; MCP calls audit themselves inside the JSON-RPC handler scope.
+- **`GET /api/v1/audit`** — read the trail, newest-first. Optional `bot_id`,
+  `token_id`, `limit` (1–500, default 100). An **instance-wide** token sees all
+  entries (optionally narrowed by `bot_id`); a **bot-scoped** token is locked to
+  its own bot's entries (asking for another bot → `403`). Returns
+  `{ entries: ApiAuditEntry[] }`.
 
 ### Endpoints
 
@@ -193,6 +227,11 @@ only author on its own bot (`403 token_not_authorized_for_bot`).
 - **`GET /api/v1/users`** — `bot_id` required (`400 bot_id_required`). Optional
   `limit`/`offset`. Returns
   `{ users: [{ id, botId, tgUserId, profile, tags, firstSeen, lastSeen, displayName }] }`.
+- **`GET /api/v1/audit`** ✅ PD-T3 — the authoring/trigger/send **audit trail**,
+  newest-first (`{ entries: ApiAuditEntry[] }`). Optional `bot_id`, `token_id`,
+  `limit` (1–500, default 100). Scoped like every other read: an instance-wide
+  token sees all (filterable by `bot_id`); a bot-scoped token is locked to its
+  own bot (`403` on another bot). See [Rate limiting & audit](#rate-limiting--audit-pd-t3).
 
 ## MCP server — CTB as a tool surface ✅ PC-T3
 

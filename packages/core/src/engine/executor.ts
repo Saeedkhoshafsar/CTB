@@ -139,13 +139,20 @@ export interface ExecutorServices {
    */
   collections?: (botId: string, flowId: string) => NonNullable<NodeCtx['collections']>;
   /**
-   * LLM chat service for ai.llmChat (P5-T1) — optional: ctx.ai is null without
-   * it. The host resolves the OpenAI-compatible credential (base_url + key) and
-   * performs the chat-completions request, so the decrypted key never reaches
-   * node code (invariants I6/I7). It's a simple object (not per-bot) because the
-   * credential — not the bot — selects the provider.
+   * LLM chat service for ai.llmChat (P5-T1) / ai.agent (P5-T2) — optional:
+   * ctx.ai is null without it. The host resolves the OpenAI-compatible
+   * credential (base_url + key) and performs the chat-completions request, so
+   * the decrypted key never reaches node code (invariants I6/I7).
+   *
+   * Per-run factory (PD-T2): the host binds the capability to a single run
+   * (botId + flowId + executionId) so it can ENFORCE that bot's daily AI budget
+   * (fail-closed before the call) and METER the reported usage into the
+   * `ai_usage` ledger (after the call), attributing each metered row to its
+   * originating flow/execution. Nodes still see the same flat `ctx.ai` object —
+   * the run context is captured in the factory closure, never exposed to node
+   * code.
    */
-  ai?: NonNullable<NodeCtx['ai']>;
+  ai?: (botId: string, flowId: string, executionId: string) => NonNullable<NodeCtx['ai']>;
   /**
    * MCP client service for ai.mcpClient (P5-T3) — optional: ctx.mcp is null
    * without it. The host resolves the `mcpServer` credential (endpoint + key)
@@ -620,7 +627,7 @@ export class Executor {
       collections: executor.services.collections
         ? executor.services.collections(exec.botId, flow.id)
         : null,
-      ai: executor.services.ai ?? null,
+      ai: executor.services.ai ? executor.services.ai(exec.botId, flow.id, exec.id) : null,
       mcp: executor.services.mcp ?? null,
       db: executor.services.db ?? null,
       files: executor.services.files ? executor.services.files(exec.botId) : null,

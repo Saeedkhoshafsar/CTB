@@ -29,6 +29,13 @@
       "when": 1781433571953,
       "tag": "0003_giant_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1781939594125,
+      "tag": "0004_absurd_menace",
+      "breakpoints": true
     }
   ]
 }

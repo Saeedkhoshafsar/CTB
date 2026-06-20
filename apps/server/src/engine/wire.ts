@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   credentialAuthHeaders,
+  readBotAiBudget,
   type AiChatMessage,
   type AiChatRequest,
   type AiChatResult,
@@ -36,7 +37,8 @@ import {
 } from '@ctb/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index';
-import { credentials as credentialsTable, execLogs, kvStore } from '../db/schema';
+import { bots as botsTable, credentials as credentialsTable, execLogs, kvStore } from '../db/schema';
+import { SqliteAiUsageStore } from './ai-usage-store';
 import { decrypt, deriveKey } from '../lib/crypto';
 import type BetterSqlite3 from 'better-sqlite3';
 import { TelegramGateway } from '../telegram/gateway';
@@ -138,6 +140,12 @@ export interface Engine {
    */
   fileStore: SqliteFileStore;
   /**
+   * AI spend ledger (PD-T2) — backs per-bot daily budget enforcement (read by
+   * the per-run `ctx.ai.chat` wrapper) and the panel's AI-usage view. The bots
+   * AI-usage / AI-budget REST endpoints reuse THIS instance.
+   */
+  aiUsageStore: SqliteAiUsageStore;
+  /**
    * Drain the `db.postgres` connection pools (PB-T2). Always present; the server
    * lifecycle calls it at shutdown so open Postgres sockets are closed cleanly.
    */
@@ -234,7 +242,28 @@ function makeCredentials(db: Db, key: Buffer): NonNullable<NodeCtx['credentials'
  * a missing/wrong-type credential or a transport/API error so the node fails
  * loudly. The `fetchImpl` is injectable so tests run with no network.
  */
-function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeCtx['ai']> {
+/**
+ * Per-run AI capability factory (PD-T2 — agent cost governance). The host binds
+ * the LLM capability to a single run (botId + flowId + executionId) so it can:
+ *
+ *   • ENFORCE that bot's daily AI budget BEFORE each `chat` — fail-closed: if
+ *     the bot has already hit `maxCallsPerDay` or `maxTokensPerDay` (read from
+ *     `bots.settings.aiBudget`), the call is refused with a clear error and no
+ *     provider request is made. `0` = unlimited.
+ *   • METER the reported usage AFTER each successful `chat` — one `ai_usage` row
+ *     per call, attributed to the run's bot/flow/execution + credential + model.
+ *
+ * `transcribe`/`speech` are not budgeted (no token usage is reported) — they're
+ * passed through unchanged. The decrypted key stays host-side (invariants I6/I7);
+ * nodes still see the same flat `ctx.ai` object, with the run context captured in
+ * this closure and never exposed to node code.
+ */
+function makeAiFactory(
+  db: Db,
+  key: Buffer,
+  fetchImpl: typeof fetch,
+  usage: SqliteAiUsageStore,
+): (botId: string, flowId: string, executionId: string) => NonNullable<NodeCtx['ai']> {
   /**
    * Resolve a stored openAiApi credential to its base URL + key (shared by chat,
    * transcribe and speech). Throws on a missing / undecryptable / wrong-type
@@ -260,8 +289,8 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
     return { baseUrl: data.baseUrl.replace(/\/+$/, ''), apiKey: data.apiKey };
   }
 
-  return {
-    async chat(req: AiChatRequest): Promise<AiChatResult> {
+  /** The raw provider chat call (no budget enforcement / metering). */
+  async function rawChat(req: AiChatRequest): Promise<AiChatResult> {
       const data = resolveOpenAi(req.credentialId);
       const url = `${data.baseUrl}/chat/completions`;
       const payload: Record<string, unknown> = {
@@ -312,10 +341,10 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
         throw new Error('LLM provider returned a non-JSON response');
       }
       return parseChatCompletion(body);
-    },
+  }
 
-    // ── Speech-to-Text (ai.speechToText, PB-T7) ──────────────────────────────
-    async transcribe(req: AiTranscribeRequest): Promise<AiTranscribeResult> {
+  // ── Speech-to-Text (ai.speechToText, PB-T7) ──────────────────────────────
+  async function transcribe(req: AiTranscribeRequest): Promise<AiTranscribeResult> {
       const data = resolveOpenAi(req.credentialId);
       const url = `${data.baseUrl}/audio/transcriptions`;
 
@@ -354,10 +383,10 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
         throw new Error(`speech provider returned HTTP ${res.status}: ${text.slice(0, 500)}`);
       }
       return parseTranscription(text);
-    },
+  }
 
-    // ── Text-to-Speech (ai.textToSpeech, PB-T7) ──────────────────────────────
-    async speech(req: AiSpeechRequest): Promise<AiSpeechResult> {
+  // ── Text-to-Speech (ai.textToSpeech, PB-T7) ──────────────────────────────
+  async function speech(req: AiSpeechRequest): Promise<AiSpeechResult> {
       const data = resolveOpenAi(req.credentialId);
       const url = `${data.baseUrl}/audio/speech`;
       const format = req.format ?? 'mp3';
@@ -392,8 +421,62 @@ function makeAi(db: Db, key: Buffer, fetchImpl: typeof fetch): NonNullable<NodeC
       }
       const buf = new Uint8Array(await res.arrayBuffer());
       return { audio: buf, mime: speechMime(format) };
+  }
+
+  /** Read a bot's AI budget from its `bots.settings.aiBudget` (defaults if unset). */
+  function budgetFor(botId: string) {
+    const row = db
+      .select({ settings: botsTable.settings })
+      .from(botsTable)
+      .where(eq(botsTable.id, botId))
+      .get();
+    return readBotAiBudget((row?.settings ?? {}) as Record<string, unknown>);
+  }
+
+  // The per-run factory: bind chat to one run so it can cap + meter; transcribe
+  // and speech pass through unchanged (no token usage to budget).
+  return (botId: string, flowId: string, executionId: string): NonNullable<NodeCtx['ai']> => ({
+    async chat(req: AiChatRequest): Promise<AiChatResult> {
+      // ENFORCE (fail-closed, BEFORE the provider call): a 0 cap = unlimited.
+      const budget = budgetFor(botId);
+      if (budget.maxCallsPerDay > 0 || budget.maxTokensPerDay > 0) {
+        const today = usage.todayTotals(botId);
+        if (budget.maxCallsPerDay > 0 && today.calls >= budget.maxCallsPerDay) {
+          throw new Error(
+            `AI daily call budget exceeded for this bot (${today.calls}/${budget.maxCallsPerDay} calls today)`,
+          );
+        }
+        if (budget.maxTokensPerDay > 0 && today.totalTokens >= budget.maxTokensPerDay) {
+          throw new Error(
+            `AI daily token budget exceeded for this bot (${today.totalTokens}/${budget.maxTokensPerDay} tokens today)`,
+          );
+        }
+      }
+
+      const result = await rawChat(req);
+
+      // METER (AFTER a successful call): one row in the ai_usage ledger.
+      try {
+        usage.record({
+          botId,
+          flowId,
+          executionId,
+          credentialId: req.credentialId,
+          model: result.model ?? req.model,
+          promptTokens: result.usage?.promptTokens,
+          completionTokens: result.usage?.completionTokens,
+          totalTokens:
+            result.usage?.totalTokens ??
+            (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+        });
+      } catch {
+        // Metering must never break a successful LLM call — swallow ledger errors.
+      }
+      return result;
     },
-  };
+    transcribe,
+    speech,
+  });
 }
 
 /** Parse an OpenAI-compatible transcription response (verbose or plain JSON). */
@@ -987,6 +1070,10 @@ export function wireEngine(opts: WireOptions): Engine {
   // Shares the on-disk bytes with the records/files REST APIs (same dataDir).
   const fileStore = new SqliteFileStore(opts.db, opts.dataDir ?? 'data', clock);
 
+  // AI spend ledger (PD-T2) — backs per-bot budget enforcement (read by the
+  // per-run `ctx.ai.chat` wrapper) and the panel's AI-usage view.
+  const aiUsageStore = new SqliteAiUsageStore(opts.db, clock);
+
   // One executor serves many bots — kv and tg resolve per-bot lazily (DL #15).
   const kvCache = new Map<string, NodeCtx['kv']>();
   // Forward refs: the subflow capability needs executor + flowSource, but those
@@ -1283,10 +1370,11 @@ export function wireEngine(opts: WireOptions): Engine {
           },
         }
       : {}),
-    // LLM chat (ai.llmChat, P5-T1). The credential — not the bot — selects the
-    // provider, so this is a plain object, not a per-bot factory. The decrypted
-    // key never reaches node code (invariants I6/I7).
-    ai: makeAi(opts.db, credentialKey, opts.fetchImpl ?? fetch),
+    // LLM chat (ai.llmChat P5-T1 / ai.agent P5-T2). Per-run factory (PD-T2): the
+    // host binds the capability to the run so it enforces the bot's daily AI
+    // budget before each call and meters reported usage after. The decrypted key
+    // never reaches node code (invariants I6/I7).
+    ai: makeAiFactory(opts.db, credentialKey, opts.fetchImpl ?? fetch, aiUsageStore),
     // MCP client (ai.mcpClient, P5-T3). Like ai, the credential selects the MCP
     // server, so this is a plain object. The decrypted key stays host-side (I6/I7).
     mcp: makeMcp(opts.db, credentialKey, opts.fetchImpl ?? fetch),
@@ -1405,6 +1493,7 @@ export function wireEngine(opts: WireOptions): Engine {
     scheduler,
     webhookDispatcher,
     fileStore,
+    aiUsageStore,
     closeDbPools: () => dbCapability.closeAll(),
     ...(collectionStore ? { collectionStore } : {}),
     ...(recordEventBus ? { recordEventBus } : {}),

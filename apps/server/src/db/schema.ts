@@ -249,3 +249,36 @@ export const files = sqliteTable('files', {
   size: integer('size'),
   createdAt: text('created_at').notNull(),
 });
+
+/**
+ * AI spend ledger (PD-T2 — agent cost governance). One row per LLM call made
+ * through `ctx.ai.chat` (ai.llmChat + ai.agent's per-step calls), written by the
+ * host AFTER the provider replies with reported usage. The host both ENFORCES
+ * the per-bot daily caps (by summing today's rows) and SURFACES the spend in the
+ * panel (per-credential + today/all-time totals). `day` is the UTC date string
+ * (`YYYY-MM-DD`) denormalized from `ts` so the daily-cap + today queries hit an
+ * index instead of scanning/parsing every timestamp.
+ */
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    botId: text('bot_id').notNull().references(() => bots.id, { onDelete: 'cascade' }),
+    /** Originating flow/execution, when the call came from a run (null otherwise). */
+    flowId: text('flow_id'),
+    executionId: text('execution_id'),
+    /** The credential the call was billed to (per-credential metering). */
+    credentialId: text('credential_id').notNull().default(''),
+    model: text('model').notNull().default(''),
+    promptTokens: integer('prompt_tokens').notNull().default(0),
+    completionTokens: integer('completion_tokens').notNull().default(0),
+    totalTokens: integer('total_tokens').notNull().default(0),
+    /** UTC date (YYYY-MM-DD) of `ts`, indexed for the daily-cap + today queries. */
+    day: text('day').notNull(),
+    ts: text('ts').notNull(),
+  },
+  (t) => [
+    index('ai_usage_bot_day_idx').on(t.botId, t.day),
+    index('ai_usage_bot_cred_idx').on(t.botId, t.credentialId),
+  ],
+);

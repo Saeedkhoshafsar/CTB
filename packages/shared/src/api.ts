@@ -77,6 +77,77 @@ export interface BotPublic {
 }
 
 // ---------------------------------------------------------------------------
+// AI cost governance (PD-T2) — per-bot LLM budgets + spend metering
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-bot AI budget (PD-T2 — agent cost governance). Lives inside
+ * `bots.settings.aiBudget` (no migration needed — `settings` is already a free
+ * JSON column) so a budget travels with the bot. Every cap is `0 = unlimited`
+ * (the default), so an existing bot with no budget keeps working unchanged.
+ *
+ * The HOST enforces these (invariant I3 — the node never sees them) around every
+ * `ctx.ai.chat` call:
+ *  - `maxTokensPerRun`   — cumulative reported tokens within ONE execution; the
+ *    AI Agent already caps a single run via `max_tokens_total`, this is the
+ *    instance-level backstop applied to EVERY ai.* node (llmChat + agent).
+ *  - `maxTokensPerDay`   — total reported tokens this bot may spend per UTC day,
+ *    summed across all flows/credentials from the `ai_usage` ledger.
+ *  - `maxCallsPerDay`    — number of LLM calls this bot may make per UTC day.
+ * A request that WOULD exceed a daily cap is refused BEFORE the provider call
+ * (fail-closed); the per-run cap is checked against the run's accumulated usage.
+ */
+export const BotAiBudgetSchema = z.object({
+  maxTokensPerRun: z.coerce.number().int().min(0).max(100_000_000).default(0),
+  maxTokensPerDay: z.coerce.number().int().min(0).max(100_000_000).default(0),
+  maxCallsPerDay: z.coerce.number().int().min(0).max(10_000_000).default(0),
+});
+export type BotAiBudget = z.infer<typeof BotAiBudgetSchema>;
+
+/** Defaults used when a bot has no stored AI budget — everything unlimited. */
+export function defaultBotAiBudget(): BotAiBudget {
+  return { maxTokensPerRun: 0, maxTokensPerDay: 0, maxCallsPerDay: 0 };
+}
+
+/**
+ * Parse a bot's stored `settings.aiBudget` into a typed budget, tolerating an
+ * absent / malformed value (→ all-unlimited defaults). Shared so the host
+ * enforcer and the panel read the SAME budget the same way (invariant I5).
+ */
+export function readBotAiBudget(settings: Record<string, unknown> | null | undefined): BotAiBudget {
+  const parsed = BotAiBudgetSchema.safeParse((settings ?? {}).aiBudget ?? {});
+  return parsed.success ? parsed.data : defaultBotAiBudget();
+}
+
+/** Body for PUT /api/bots/:id/ai-budget — set the per-bot AI budget. */
+export const SetBotAiBudgetBodySchema = BotAiBudgetSchema;
+export type SetBotAiBudgetBody = z.infer<typeof SetBotAiBudgetBodySchema>;
+
+/** One credential's spend within a window (per-credential metering, PD-T2). */
+export interface AiUsageByCredential {
+  credentialId: string;
+  /** Number of LLM calls metered against this credential. */
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * What GET /api/bots/:id/ai-usage returns — the bot's AI spend surfaced in the
+ * panel (PD-T2). `today` is the running total for the current UTC day (the same
+ * window the daily caps use); `allTime` is the lifetime total; `byCredential`
+ * breaks the lifetime spend down per credential. `budget` echoes the active
+ * caps so the panel can render "spent X of Y today".
+ */
+export interface AiUsageSummary {
+  budget: BotAiBudget;
+  today: { calls: number; totalTokens: number };
+  allTime: { calls: number; totalTokens: number };
+  byCredential: AiUsageByCredential[];
+}
+
+// ---------------------------------------------------------------------------
 // flows
 // ---------------------------------------------------------------------------
 

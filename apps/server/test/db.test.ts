@@ -4,8 +4,8 @@ import { openDb, schema } from '../src/db/index';
 import { runMigrations } from '../src/db/migrate';
 
 const EXPECTED_TABLES = [
-  'api_tokens', 'bots', 'collections', 'credentials', 'exec_logs', 'executions',
-  'files', 'flow_versions', 'flows', 'instance_webhooks', 'kv_store',
+  'ai_usage', 'api_tokens', 'bots', 'collections', 'credentials', 'exec_logs',
+  'executions', 'files', 'flow_versions', 'flows', 'instance_webhooks', 'kv_store',
   'pending_triggers', 'records', 'users',
 ];
 

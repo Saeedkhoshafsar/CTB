@@ -1,7 +1,7 @@
-import type { BotMode } from '@ctb/shared';
+import type { AiUsageSummary, BotMode } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, ClientValidationError } from '../api/client';
+import { api, ApiError, ClientValidationError } from '../api/client';
 import { useI18n } from '../i18n';
 import { useBots } from '../stores/bots';
 
@@ -47,6 +47,37 @@ export function BotsPage() {
     } catch (err) {
       setRowError(t('error.unknown', { detail: err instanceof Error ? err.message : '?' }));
     }
+  };
+
+  const [budgetFor, setBudgetFor] = useState<string | null>(null);
+  const [usage, setUsage] = useState<AiUsageSummary | null>(null);
+  const [maxCallsPerDay, setMaxCallsPerDay] = useState(0);
+  const [maxTokensPerDay, setMaxTokensPerDay] = useState(0);
+  const [maxTokensPerRun, setMaxTokensPerRun] = useState(0);
+
+  const openBudget = async (botId: string) => {
+    setRowError(null);
+    if (budgetFor === botId) {
+      setBudgetFor(null);
+      return;
+    }
+    try {
+      const u = await api.getBotAiUsage(botId);
+      setUsage(u);
+      setMaxCallsPerDay(u.budget.maxCallsPerDay);
+      setMaxTokensPerDay(u.budget.maxTokensPerDay);
+      setMaxTokensPerRun(u.budget.maxTokensPerRun);
+      setBudgetFor(botId);
+    } catch (err) {
+      setRowError(t('error.unknown', { detail: err instanceof Error ? err.message : '?' }));
+    }
+  };
+
+  const saveBudget = async (botId: string) => {
+    await guard(async () => {
+      await api.setBotAiBudget(botId, { maxCallsPerDay, maxTokensPerDay, maxTokensPerRun });
+      setUsage(await api.getBotAiUsage(botId));
+    });
   };
 
   return (
@@ -124,6 +155,9 @@ export function BotsPage() {
               <Link className="btn ghost" to={`/bots/${bot.id}/collections`}>
                 {t('bots.action.collections')}
               </Link>
+              <button className="btn ghost" onClick={() => void openBudget(bot.id)}>
+                {t('bots.action.aiBudget')}
+              </button>
               <button
                 className="danger ghost"
                 onClick={() => {
@@ -134,6 +168,49 @@ export function BotsPage() {
               >
                 {t('bots.action.delete')}
               </button>
+              {budgetFor === bot.id && usage && (
+                <div className="card" style={{ flexBasis: '100%', marginTop: '0.5rem' }}>
+                  <div className="title">{t('bots.aiBudget.title')}</div>
+                  <div className="sub">
+                    {t('bots.aiBudget.today', { calls: usage.today.calls, tokens: usage.today.totalTokens })}
+                    {' · '}
+                    {t('bots.aiBudget.allTime', { calls: usage.allTime.calls, tokens: usage.allTime.totalTokens })}
+                  </div>
+                  <label>
+                    <span className="label-text">{t('bots.aiBudget.maxCallsPerDay')}</span>
+                    <input dir="ltr" type="number" min={0} value={maxCallsPerDay}
+                      onChange={(e) => setMaxCallsPerDay(Number(e.target.value))} />
+                  </label>
+                  <label>
+                    <span className="label-text">{t('bots.aiBudget.maxTokensPerDay')}</span>
+                    <input dir="ltr" type="number" min={0} value={maxTokensPerDay}
+                      onChange={(e) => setMaxTokensPerDay(Number(e.target.value))} />
+                  </label>
+                  <label>
+                    <span className="label-text">{t('bots.aiBudget.maxTokensPerRun')}</span>
+                    <input dir="ltr" type="number" min={0} value={maxTokensPerRun}
+                      onChange={(e) => setMaxTokensPerRun(Number(e.target.value))} />
+                  </label>
+                  <span className="hint">{t('bots.aiBudget.hint')}</span>
+                  {usage.byCredential.length > 0 && (
+                    <div className="sub" style={{ marginTop: '0.5rem' }}>
+                      {usage.byCredential.map((c) => (
+                        <div key={c.credentialId} dir="ltr">
+                          {c.credentialId.slice(0, 8)}… — {c.calls} / {c.totalTokens}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    <button className="primary" onClick={() => void saveBudget(bot.id)}>
+                      {t('bots.aiBudget.save')}
+                    </button>
+                    <button type="button" className="ghost" onClick={() => setBudgetFor(null)}>
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

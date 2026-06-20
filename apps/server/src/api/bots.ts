@@ -8,12 +8,18 @@
  * All routes live under /api/ and are covered by the app-level auth guard.
  */
 import { randomUUID } from 'node:crypto';
-import { CreateBotBodySchema, UpdateBotBodySchema } from '@ctb/shared';
+import {
+  CreateBotBodySchema,
+  SetBotAiBudgetBodySchema,
+  UpdateBotBodySchema,
+  readBotAiBudget,
+} from '@ctb/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/index';
 import { bots } from '../db/schema';
 import { decrypt, encrypt } from '../lib/crypto';
+import type { SqliteAiUsageStore } from '../engine/ai-usage-store';
 import type { TelegramGateway } from '../telegram/gateway';
 
 // Body schemas live in @ctb/shared (P2-T1) so the editor's typed client
@@ -47,6 +53,8 @@ export interface BotsApiDeps {
   db: Db;
   key: Buffer;
   gateway: TelegramGateway;
+  /** AI spend ledger (PD-T2) — powers GET /ai-usage; budget lives in bots.settings. */
+  aiUsageStore?: SqliteAiUsageStore;
   /** Public base URL for webhook registration (env CTB_PUBLIC_URL). */
   publicUrl?: string | undefined;
   /** Registration extras for tests (botInfo / fake transport). */
@@ -159,5 +167,49 @@ export function registerBotsApi(app: FastifyInstance, deps: BotsApiDeps): void {
     await gateway.stop(id);
     db.update(bots).set({ status: 'inactive', updatedAt: now() }).where(eq(bots.id, id)).run();
     return { ok: true };
+  });
+
+  // ---- AI cost governance (PD-T2) -----------------------------------------
+
+  /**
+   * GET the bot's AI spend summary — its budget (from bots.settings.aiBudget),
+   * today's + all-time call/token totals, and per-credential breakdown. Powers
+   * the panel's AI-usage view. Returns an empty summary when no ledger is wired.
+   */
+  app.get('/api/bots/:id/ai-usage', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = db.select().from(bots).where(eq(bots.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const budget = readBotAiBudget((row.settings ?? {}) as Record<string, unknown>);
+    if (!deps.aiUsageStore) {
+      return {
+        usage: {
+          budget,
+          today: { calls: 0, totalTokens: 0 },
+          allTime: { calls: 0, totalTokens: 0 },
+          byCredential: [],
+        },
+      };
+    }
+    return { usage: deps.aiUsageStore.summary(id, budget) };
+  });
+
+  /**
+   * PUT the bot's AI budget — daily token/call caps + per-run token cap, stored
+   * as `aiBudget` inside the bot's free `settings` JSON (no config migration).
+   * `0` on any field means unlimited. The per-run `ctx.ai.chat` wrapper reads
+   * this on the next call (fail-closed once a daily cap is hit).
+   */
+  app.put('/api/bots/:id/ai-budget', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = SetBotAiBudgetBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    }
+    const row = db.select().from(bots).where(eq(bots.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const settings = { ...((row.settings ?? {}) as Record<string, unknown>), aiBudget: parsed.data };
+    db.update(bots).set({ settings, updatedAt: now() }).where(eq(bots.id, id)).run();
+    return { budget: parsed.data };
   });
 }

@@ -180,6 +180,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       db: opts.db,
       key,
       gateway: opts.engine.gateway,
+      aiUsageStore: opts.engine.aiUsageStore,
       publicUrl: env.CTB_PUBLIC_URL,
       ...(opts.botRegisterOpts ? { registerOpts: opts.botRegisterOpts } : {}),
     });

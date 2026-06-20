@@ -143,7 +143,9 @@ function makeAi(opts: {
   rec: AiRecorder;
 }): NonNullable<ExecutorServices['ai']> {
   let chatTurn = 0;
-  return {
+  // Per-run factory (PD-T2): the host binds ctx.ai to the run; this fake ignores
+  // the run context and returns one shared scripted capability.
+  return () => ({
     async chat(req: AiChatRequest): Promise<AiChatResult> {
       opts.rec.chatCalls.push(req);
       const idx = Math.min(chatTurn, opts.chatScript.length - 1);
@@ -159,7 +161,7 @@ function makeAi(opts: {
       // Encode the input text into bytes so we can assert what was synthesized.
       return { audio: new TextEncoder().encode(`AUDIO:${req.input}`), mime: 'audio/ogg' };
     },
-  };
+  });
 }
 
 interface World {

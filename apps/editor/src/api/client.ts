@@ -9,8 +9,12 @@
  * turns into a redirect to /login.
  */
 import {
+  type AiUsageSummary,
   type ApiErrorBody,
+  type BotAiBudget,
   type BotPublic,
+  type SetBotAiBudgetBody,
+  SetBotAiBudgetBodySchema,
   type CollectionPackInfo,
   type CollectionPublic,
   type CreateBotBody,
@@ -173,6 +177,17 @@ export class ApiClient {
 
   async stopBot(id: string): Promise<void> {
     await this.request<{ ok: true }>('POST', `/api/bots/${id}/stop`);
+  }
+
+  /** AI spend summary for a bot (PD-T2) — budget + today/all-time + per-credential. */
+  async getBotAiUsage(id: string): Promise<AiUsageSummary> {
+    return (await this.request<{ usage: AiUsageSummary }>('GET', `/api/bots/${id}/ai-usage`)).usage;
+  }
+
+  /** Set a bot's AI budget (PD-T2). `0` on any field = unlimited. */
+  async setBotAiBudget(id: string, body: SetBotAiBudgetBody): Promise<BotAiBudget> {
+    const valid = this.validate(SetBotAiBudgetBodySchema, body);
+    return (await this.request<{ budget: BotAiBudget }>('PUT', `/api/bots/${id}/ai-budget`, valid)).budget;
   }
 
   // -- flows ----------------------------------------------------------------

@@ -1,17 +1,54 @@
+# CTB — Composable Telegram Bots.
+#
+# Works with plain Docker Compose AND Coolify (Coolify can deploy this file
+# directly as a "Docker Compose" resource). For Coolify you usually just point
+# it at the repo and let it build the Dockerfile — see DEPLOY.md.
+#
+#   1) cp .env.example .env   &&  edit it  (set CTB_SECRET + CTB_ADMIN_PASS)
+#   2) docker compose up -d --build
+#   3) open http://<host>:3000  (login with CTB_ADMIN_USER / CTB_ADMIN_PASS)
+
 services:
   ctb:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ctb:latest
+    container_name: ctb
     ports:
-      - "3000:3000"
+      # host:container — change the host side if 3000 is taken.
+      - "${CTB_PORT:-3000}:3000"
     environment:
+      # REQUIRED — master secret for encryption-at-rest + session signing (>=16 chars).
+      # Generate once with: openssl rand -hex 24
       CTB_SECRET: ${CTB_SECRET:?set CTB_SECRET in .env}
+      # Admin panel login (the panel returns 503 until CTB_ADMIN_PASS is set).
       CTB_ADMIN_USER: ${CTB_ADMIN_USER:-admin}
       CTB_ADMIN_PASS: ${CTB_ADMIN_PASS:?set CTB_ADMIN_PASS in .env}
+      # Optional "manager" login (Collections Data only). Leave unset to disable.
+      CTB_OPERATOR_USER: ${CTB_OPERATOR_USER:-operator}
+      CTB_OPERATOR_PASS: ${CTB_OPERATOR_PASS:-}
+      # Public HTTPS base URL — REQUIRED only if you run a bot in webhook mode.
+      # (Polling mode needs nothing here.) e.g. https://ctb.example.com
+      CTB_PUBLIC_URL: ${CTB_PUBLIC_URL:-}
+      # Code-node $http allow-list (comma-separated hosts). Empty = unrestricted.
+      CTB_CODE_HTTP_ALLOWLIST: ${CTB_CODE_HTTP_ALLOWLIST:-}
+      # Fixed in-container paths (persisted via the named volume below).
       CTB_DB_PATH: /app/data/ctb.sqlite
+      CTB_DATA_DIR: /app/data
+      CTB_PORT: "3000"
+      CTB_HOST: 0.0.0.0
       NODE_ENV: production
     volumes:
+      # Persist the SQLite DB + uploaded Collection files across redeploys.
       - ctb_data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
 volumes:
   ctb_data:

@@ -1,0 +1,45 @@
+# Keep the Docker build context small + reproducible.
+# (node_modules is reinstalled cleanly inside the build stage via `npm ci`.)
+
+# Dependencies — always reinstalled in the image
+**/node_modules
+
+# Build outputs (editor dist is rebuilt inside the image)
+**/dist
+**/build
+**/.vite
+**/coverage
+
+# Local runtime data — MUST NOT leak a dev DB / uploads into the image
+data/
+**/*.sqlite
+**/*.sqlite-journal
+**/*.sqlite-wal
+**/*.sqlite-shm
+
+# Secrets / local env — never bake into an image
+.env
+.env.*
+!.env.example
+
+# VCS + CI
+.git
+.github
+.gitignore
+
+# Editor / OS cruft
+.vscode
+.idea
+**/.DS_Store
+*.log
+npm-debug.log*
+
+# Docs & tests are not needed at runtime (keep the context lean).
+# (Source is still copied; only these heavy/irrelevant trees are skipped.)
+**/*.test.ts
+**/test/fixtures
+sb-git-refs/
+
+# Misc local artifacts
+*.tar.gz
+core

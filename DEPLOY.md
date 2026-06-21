@@ -27,8 +27,41 @@ Everything else has safe defaults (see the full table at the bottom).
 
 ## 🅰️ Option A — Coolify (UI only, recommended)
 
-You can deploy in one of two ways. **A1 (Dockerfile build from Git)** is the
-simplest and what most people want.
+Three flavours. **A0 (pre-built image from GHCR)** is the fastest "just deploy
+the image" path. **A1 (Dockerfile build from Git)** builds it yourself.
+
+### A0 — Deploy the pre-built image from GHCR (no build) ⭐
+
+Every push to `main` (and every `vX.Y.Z` Git tag / published Release) is built by
+GitHub Actions (`.github/workflows/docker-publish.yml`) and published to the
+GitHub Container Registry:
+
+```
+ghcr.io/saeedkhoshafsar/ctb:latest
+```
+
+> **One-time:** make the package public so Coolify can pull it without creds —
+> GitHub → your profile → **Packages → ctb → Package settings → Change
+> visibility → Public**. (Or, to keep it private, add a GHCR source under
+> Coolify **Keys & Tokens / Sources** with a PAT that has `read:packages`.)
+
+In Coolify:
+
+1. **New Resource → Docker Image.**
+2. **Docker Image:** `ghcr.io/saeedkhoshafsar/ctb`  **Tag:** `latest`
+   (or a pinned version like `1.0.0`).
+3. **Ports Exposes:** `3000`.
+4. **Environment Variables:** add `CTB_SECRET` + `CTB_ADMIN_PASS` (see top).
+5. **Persistent Storage → Add → Volume Mount:** Name `ctb-data`, Mount Path
+   `/app/data`.
+6. **Healthcheck:** Type `HTTP`, Method `GET`, Scheme `http`, Host `localhost`,
+   **Port `3000`**, **Path `/healthz`**, Return Code `200`, Start Period `20`.
+7. **Pre/Post-deployment commands:** leave **empty** (CTB auto-migrates on boot;
+   the `php artisan migrate` placeholder is just example text — do not use it).
+8. **Deploy.** Login `admin` / your `CTB_ADMIN_PASS`.
+
+To upgrade later: just **Redeploy** (pulls the newest `:latest`) — your
+`/app/data` volume keeps every bot, flow and credential.
 
 ### A1 — Build from your Git repo (Dockerfile)
 

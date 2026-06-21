@@ -3,13 +3,16 @@
 # without building anything yourself.
 #
 # It runs:
-#   • on every push to `main`            → tags `:main` and `:latest`
-#   • on every Git tag like `v1.2.3`     → tags `:1.2.3`, `:1.2`, `:latest`
-#   • on every published GitHub Release  → same as the tag above
-#   • manually from the Actions tab      → tag `:main`
+#   • on every push to `main`        → tags `:main` and `:latest`
+#   • on every Git tag like `v1.2.3` → tags `:1.2.3`, `:1.2`, `:latest`
+#   • on every published GitHub Release → same as the tag above
+#   • manually from the Actions tab  → tag `:main`
+#
+# The image is built for both linux/amd64 and linux/arm64 so it can be
+# pulled and run on ARM-based Coolify servers as well as x86 ones.
 #
 # The resulting image lives at:
-#   ghcr.io/<your-github-user-or-org>/ctb:latest   (lowercased automatically)
+#   ghcr.io/<your-github-user-or-org>/ctb:latest (lowercased automatically)
 #
 # In Coolify: New Resource → Docker Image →
 #   Image = ghcr.io/saeedkhoshafsar/ctb   Tag = latest
@@ -27,7 +30,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Image name = <owner>/ctb  (e.g. saeedkhoshafsar/ctb). docker/metadata-action
+  # Image name = <owner>/ctb (e.g. saeedkhoshafsar/ctb). docker/metadata-action
   # lowercases the owner automatically so it's always a valid image reference.
   IMAGE_NAME: ${{ github.repository_owner }}/ctb
 
@@ -36,11 +39,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write   # needed to push to ghcr.io with the built-in GITHUB_TOKEN
+      packages: write # needed to push to ghcr.io with the built-in GITHUB_TOKEN
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -69,6 +75,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

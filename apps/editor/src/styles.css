@@ -248,6 +248,7 @@ input[dir='ltr'] { direction: ltr; }
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--bg);
+  position: relative; /* anchor the F-T1 empty-canvas hint overlay */
 }
 
 /* nodes */
@@ -1164,3 +1165,65 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .doc-param-type code { color: var(--accent); }
 .doc-param-desc { line-height: 1.45; }
 .doc-noparams { font-size: 12.5px; margin: 0.5rem 0 0; }
+
+/* ---- guided empty state + canvas hint (PLAN3 F-T1) ---- */
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem 3rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.empty-state-title { margin: 0 0 0.4rem; }
+.empty-state-lead {
+  margin: 0 auto 1.5rem;
+  max-width: 46ch;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.empty-state-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.empty-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: start;
+  padding: 1rem 1.1rem;
+  background: var(--bg-raised);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.empty-state-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.empty-state-card.primary { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.empty-state-card-title { font-weight: 600; font-size: 14px; }
+.empty-state-card-desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+
+.canvas-hint {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 360px;
+  padding: 1.25rem 1.4rem;
+  text-align: center;
+  background: var(--bg-raised);
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+.canvas-hint-title { font-weight: 600; margin-bottom: 0.4rem; }
+.canvas-hint-body { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin-bottom: 0.9rem; }
+
+@keyframes ctb-palette-flash {
+  0%, 100% { box-shadow: none; }
+  30% { box-shadow: 0 0 0 2px var(--accent) inset; }
+}
+.palette.palette-flash { animation: ctb-palette-flash 1.2s ease; }

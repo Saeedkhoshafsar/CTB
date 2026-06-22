@@ -13,7 +13,9 @@ import { FlowCanvas } from '../canvas/FlowCanvas';
 import { NodeDetail } from '../canvas/NodeDetail';
 import { Palette } from '../canvas/Palette';
 import { ParamPanel } from '../canvas/ParamPanel';
+import { CanvasEmptyHint } from '../components/EmptyState';
 import { useI18n, type MessageKey } from '../i18n';
+import { isCanvasEmpty } from '../lib/empty-state';
 import { downloadFlowExport } from '../lib/flow-export';
 import { useCanvas } from '../stores/canvas';
 import { useLifecycle } from '../stores/lifecycle';
@@ -429,6 +431,7 @@ export function FlowEditorPage() {
           <PaletteWithViewport />
           <div className="editor-canvas">
             <FlowCanvas />
+            <CanvasHintOverlay />
           </div>
           <ParamPanel />
         </div>
@@ -436,4 +439,22 @@ export function FlowEditorPage() {
       </div>
     </ReactFlowProvider>
   );
+}
+
+/**
+ * Shows the "add a Telegram Trigger to begin" hint while the canvas is empty
+ * (F-T1). The CTA scrolls the always-visible palette into view and briefly
+ * flashes it, so a first-timer learns where nodes come from. It disappears the
+ * moment any node is placed (`isCanvasEmpty`).
+ */
+function CanvasHintOverlay() {
+  const empty = useCanvas((s) => isCanvasEmpty(s.graph));
+  if (!empty) return null;
+  const onOpenPalette = () => {
+    const palette = document.querySelector('.palette');
+    palette?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    palette?.classList.add('palette-flash');
+    window.setTimeout(() => palette?.classList.remove('palette-flash'), 1200);
+  };
+  return <CanvasEmptyHint onOpenPalette={onOpenPalette} />;
 }

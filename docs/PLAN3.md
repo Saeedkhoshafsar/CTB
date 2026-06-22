@@ -93,16 +93,26 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
 > Goal: a brand-new user reaches a **working bot reply in under 5 minutes**, and
 > can always find import/export/templates. Mostly surfacing existing power.
 
-- **F-T1 — Guided empty state + "Quick start".**
-  - Files: `apps/editor/src/pages/FlowsPage.tsx`, `FlowEditorPage.tsx`, new
-    `apps/editor/src/components/EmptyState.tsx`, `styles.css`, i18n en/fa.
-  - Build: when a bot has no flows → a friendly empty state with three buttons:
-    **"Start from template"** (existing template gallery), **"Import a flow"**
-    (existing import), **"Blank canvas"**. When a flow is empty → a hint card on
-    the canvas ("add a Telegram Trigger to begin") that opens the palette.
-  - Acceptance: a bot with 0 flows shows the 3 CTAs; clicking each reaches the
-    existing flow they back onto; empty canvas shows the hint; fa/en parity.
-  - Verify: `npm run test -w apps/editor` + new `empty-state.test.ts`.
+- **F-T1 — Guided empty state + "Quick start". ✅ DONE**
+  - Files: `apps/editor/src/pages/FlowsPage.tsx`, `FlowEditorPage.tsx`, NEW
+    `apps/editor/src/components/EmptyState.tsx`, NEW
+    `apps/editor/src/lib/empty-state.ts` (the PURE decision layer), `styles.css`,
+    i18n en/fa, NEW `apps/editor/test/empty-state.test.ts`.
+  - Built: when a bot has no flows → a friendly empty state (`<FlowsEmptyState>`)
+    with three CTA cards — **"⚡ Start from template"** (opens the existing
+    template gallery; the single *primary* CTA = fastest path to a working bot),
+    **"📥 Import a flow"** (opens the existing import panel), **"➕ Blank canvas"**
+    (opens the existing New-flow form). Each CTA only OPENS an affordance
+    FlowsPage already owns — no second flow-creation path (principle 1). When a
+    flow's canvas is empty → `<CanvasEmptyHint>` overlays a centred card ("add a
+    Telegram Trigger to begin") whose button scrolls the always-visible palette
+    into view + flashes it; the hint vanishes the moment any node is placed
+    (`isCanvasEmpty`).
+  - Done the F-T3 way: the risky decisions live in a PURE, DOM-free module
+    (`emptyStateActions` ordering+primary, `isCanvasEmpty`, `CANVAS_HINT_KEYS`)
+    so they're unit-tested directly; the React components are thin glue.
+  - Verify: `npm run test -w apps/editor` → **185 GREEN** (+8 empty-state tests);
+    editor typecheck + build GREEN. Additive — no schema/server/registry change.
 
 - **F-T2 — "Hello bot" first-run template + 5-minute walkthrough doc.**
   - Files: `packages/shared/src/flow-templates.ts` (add a minimal

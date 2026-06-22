@@ -129,6 +129,15 @@ export const en: Record<keyof typeof fa, string> = {
 
   'flows.title': 'Flows of {bot}',
   'flows.empty': 'This bot has no flows yet.',
+  // ── guided empty state (PLAN3 F-T1) ──
+  'flows.emptyState.title': 'Let’s build your first flow',
+  'flows.emptyState.lead': 'A flow is what your bot does. Pick the fastest way to start — you can edit everything afterwards.',
+  'flows.emptyState.template.title': '⚡ Start from a template',
+  'flows.emptyState.template.desc': 'A ready-made flow you can run in minutes, then tweak. The quickest path to a working bot.',
+  'flows.emptyState.import.title': '📥 Import a flow',
+  'flows.emptyState.import.desc': 'Already have a flow export (.json)? Bring it in and keep building.',
+  'flows.emptyState.blank.title': '➕ Blank canvas',
+  'flows.emptyState.blank.desc': 'Start from scratch and add nodes yourself.',
   'flows.add': 'New flow',
   'flows.name': 'Flow name',
   'flows.create': 'Create flow',
@@ -346,6 +355,11 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.palette.cat.flow': 'Flow',
   'editor.palette.cat.data': 'Data',
   'editor.palette.cat.ai': 'AI',
+
+  // ── empty-canvas hint (PLAN3 F-T1) ──
+  'editor.canvasHint.title': 'This canvas is empty',
+  'editor.canvasHint.body': 'Every flow starts with a trigger. Add a Telegram Trigger from the palette to decide what starts your bot.',
+  'editor.canvasHint.cta': 'Show me the nodes',
 
   'nodes.tg.trigger.label': 'Trigger',
   'nodes.tg.sendMessage.label': 'Send Message',

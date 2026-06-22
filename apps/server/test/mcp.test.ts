@@ -65,7 +65,7 @@ async function makeWorld(): Promise<World> {
   // collections_not_available).
   const { db, sqlite } = openDb(':memory:');
   runMigrations(db);
-  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET });
+  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const sent: SentCall[] = [];
   const app = buildApp({
     env, db, sqlite, engine, logger: false, editorDistDir: '/nonexistent',

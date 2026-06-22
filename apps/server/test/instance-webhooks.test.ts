@@ -216,7 +216,7 @@ async function makeWorld(): Promise<World> {
   const { db } = openDb(':memory:');
   runMigrations(db);
   const { hits, fetchImpl } = recordingFetch(() => 200);
-  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl });
+  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl, expressionBudgetMs: 5_000 });
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',
     botRegisterOpts: () => ({

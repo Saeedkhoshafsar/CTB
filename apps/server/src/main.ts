@@ -29,6 +29,9 @@ async function main(): Promise<void> {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s !== ''),
+    ...(env.CTB_EXPRESSION_BUDGET_MS !== undefined
+      ? { expressionBudgetMs: env.CTB_EXPRESSION_BUDGET_MS }
+      : {}),
     log: (level, message, data) => {
       // eslint-disable-next-line no-console
       if (level === 'error' || level === 'warn') console.error(`[engine:${level}]`, message, data ?? '');

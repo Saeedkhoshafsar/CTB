@@ -156,7 +156,7 @@ async function makeWorld(): Promise<World> {
   const env = loadEnv({ CTB_SECRET: SECRET, CTB_ADMIN_PASS: 'hunter2hunter2', NODE_ENV: 'test' } as NodeJS.ProcessEnv);
   const { db } = openDb(':memory:');
   runMigrations(db);
-  const engine = wireEngine({ db, ctbSecret: SECRET });
+  const engine = wireEngine({ db, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const sent: SentCall[] = [];
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',

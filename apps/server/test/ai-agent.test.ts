@@ -106,7 +106,7 @@ async function makeWorld(fetchImpl: typeof fetch, fetchLog: FetchCall[]): Promis
   const env = loadEnv({ CTB_SECRET: SECRET, CTB_ADMIN_PASS: 'hunter2hunter2', NODE_ENV: 'test' } as NodeJS.ProcessEnv);
   const { db } = openDb(':memory:');
   runMigrations(db);
-  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl });
+  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl, expressionBudgetMs: 5_000 });
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',
     botRegisterOpts: () => ({ botInfo: BOT_INFO, callApi: async () => ({ message_id: 1 }) }),

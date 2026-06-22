@@ -75,7 +75,7 @@ async function boot(dbPath: string, dataDir: string): Promise<Server> {
   } as NodeJS.ProcessEnv);
   const { db, sqlite } = openDb(dbPath);
   runMigrations(db);
-  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET });
+  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const sent: Sent[] = [];
   engine.gateway.registerBot(BOT, TOKEN, {
     botInfo: BOT_INFO,

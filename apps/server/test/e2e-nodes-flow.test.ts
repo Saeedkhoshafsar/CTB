@@ -36,6 +36,11 @@ function makeWorld(store = new MemoryExecutionStore()) {
   const sent: Sent[] = [];
   const registry = registerBuiltinNodes(new NodeRegistry());
   const services: ExecutorServices = {
+    // Raise the expression budget for the slow CI sandbox (the supported host
+    // tuning seam). The default 50ms can be blown by the worker's COLD START on
+    // a loaded sandbox, erroring an otherwise-correct flow; production keeps the
+    // strict default. Mirrors e2e-phaseA-demo / e2e-phaseE-voice-demo.
+    evalOptions: { budgetMs: 5_000 },
     kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
     http: { request: async () => ({ status: 200, headers: {}, body: null }) },
     tg: () => ({

@@ -122,6 +122,17 @@ export interface WireOptions {
    * + per-bot) and max call duration. Safe defaults applied per-field when omitted.
    */
   callCaps?: Partial<CallCaps>;
+  /**
+   * Per-expression evaluation budget in ms, forwarded to
+   * `ExecutorServices.evalOptions.budgetMs` (the existing host tuning seam).
+   * Each `{{ }}` is evaluated in a sandbox worker with a hard time budget
+   * (default 50ms — strict by design). On a heavily-loaded host the worker's
+   * COLD START alone can exceed 50ms and error an otherwise-correct flow
+   * (`expression exceeded 50ms budget`), so deployments on slow/contended
+   * machines (and the CI sandbox) can raise it here. Omitted ⇒ the strict
+   * 50ms default.
+   */
+  expressionBudgetMs?: number;
 }
 
 /** Default sub-flow recursion-depth cap (PLAN.md P3-T1 "recursion depth cap"). */
@@ -1182,6 +1193,11 @@ export function wireEngine(opts: WireOptions): Engine {
     opts.mysqlPoolFactory ?? mysqlPoolFactory,
   );
   const services: ExecutorServices = {
+    // Forward the optional host expression-budget override (default stays the
+    // strict 50ms when omitted — see WireOptions.expressionBudgetMs).
+    ...(opts.expressionBudgetMs !== undefined
+      ? { evalOptions: { budgetMs: opts.expressionBudgetMs } }
+      : {}),
     kv: (botId) => {
       let kv = kvCache.get(botId);
       if (!kv) {

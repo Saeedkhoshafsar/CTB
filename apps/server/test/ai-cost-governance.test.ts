@@ -58,7 +58,7 @@ async function makeWorld(usage = { prompt: 11, completion: 2, total: 13 }): Prom
   const { db } = openDb(':memory:');
   runMigrations(db);
   const fetchLog: FetchLog[] = [];
-  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl: makeFakeFetch(usage, fetchLog) });
+  const engine = wireEngine({ db, ctbSecret: SECRET, fetchImpl: makeFakeFetch(usage, fetchLog), expressionBudgetMs: 5_000 });
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',
     botRegisterOpts: () => ({ botInfo: BOT_INFO, callApi: async () => ({ message_id: 1 }) }),

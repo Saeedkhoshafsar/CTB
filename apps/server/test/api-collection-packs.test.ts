@@ -43,7 +43,7 @@ async function makeWorld(): Promise<World> {
   db.insert(schema.bots).values({ id: BOT, name: 'b', tokenEnc: 'enc.x.y', createdAt: now, updatedAt: now }).run();
   // sqlite handed to wireEngine ⇒ the engine owns the collection store, which the
   // collections API (and the import endpoint) share.
-  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET });
+  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const app = buildApp({ env, db, sqlite, engine, logger: false, editorDistDir: '/nonexistent' });
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'admin', password: 'hunter2hunter2' } });
   expect(res.statusCode).toBe(200);

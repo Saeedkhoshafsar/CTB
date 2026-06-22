@@ -27,6 +27,13 @@ import {
   insertHint,
   splitSegments,
 } from '../src/form/expression';
+import {
+  buildPreviewScope,
+  previewExpression,
+  renderValue,
+  resolveExpr,
+  type PreviewScope,
+} from '../src/form/preview';
 import { getAtPath, moveRow, pruneEmpty, setAtPath, type Path } from '../src/form/model';
 import {
   convertBranchValue,
@@ -283,6 +290,103 @@ describe('field mode (Fixed | Expression) — G-T1', () => {
     const resolved = 3; // what `{{ $json.tries }}` evaluates to at runtime
     const parsed = TgWaitForReplyParamsSchema.safeParse({ max_retries: resolved });
     expect(parsed.success).toBe(true);
+  });
+});
+
+// ── Live expression preview (G-T2) ──────────────────────────────────────────
+
+describe('live expression preview — G-T2', () => {
+  const FIXED_NOW = () => new Date('2024-03-09T08:07:06.000Z');
+  const scope: PreviewScope = buildPreviewScope({
+    json: { age: 42, name: 'Sara', nested: { city: 'Tehran' }, tags: ['a', 'b'], ok: true, missing: null },
+    vars: { count: 7 },
+    items: [{ json: { age: 42 } }, { json: { age: 99 } }],
+    now: FIXED_NOW,
+  });
+
+  it('previews a lone {{ expr }} as the RAW value (engine parity)', () => {
+    expect(previewExpression('{{ $json.age }}', scope)).toEqual({ kind: 'value', text: '42' });
+    expect(previewExpression('{{ $json.name }}', scope)).toEqual({ kind: 'value', text: 'Sara' });
+    expect(previewExpression('{{ $json.ok }}', scope)).toEqual({ kind: 'value', text: 'true' });
+    expect(previewExpression('{{ $vars.count }}', scope)).toEqual({ kind: 'value', text: '7' });
+  });
+
+  it('resolves dotted paths, bracket keys and array indexing', () => {
+    expect(resolveExpr('$json.nested.city', scope)).toEqual({ ok: true, value: 'Tehran' });
+    expect(resolveExpr('$json["name"]', scope)).toEqual({ ok: true, value: 'Sara' });
+    expect(resolveExpr('$json.tags[1]', scope)).toEqual({ ok: true, value: 'b' });
+    expect(resolveExpr('$items[1].json.age', scope)).toEqual({ ok: true, value: 99 });
+  });
+
+  it('renders nested objects/arrays as JSON for a lone expression', () => {
+    expect(previewExpression('{{ $json.nested }}', scope)).toEqual({
+      kind: 'value',
+      text: '{"city":"Tehran"}',
+    });
+    expect(previewExpression('{{ $json.tags }}', scope)).toEqual({ kind: 'value', text: '["a","b"]' });
+  });
+
+  it('renders a MIXED template as the concatenated string', () => {
+    expect(previewExpression('Hi {{ $json.name }} ({{ $json.age }})', scope)).toEqual({
+      kind: 'value',
+      text: 'Hi Sara (42)',
+    });
+  });
+
+  it('a path that walks past missing/null data previews as empty string', () => {
+    // engine renders a missing path as '' — preview mirrors that, never throws
+    expect(previewExpression('{{ $json.nope }}', scope)).toEqual({ kind: 'value', text: '' });
+    expect(previewExpression('{{ $json.missing.deep }}', scope)).toEqual({ kind: 'value', text: '' });
+  });
+
+  it('allows safe $now nullary helpers', () => {
+    expect(previewExpression('{{ $now.iso() }}', scope)).toEqual({
+      kind: 'value',
+      text: '2024-03-09T08:07:06.000Z',
+    });
+    expect(previewExpression('{{ $now.ts() }}', scope)).toEqual({
+      kind: 'value',
+      text: String(FIXED_NOW().getTime()),
+    });
+  });
+
+  it('reports anything OUTSIDE the safe subset as unsupported (never throws, never evals)', () => {
+    // arithmetic / operators / function args / method calls are NOT path access
+    expect(previewExpression('{{ $json.age + 1 }}', scope).kind).toBe('unsupported');
+    expect(previewExpression('{{ $json.name.toUpperCase() }}', scope).kind).toBe('unsupported');
+    expect(previewExpression('{{ Math.random() }}', scope).kind).toBe('unsupported');
+    expect(previewExpression('{{ $json.tags.map(x => x) }}', scope).kind).toBe('unsupported');
+    // an unknown scope root is unsupported too
+    expect(previewExpression('{{ $bogus.x }}', scope).kind).toBe('unsupported');
+    // a mixed template with one unsupported segment → whole thing unsupported
+    expect(previewExpression('A {{ $json.age + 1 }} B', scope).kind).toBe('unsupported');
+  });
+
+  it('previews bare literals', () => {
+    expect(previewExpression('{{ 5 }}', scope)).toEqual({ kind: 'value', text: '5' });
+    expect(previewExpression("{{ 'hi' }}", scope)).toEqual({ kind: 'value', text: 'hi' });
+    expect(previewExpression('{{ true }}', scope)).toEqual({ kind: 'value', text: 'true' });
+  });
+
+  it('a template with NO expression (or empty) previews as empty (nothing to show)', () => {
+    expect(previewExpression('just literal', scope).kind).toBe('empty');
+    expect(previewExpression('', scope).kind).toBe('empty');
+  });
+
+  it('renderValue clips long strings and stringifies safely', () => {
+    expect(renderValue(undefined)).toBe('');
+    expect(renderValue(null)).toBe('null');
+    expect(renderValue(123)).toBe('123');
+    const long = 'x'.repeat(500);
+    expect(renderValue(long).endsWith('…')).toBe(true);
+    expect(renderValue(long).length).toBeLessThan(long.length);
+  });
+
+  it('buildPreviewScope tolerates a totally empty input', () => {
+    const empty = buildPreviewScope({});
+    expect(empty.$json).toEqual({});
+    expect(empty.$items).toEqual([]);
+    expect(previewExpression('{{ $json.x }}', empty)).toEqual({ kind: 'value', text: '' });
   });
 });
 

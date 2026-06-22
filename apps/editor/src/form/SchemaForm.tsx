@@ -18,7 +18,16 @@
  * it applies to every node and to Collection forms automatically.
  */
 import { useMemo, useState } from 'react';
-import { useDesc, useLabel, FieldRow, FormNamespace, SchemaWidget, AddOptionControl } from './widgets';
+import {
+  useDesc,
+  useLabel,
+  FieldRow,
+  FormNamespace,
+  PreviewScopeProvider,
+  SchemaWidget,
+  AddOptionControl,
+} from './widgets';
+import type { PreviewScope } from './preview';
 import { partitionFields, emptyValue, type FieldSpec, type JsonSchema } from './schema';
 import { setAtPath } from './model';
 import { useI18n } from '../i18n';
@@ -109,6 +118,7 @@ export function SchemaForm({
   value,
   onChange,
   namespace = '',
+  previewScope = null,
 }: {
   schema: JsonSchema;
   value: Record<string, unknown>;
@@ -120,10 +130,18 @@ export function SchemaForm({
    * Empty (the default) preserves the legacy node-agnostic behaviour.
    */
   namespace?: string;
+  /**
+   * Optional live-preview scope (G-T2). When provided, every ExpressionInput
+   * previews its `{{ … }}` against this data. `null` (default) → no preview,
+   * so generic consumers (Collection forms) are unchanged.
+   */
+  previewScope?: PreviewScope | null;
 }) {
   return (
     <FormNamespace value={namespace}>
-      <FormBody schema={schema} value={value} onChange={onChange} />
+      <PreviewScopeProvider value={previewScope}>
+        <FormBody schema={schema} value={value} onChange={onChange} />
+      </PreviewScopeProvider>
     </FormNamespace>
   );
 }

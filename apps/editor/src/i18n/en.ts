@@ -695,6 +695,8 @@ export const en: Record<keyof typeof fa, string> = {
   'form.moveDown': 'Down',
   'form.expr.hints': 'Variables',
   'form.expr.hintsTitle': 'Variables — click to insert',
+  'form.expr.previewEmpty': '(empty)',
+  'form.expr.previewUnsupported': 'preview unavailable — runs live',
   'form.fieldMode.label': 'Value mode',
   'form.fieldMode.fixed': 'Fixed',
   'form.fieldMode.expression': 'Expression',

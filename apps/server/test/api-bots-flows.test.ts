@@ -389,7 +389,7 @@ describe('flows API (P1-T8)', () => {
     const list = await w.app.inject({ method: 'GET', url: '/api/flow-templates', cookies: w.cookie });
     expect(list.statusCode).toBe(200);
     const templates = list.json().templates as { id: string; name: string; nodeCount: number }[];
-    expect(templates.map((t) => t.id)).toEqual(['feedback', 'quiz', 'faq', 'reminder']);
+    expect(templates.map((t) => t.id)).toEqual(['hello', 'feedback', 'quiz', 'faq', 'reminder']);
 
     const imp = await w.app.inject({
       method: 'POST', url: '/api/flows/import-template', cookies: w.cookie,

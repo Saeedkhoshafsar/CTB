@@ -157,7 +157,7 @@ describe('ApiClient (P2-T1)', () => {
     const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
 
     const templates = await client.listFlowTemplates();
-    expect(templates.map((tpl) => tpl.id)).toEqual(['feedback', 'quiz', 'faq', 'reminder']);
+    expect(templates.map((tpl) => tpl.id)).toEqual(['hello', 'feedback', 'quiz', 'faq', 'reminder']);
 
     const flow = await client.importTemplate({ botId: bot.id, templateId: 'quiz', name: 'آزمون من' });
     expect(flow.name).toBe('آزمون من');

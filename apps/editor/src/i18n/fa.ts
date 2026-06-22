@@ -166,6 +166,8 @@ export const fa = {
   'flows.templates.use': 'استفاده',
   'flows.templates.using': 'در حال ساخت…',
   'flows.templates.nodeCount': '{n} نود',
+  'templates.hello.label': 'بات سلام (شروع سریع)',
+  'templates.hello.desc': 'کوچک‌ترین فلو: یک تریگر دستی یک پیام خوش‌آمد می‌فرستد. روی «اجرای آزمایشی» بزنید تا در کمتر از یک دقیقه پاسخ بات‌تان را ببینید.',
   'templates.feedback.label': 'فرم بازخورد',
   'templates.feedback.desc': 'یک امتیاز ۱ تا ۵ و یک نظر متنی از کاربر می‌گیرد.',
   'templates.quiz.label': 'آزمون',

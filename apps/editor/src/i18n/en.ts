@@ -169,6 +169,8 @@ export const en: Record<keyof typeof fa, string> = {
   'flows.templates.use': 'Use',
   'flows.templates.using': 'Creating…',
   'flows.templates.nodeCount': '{n} nodes',
+  'templates.hello.label': 'Hello bot (quick start)',
+  'templates.hello.desc': 'The smallest flow: a Manual Trigger sends a greeting. Hit “Test run” to see your bot reply in under a minute.',
   'templates.feedback.label': 'Feedback form',
   'templates.feedback.desc': 'Collects a 1–5 rating and a free-text comment from the user.',
   'templates.quiz.label': 'Quiz',

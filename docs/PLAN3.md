@@ -141,7 +141,7 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
 
 ### Phase G — Field ergonomics (the "every node is confusing" cure)
 
-- **G-T1 — Fixed | Expression toggle per field. (⭐ user ask, gap G1)**
+- **G-T1 — Fixed | Expression toggle per field. (⭐ user ask, gap G1) ✅ DONE**
   - Files: `apps/editor/src/form/widgets.tsx`, new `ExpressionToggle.tsx`,
     `apps/editor/src/form/expression.ts`, `styles.css`, i18n.
   - Build: each editable text/number field gets a small `Fixed | Expression`

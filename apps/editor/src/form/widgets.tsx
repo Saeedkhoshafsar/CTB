@@ -24,7 +24,15 @@ import { useCanvas } from '../stores/canvas';
 import { useCollections } from '../stores/collections';
 import { useCredentials } from '../stores/credentials';
 import { useFlows } from '../stores/flows';
-import { FIELD_DRAG_MIME, SCOPE_HINTS, hasExpression, insertHint } from './expression';
+import {
+  FIELD_DRAG_MIME,
+  SCOPE_HINTS,
+  convertFieldMode,
+  fieldModeOf,
+  hasExpression,
+  insertHint,
+  type FieldMode,
+} from './expression';
 import {
   convertBranchValue,
   emptyValue,
@@ -970,6 +978,63 @@ export function AddOptionControl({
   );
 }
 
+// ── Fixed | Expression toggle (G-T1) ─────────────────────────────────────────
+//
+// A small two-button switch shown above "simple" widgets (number / select /
+// duration). Fixed = the native widget; Expression = the expression-aware text
+// box (so `{{ $json.age }}` can drive a number/enum/duration field). The mode is
+// inferred from the value (a `{{ }}` string ⇒ expression) — no separate flag is
+// stored, so the params stay exactly what the engine already accepts. Text-class
+// widgets (text/multiline/expression) are already expression-aware inline, so
+// they are NOT wrapped — the toggle would be redundant noise there. The wrapped
+// set (number / select / duration) is enumerated explicitly in SchemaWidget.
+
+function FieldModeToggle({ mode, onPick }: { mode: FieldMode; onPick: (m: FieldMode) => void }) {
+  const t = useI18n((s) => s.t);
+  return (
+    <div className="field-mode" role="group" aria-label={t('form.fieldMode.label')}>
+      {(['fixed', 'expression'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          className={`field-mode-btn${m === mode ? ' active' : ''}`}
+          aria-pressed={m === mode}
+          onClick={() => {
+            if (m !== mode) onPick(m);
+          }}
+        >
+          {t(`form.fieldMode.${m}` as MessageKey)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Wraps a "simple" widget with the Fixed | Expression toggle. In Fixed mode the
+ * native widget renders; in Expression mode the expression-aware text box does.
+ * Flipping the toggle converts the value losslessly (see convertFieldMode), so
+ * the user never loses their typing when they switch.
+ */
+function ModedWidget(props: WidgetProps & { children: ReactNode }) {
+  const placeholder = usePlaceholder();
+  const mode = fieldModeOf(props.value);
+  return (
+    <div className="moded-widget">
+      <FieldModeToggle mode={mode} onPick={(m) => props.onChange(convertFieldMode(m, props.value))} />
+      {mode === 'expression' ? (
+        <ExpressionInput
+          value={props.value === undefined || props.value === null ? '' : String(props.value)}
+          onChange={(v) => props.onChange(v === '' && !props.spec.required ? undefined : v)}
+          placeholder={placeholder(props.spec.key)}
+        />
+      ) : (
+        props.children
+      )}
+    </div>
+  );
+}
+
 export function SchemaWidget(props: WidgetProps) {
   switch (props.spec.widget) {
     case 'code':
@@ -983,11 +1048,23 @@ export function SchemaWidget(props: WidgetProps) {
     case 'boolean':
       return <BooleanWidget {...props} />;
     case 'number':
-      return <NumberWidget {...props} />;
+      return (
+        <ModedWidget {...props}>
+          <NumberWidget {...props} />
+        </ModedWidget>
+      );
     case 'select':
-      return <SelectWidget {...props} />;
+      return (
+        <ModedWidget {...props}>
+          <SelectWidget {...props} />
+        </ModedWidget>
+      );
     case 'duration':
-      return <DurationWidget {...props} />;
+      return (
+        <ModedWidget {...props}>
+          <DurationWidget {...props} />
+        </ModedWidget>
+      );
     case 'multiline':
       return <TextWidget {...props} multiline />;
     case 'object':

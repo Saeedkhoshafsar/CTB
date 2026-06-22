@@ -14,6 +14,7 @@ import { NodeDetail } from '../canvas/NodeDetail';
 import { Palette } from '../canvas/Palette';
 import { ParamPanel } from '../canvas/ParamPanel';
 import { useI18n, type MessageKey } from '../i18n';
+import { downloadFlowExport } from '../lib/flow-export';
 import { useCanvas } from '../stores/canvas';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
@@ -133,6 +134,41 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
   );
 }
 
+/**
+ * Export-this-flow button (PLAN3 F-T3) — the cure for the #1 discoverability
+ * complaint ("how do I extract a workflow?"). Flushes any pending edits FIRST so
+ * the downloaded envelope reflects exactly what's on the canvas, then downloads
+ * the portable design envelope (graph + settings, no identity) as `<name>.json`.
+ */
+function ExportButton({ flow }: { flow: FlowPublic }) {
+  const t = useI18n((s) => s.t);
+  const saveNow = useCanvas((s) => s.saveNow);
+  const [busy, setBusy] = useState(false);
+  const onExport = async () => {
+    setBusy(true);
+    try {
+      await saveNow();
+      const envelope = await api.exportFlow(flow.id);
+      downloadFlowExport(envelope, flow.name);
+    } catch (err) {
+      window.alert(t('flows.export.failed', { detail: err instanceof Error ? err.message : '?' }));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      className="ghost"
+      disabled={busy}
+      onClick={() => void onExport()}
+      data-testid="editor-export"
+      title={t('editor.export.hint')}
+    >
+      {busy ? t('editor.export.busy') : t('editor.export.button')}
+    </button>
+  );
+}
+
 function Toolbar({
   flow,
   onFlowChange,
@@ -178,6 +214,7 @@ function Toolbar({
         <button className="btn" onClick={() => void saveNow()}>
           {t('editor.save')}
         </button>
+        <ExportButton flow={flow} />
         <TestRunButton flow={flow} />
         <div className="versions-anchor">
           <button className="ghost" onClick={toggleVersions}>

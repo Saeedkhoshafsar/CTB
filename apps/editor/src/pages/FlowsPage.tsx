@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../api/client';
 import { type MessageKey, useI18n } from '../i18n';
+import { downloadFlowExport } from '../lib/flow-export';
 import { useFlows } from '../stores/flows';
 
 export function FlowsPage() {
@@ -65,13 +66,7 @@ export function FlowsPage() {
     guard(async () => {
       try {
         const envelope = await api.exportFlow(flowId);
-        const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${flowName.replace(/[^\w.-]+/g, '_') || 'flow'}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadFlowExport(envelope, flowName);
       } catch (err) {
         setPageError(t('flows.export.failed', { detail: err instanceof Error ? err.message : '?' }));
       }

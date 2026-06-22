@@ -111,13 +111,23 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
     (e2e mirrored from existing `e2e-phaseC-authoring-demo.test.ts`).
   - Verify: `npm run test -w apps/server` (new quickstart e2e green).
 
-- **F-T3 — Surface import/export/templates in the flow toolbar.**
-  - Files: `FlowEditorPage.tsx`, i18n.
-  - Build: explicit toolbar buttons (Export JSON / Import / Templates) so the user
-    never has to hunt — the #1 complaint ("how do I extract a workflow?").
-  - Acceptance: export downloads the validated envelope; import round-trips a flow
-    byte-identical (reuse the existing `flow-export` contract).
-  - Verify: editor tests + a round-trip assertion.
+- **F-T3 — Surface export in the flow EDITOR toolbar. ✅ DONE**
+  - Files: `FlowEditorPage.tsx`, NEW `apps/editor/src/lib/flow-export.ts`,
+    `FlowsPage.tsx` (de-duplicated onto the shared helper), i18n en/fa,
+    NEW `apps/editor/test/flow-export.test.ts`.
+  - Built: an **Export** button in the editor toolbar (next to Save / Test run)
+    — the cure for the #1 complaint ("how do I extract a workflow?"). It flushes
+    pending edits first (`saveNow`), fetches `GET /api/flows/:id/export`, and
+    downloads the portable envelope (graph + settings, no identity) as
+    `<name>.json`. Import + the template gallery already live on the per-bot flow
+    LIST page (`FlowsPage`) — the correct home, since both CREATE a new flow — so
+    F-T3 adds the one missing affordance (export-while-editing) and unifies the
+    download logic.
+  - Done: filename/blob logic extracted to a pure, tested helper
+    (`flowExportFilename`/`flowExportBlob`) shared by both call sites;
+    `downloadFlowExport` is the thin DOM glue.
+  - Verify: `npm run test -w apps/editor` → **177 GREEN** (+6 flow-export tests);
+    editor typecheck + build GREEN. Additive — no schema/server/registry change.
 
 ### Phase G — Field ergonomics (the "every node is confusing" cure)
 

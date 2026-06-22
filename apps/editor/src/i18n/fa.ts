@@ -126,6 +126,15 @@ export const fa = {
 
   'flows.title': 'فلوهای {bot}',
   'flows.empty': 'این بات هنوز فلویی ندارد.',
+  // ── حالت خالی راهنما (PLAN3 F-T1) ──
+  'flows.emptyState.title': 'بیایید اولین فلوی‌تان را بسازیم',
+  'flows.emptyState.lead': 'فلو همان کاری است که بات شما انجام می‌دهد. سریع‌ترین راه شروع را انتخاب کنید — همه‌چیز را بعداً می‌توانید ویرایش کنید.',
+  'flows.emptyState.template.title': '⚡ شروع از یک الگو',
+  'flows.emptyState.template.desc': 'یک فلوی آماده که در چند دقیقه اجرا می‌شود و بعد می‌توانید تغییرش دهید. سریع‌ترین راه رسیدن به یک بات کارآمد.',
+  'flows.emptyState.import.title': '📥 درون‌ریزی یک فلو',
+  'flows.emptyState.import.desc': 'از قبل خروجی یک فلو (.json) دارید؟ آن را وارد کنید و ادامه دهید.',
+  'flows.emptyState.blank.title': '➕ بوم خالی',
+  'flows.emptyState.blank.desc': 'از صفر شروع کنید و خودتان نودها را اضافه کنید.',
   'flows.add': 'فلوی جدید',
   'flows.name': 'نام فلو',
   'flows.create': 'ساخت فلو',
@@ -343,6 +352,11 @@ export const fa = {
   'editor.palette.cat.flow': 'جریان',
   'editor.palette.cat.data': 'داده',
   'editor.palette.cat.ai': 'هوش مصنوعی',
+
+  // ── راهنمای بوم خالی (PLAN3 F-T1) ──
+  'editor.canvasHint.title': 'این بوم خالی است',
+  'editor.canvasHint.body': 'هر فلو با یک تریگر آغاز می‌شود. از پالت یک «تریگر تلگرام» اضافه کنید تا مشخص شود چه چیزی بات شما را شروع می‌کند.',
+  'editor.canvasHint.cta': 'نودها را نشانم بده',
 
   'nodes.tg.trigger.label': 'شروع (تریگر)',
   'nodes.tg.sendMessage.label': 'ارسال پیام',

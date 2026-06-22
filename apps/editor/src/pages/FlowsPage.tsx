@@ -2,7 +2,9 @@ import type { BotPublic, FlowTemplateInfo } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../api/client';
+import { FlowsEmptyState } from '../components/EmptyState';
 import { type MessageKey, useI18n } from '../i18n';
+import type { EmptyStateActionId } from '../lib/empty-state';
 import { downloadFlowExport } from '../lib/flow-export';
 import { useFlows } from '../stores/flows';
 
@@ -126,6 +128,19 @@ export function FlowsPage() {
       }
     });
 
+  // F-T1 — the guided empty state's three CTAs each just OPEN an affordance the
+  // page already owns (the template gallery / import panel / new-flow form), so
+  // there's no second flow-creation path to keep in sync.
+  const onEmptyAction = (id: EmptyStateActionId) => {
+    if (id === 'template') {
+      void openTemplates();
+    } else if (id === 'import') {
+      setShowImport(true);
+    } else {
+      setShowForm(true);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -224,7 +239,7 @@ export function FlowsPage() {
       {loading ? (
         <div className="splash">{t('app.loading')}</div>
       ) : flows.length === 0 ? (
-        <div className="empty">{t('flows.empty')}</div>
+        <FlowsEmptyState onAction={onEmptyAction} />
       ) : (
         <div className="row-list">
           {flows.map((flow) => (

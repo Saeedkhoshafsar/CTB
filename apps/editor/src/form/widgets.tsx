@@ -33,6 +33,7 @@ import {
   insertHint,
   type FieldMode,
 } from './expression';
+import { previewExpression, type PreviewScope } from './preview';
 import {
   convertBranchValue,
   emptyValue,
@@ -65,6 +66,18 @@ const NsContext = createContext<string>('');
 export const FormNamespace = NsContext.Provider;
 function useNs(): string {
   return useContext(NsContext);
+}
+
+/**
+ * Live-preview scope (G-T2). The node panel provides the latest run's first
+ * input item here so an ExpressionInput can preview `{{ … }}` against real data.
+ * `null` (the default) → no preview is shown (e.g. Collection forms, or a node
+ * that has never run). Generic consumers leave it unset → legacy behaviour.
+ */
+const PreviewContext = createContext<PreviewScope | null>(null);
+export const PreviewScopeProvider = PreviewContext.Provider;
+function usePreviewScope(): PreviewScope | null {
+  return useContext(PreviewContext);
 }
 
 /**
@@ -213,6 +226,12 @@ export function ExpressionInput({
     });
   };
 
+  const previewScope = usePreviewScope();
+  // Preview is advisory UI: only when there's a {{ }} and we have real input
+  // data to resolve against. previewExpression never throws (G-T2).
+  const preview =
+    previewScope && hasExpression(value) ? previewExpression(value, previewScope) : null;
+
   const cls = `expr-input${hasExpression(value) ? ' has-expr' : ''}${multiline ? ' multiline' : ''}${dropActive ? ' drop-active' : ''}`;
   return (
     <div
@@ -270,6 +289,23 @@ export function ExpressionInput({
             </li>
           ))}
         </ul>
+      ) : null}
+      {preview && preview.kind !== 'empty' ? (
+        <div
+          className={`expr-preview${preview.kind === 'unsupported' ? ' unsupported' : ''}`}
+          aria-live="polite"
+        >
+          <span className="expr-preview-arrow" aria-hidden>
+            =
+          </span>
+          {preview.kind === 'value' ? (
+            <code className="expr-preview-value">
+              {preview.text === '' ? t('form.expr.previewEmpty') : preview.text}
+            </code>
+          ) : (
+            <span className="expr-preview-note">{t('form.expr.previewUnsupported')}</span>
+          )}
+        </div>
       ) : null}
     </div>
   );

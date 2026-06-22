@@ -684,6 +684,8 @@ export const fa = {
   'form.moveDown': 'پایین',
   'form.expr.hints': 'متغیرها',
   'form.expr.hintsTitle': 'متغیرها — برای درج کلیک کنید',
+  'form.expr.previewEmpty': '(خالی)',
+  'form.expr.previewUnsupported': 'پیش‌نمایش در دسترس نیست — هنگام اجرا محاسبه می‌شود',
   'form.fieldMode.label': 'حالت مقدار',
   'form.fieldMode.fixed': 'ثابت',
   'form.fieldMode.expression': 'عبارت',

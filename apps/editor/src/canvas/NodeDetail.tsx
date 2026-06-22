@@ -12,10 +12,11 @@
  * Run data comes from the run-data store (latest execution of this flow).
  */
 import type { FlowNode } from '@ctb/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { useI18n, type MessageKey } from '../i18n';
 import { pruneEmpty } from '../form/model';
+import { buildPreviewScope, type PreviewScope } from '../form/preview';
 import { SchemaForm } from '../form/SchemaForm';
 import type { JsonSchema } from '../form/schema';
 import { useCanvas } from '../stores/canvas';
@@ -46,6 +47,15 @@ function DetailInner({ node }: { node: FlowNode }) {
   const execution = useRunData((s) => s.execution);
   const runLoading = useRunData((s) => s.loading);
   const refresh = useRunData((s) => s.refresh);
+
+  // Live-preview scope (G-T2): the latest run's FIRST input item drives
+  // `{{ $json.* }}` previews inside the form. No run / no input → null → the
+  // ExpressionInput shows no preview (the engine still resolves at run time).
+  const previewScope = useMemo<PreviewScope | null>(() => {
+    const first = run?.input?.[0];
+    if (!first) return null;
+    return buildPreviewScope({ json: first.json, items: run?.input });
+  }, [run]);
 
   // Same draft/debounce-commit pattern as ParamPanel — one undo step per
   // pause, flushed on close. (Kept local: the two surfaces edit the same
@@ -138,7 +148,12 @@ function DetailInner({ node }: { node: FlowNode }) {
           <div className="ndv-params">
             {nodeDesc ? <p className="param-desc">{nodeDesc}</p> : null}
             {info ? (
-              <SchemaForm schema={info.paramsJsonSchema as JsonSchema} value={draft} onChange={onFormChange} />
+              <SchemaForm
+                schema={info.paramsJsonSchema as JsonSchema}
+                value={draft}
+                onChange={onFormChange}
+                previewScope={previewScope}
+              />
             ) : (
               <p className="alert">{t('editor.node.unknownType')}</p>
             )}

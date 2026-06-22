@@ -531,6 +531,41 @@ input[dir='ltr'] { direction: ltr; }
   text-overflow: ellipsis;
 }
 
+/* live expression preview (G-T2) — a thin read-only result row under an
+   ExpressionInput, resolved against the latest run's first input item. */
+.expr-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: calc(var(--radius) - 2px);
+  direction: ltr;
+  overflow: hidden;
+}
+.expr-preview-arrow {
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.expr-preview-value {
+  color: var(--text);
+  font-family: var(--mono, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.expr-preview.unsupported {
+  background: transparent;
+}
+.expr-preview-note {
+  color: var(--text-dim);
+  font-style: italic;
+  unicode-bidi: plaintext;
+}
+
 /* rows widget (Set Fields, generic arrays) */
 .rows-widget { display: flex; flex-direction: column; gap: 0.45rem; }
 .row-item {

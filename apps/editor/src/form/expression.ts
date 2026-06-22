@@ -41,6 +41,46 @@ export function hasExpression(text: string): boolean {
   return /\{\{.*?\}\}/s.test(text);
 }
 
+// ── $now helper (mirrors the engine's scope builder — used by the live preview)
+//
+// A tiny, DOM-free copy of the engine's NowHelper (packages/core scope.ts) so
+// the editor can preview `{{ $now.iso() }}` etc. without importing @ctb/core
+// (which pulls the Node-vm sandbox). Kept here, next to the other pure
+// expression helpers, so the form engine stays self-contained.
+
+export interface NowHelper {
+  /** Epoch ms. */
+  ts(): number;
+  /** ISO-8601 string. */
+  iso(): string;
+  /** The underlying Date. */
+  date(): Date;
+  /** Tiny formatter: YYYY MM DD HH mm ss tokens. */
+  format(pattern: string): string;
+}
+
+function pad(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+export function makeNowHelper(clock: () => Date = () => new Date()): NowHelper {
+  return Object.freeze({
+    ts: () => clock().getTime(),
+    iso: () => clock().toISOString(),
+    date: () => clock(),
+    format: (pattern: string) => {
+      const d = clock();
+      return pattern
+        .replace(/YYYY/g, String(d.getFullYear()))
+        .replace(/MM/g, pad(d.getMonth() + 1))
+        .replace(/DD/g, pad(d.getDate()))
+        .replace(/HH/g, pad(d.getHours()))
+        .replace(/mm/g, pad(d.getMinutes()))
+        .replace(/ss/g, pad(d.getSeconds()));
+    },
+  });
+}
+
 // ── Fixed | Expression field mode (G-T1) ─────────────────────────────────────
 //
 // A "simple" field (number / select / duration / single-line text) can be edited

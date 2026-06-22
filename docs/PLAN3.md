@@ -153,7 +153,7 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
     in `form-engine.test.ts` against real schemas.
   - Verify: `npm run test -w apps/editor`.
 
-- **G-T2 — Live expression preview. (gap G6)**
+- **G-T2 — Live expression preview. (gap G6) ✅ DONE**
   - Files: expression editor widget, `DataPanel` wiring.
   - Build: while editing an expression, show the resolved value against the
     current/pinned input item (read-only). Reuse the engine's expression evaluator

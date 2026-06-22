@@ -114,7 +114,7 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
   - Verify: `npm run test -w apps/editor` → **185 GREEN** (+8 empty-state tests);
     editor typecheck + build GREEN. Additive — no schema/server/registry change.
 
-- **F-T2 — "Hello bot" first-run template + 5-minute walkthrough doc.**
+- **F-T2 — "Hello bot" first-run template + 5-minute walkthrough doc. ✅ DONE**
   - Files: `packages/shared/src/flow-templates.ts` (add a minimal
     Trigger→SendMessage greeting template if not present), `docs/demos/quickstart.md`.
   - Acceptance: the template imports + activates + a manual run sends the greeting

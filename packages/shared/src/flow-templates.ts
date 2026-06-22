@@ -40,6 +40,42 @@ const env = (name: string, graph: FlowExport['graph']): FlowExport => ({
   settings: { executionPolicy: 'replace', errorHandlerFlowId: null },
 });
 
+// ── hello bot (PLAN3 F-T2 quick-start) ───────────────────────────────────────
+// The smallest useful flow + the recommended first run: a Manual Trigger →
+// Send Message greeting. It uses `flow.manualTrigger` so the editor's "Test
+// run" button drives it end-to-end with NO chat wiring — the trigger's `sample`
+// seeds `$json.chat`, and the message is sent to `{{ $json.chat }}`. This is the
+// fastest path from "empty bot" to "I saw it reply" (the F-T1 empty-state's
+// primary CTA lands here). Edit `sample.chat` to your own chat id, hit Test run,
+// and you get a greeting in under five minutes. Still GENERIC (I2): it greets,
+// it assumes no business.
+const hello: FlowTemplate = {
+  id: 'hello',
+  labelKey: 'templates.hello.label',
+  descriptionKey: 'templates.hello.desc',
+  export: env('Hello bot', {
+    nodes: [
+      {
+        id: 'start',
+        type: 'flow.manualTrigger',
+        // Seed a chat id so a one-click Test run has somewhere to send to.
+        // Replace 123456789 with your own chat id (or wire a tg.trigger instead).
+        params: { sample: '{ "chat": 123456789 }' },
+        position: { x: 0, y: 0 },
+        disabled: false,
+      },
+      {
+        id: 'greet',
+        type: 'tg.sendMessage',
+        params: { type: 'text', chat: '{{ $json.chat }}', text: '👋 Hello! Your CTB bot is alive and replying.' },
+        position: { x: 220, y: 0 },
+        disabled: false,
+      },
+    ],
+    edges: [{ id: 'e1', from: { node: 'start', port: 'main' }, to: { node: 'greet', port: 'main' } }],
+  }),
+};
+
 // ── feedback form ────────────────────────────────────────────────────────────
 // /feedback → ask for a 1–5 rating (number, validated) → ask for a free-text
 // comment → thank-you. Pure data collection; no domain field.
@@ -199,8 +235,9 @@ const reminder: FlowTemplate = {
   }),
 };
 
-/** The gallery, in display order. All GENERIC (I2). */
-export const FLOW_TEMPLATES: readonly FlowTemplate[] = [feedback, quiz, faq, reminder];
+/** The gallery, in display order. `hello` leads — it's the F-T2 quick-start
+ *  (the empty-state's primary CTA). All GENERIC (I2). */
+export const FLOW_TEMPLATES: readonly FlowTemplate[] = [hello, feedback, quiz, faq, reminder];
 
 /** Look up a template by its stable id. */
 export function findFlowTemplate(id: string): FlowTemplate | undefined {

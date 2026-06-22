@@ -18,6 +18,7 @@ import {
   FlowExportSchema,
   FlowGraphSchema,
   FlowIfParamsSchema,
+  FlowManualTriggerParamsSchema,
   FlowSwitchParamsSchema,
   FlowWaitParamsSchema,
   TgMenuParamsSchema,
@@ -34,6 +35,7 @@ import type { FlowExport } from '@ctb/shared';
 
 /** The param schemas the templates use — same shapes the real registry holds (I5). */
 const PARAM_SCHEMAS = new Map<string, z.ZodType>([
+  ['flow.manualTrigger', FlowManualTriggerParamsSchema],
   ['tg.trigger', TgTriggerParamsSchema],
   ['tg.sendMessage', TgSendMessageParamsSchema],
   ['tg.waitForReply', TgWaitForReplyParamsSchema],
@@ -124,8 +126,19 @@ describe('export → import → identical semantics (PLAN acceptance)', () => {
 });
 
 describe('starter template gallery (P3-T7, all GENERIC — I2)', () => {
-  it('ships the four planned templates with stable ids', () => {
-    expect(FLOW_TEMPLATES.map((t) => t.id)).toEqual(['feedback', 'quiz', 'faq', 'reminder']);
+  it('ships the planned templates with stable ids (hello quick-start leads)', () => {
+    expect(FLOW_TEMPLATES.map((t) => t.id)).toEqual(['hello', 'feedback', 'quiz', 'faq', 'reminder']);
+  });
+
+  it('the hello quick-start is a minimal manualTrigger → sendMessage greeting', () => {
+    const t = findFlowTemplate('hello');
+    expect(t, 'hello template exists').toBeTruthy();
+    const types = t!.export.graph.nodes.map((n) => n.type);
+    expect(types).toEqual(['flow.manualTrigger', 'tg.sendMessage']);
+    // it drives the editor's Test-run button (a manual trigger) and sends to a
+    // chat seeded by the trigger sample — so a one-click run actually replies.
+    const triggerParams = t!.export.graph.nodes.find((n) => n.type === 'flow.manualTrigger')?.params;
+    expect(triggerParams).toMatchObject({ sample: expect.stringContaining('chat') });
   });
 
   it('every template is a valid, importable export', () => {

@@ -83,7 +83,7 @@ async function makeWorld(result: {
   runMigrations(db);
   const built: FakePool[] = [];
   const { factory } = makeFakeFactory(result, built);
-  const engine = wireEngine({ db, ctbSecret: SECRET, dbPoolFactory: factory });
+  const engine = wireEngine({ db, ctbSecret: SECRET, dbPoolFactory: factory, expressionBudgetMs: 5_000 });
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',
     botRegisterOpts: () => ({ botInfo: BOT_INFO, callApi: async () => ({ message_id: 1 }) }),

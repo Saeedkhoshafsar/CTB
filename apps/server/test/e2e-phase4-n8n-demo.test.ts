@@ -106,7 +106,7 @@ async function makeWorld(): Promise<World> {
   } as NodeJS.ProcessEnv);
   const { db } = openDb(':memory:');
   runMigrations(db);
-  const engine = wireEngine({ db, ctbSecret: SECRET });
+  const engine = wireEngine({ db, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
 
   const now = new Date().toISOString();
   db.insert(schema.bots).values({

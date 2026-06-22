@@ -36,7 +36,7 @@ async function makeWorld(opts: { maxSubFlowDepth?: number } = {}): Promise<World
   const { db } = openDb(':memory:');
   runMigrations(db);
   const engine = wireEngine({
-    db, ctbSecret: SECRET,
+    db, ctbSecret: SECRET, expressionBudgetMs: 5_000,
     ...(opts.maxSubFlowDepth !== undefined ? { maxSubFlowDepth: opts.maxSubFlowDepth } : {}),
   });
   const app = buildApp({

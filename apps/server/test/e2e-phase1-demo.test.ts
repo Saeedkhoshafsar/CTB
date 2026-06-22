@@ -48,7 +48,7 @@ interface Sent { method: string; payload: Record<string, unknown> }
 function boot(dbPath: string): { engine: Engine; db: Db; sqlite: ReturnType<typeof openDb>['sqlite']; sent: Sent[] } {
   const { db, sqlite } = openDb(dbPath);
   runMigrations(db);
-  const engine = wireEngine({ db, ctbSecret: SECRET });
+  const engine = wireEngine({ db, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const sent: Sent[] = [];
   engine.gateway.registerBot('demo-bot', TOKEN, {
     botInfo: BOT_INFO,

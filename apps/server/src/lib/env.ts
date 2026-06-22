@@ -28,6 +28,14 @@ const EnvSchema = z.object({
    * Unset/empty ⇒ unrestricted (single-admin v1 default).
    */
   CTB_CODE_HTTP_ALLOWLIST: z.string().optional(),
+  /**
+   * Per-expression evaluation budget in ms (forwarded to the executor's
+   * expression evaluator). Each `{{ }}` runs in a sandbox worker with a hard
+   * time budget (default 50ms — strict by design). On a slow/contended host
+   * the worker's COLD START alone can exceed 50ms and error an otherwise-correct
+   * flow; such deployments can raise this. Omitted ⇒ the strict 50ms default.
+   */
+  CTB_EXPRESSION_BUDGET_MS: z.coerce.number().int().min(1).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 export type Env = z.infer<typeof EnvSchema>;

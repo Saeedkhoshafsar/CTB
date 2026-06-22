@@ -106,6 +106,7 @@ async function makeWorld(result: {
     ctbSecret: SECRET,
     dbPoolFactory: factory,
     mysqlPoolFactory: factory,
+    expressionBudgetMs: 5_000,
   });
   const app = buildApp({
     env, db, engine, logger: false, editorDistDir: '/nonexistent',

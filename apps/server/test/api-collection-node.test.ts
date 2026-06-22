@@ -61,7 +61,7 @@ async function makeWorld(): Promise<World> {
   db.insert(botsTable).values({ id: BOT, name: 'b', tokenEnc: 'enc.x.y', createdAt: now, updatedAt: now }).run();
   // CRITICAL (vs api-collections-records.test.ts): pass `sqlite` so the engine
   // builds the collection store + record-event bus + data.collection capability.
-  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET });
+  const engine = wireEngine({ db, sqlite, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const app = buildApp({ env, db, sqlite, engine, logger: false, editorDistDir: '/nonexistent' });
   const adminCookie = await login(app, 'admin', 'hunter2hunter2');
   return { app, db, engine, adminCookie };

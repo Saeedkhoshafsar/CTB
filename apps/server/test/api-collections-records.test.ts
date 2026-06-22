@@ -49,7 +49,7 @@ async function makeWorld(): Promise<World> {
   runMigrations(db);
   const now = new Date().toISOString();
   db.insert(botsTable).values({ id: BOT, name: 'b', tokenEnc: 'enc.x.y', createdAt: now, updatedAt: now }).run();
-  const engine = wireEngine({ db, ctbSecret: SECRET });
+  const engine = wireEngine({ db, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
   const app = buildApp({ env, db, sqlite, engine, logger: false, editorDistDir: '/nonexistent' });
   const adminCookie = await login(app, 'admin', 'hunter2hunter2');
   const operatorCookie = await login(app, 'operator', 'managerpass99');
@@ -293,7 +293,7 @@ describe('operator without configured password cannot log in', () => {
     const env = loadEnv({ CTB_SECRET: SECRET, CTB_ADMIN_PASS: 'hunter2hunter2', NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const { db, sqlite } = openDb(':memory:');
     runMigrations(db);
-    const engine = wireEngine({ db, ctbSecret: SECRET });
+    const engine = wireEngine({ db, ctbSecret: SECRET, expressionBudgetMs: 5_000 });
     const app = buildApp({ env, db, sqlite, engine, logger: false, editorDistDir: '/nonexistent' });
     const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'operator', password: 'operator' } });
     expect(res.statusCode).toBe(401);

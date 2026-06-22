@@ -868,12 +868,17 @@ export function FieldRow({
   required,
   desc,
   inline = false,
+  onRemove,
+  removeLabel,
   children,
 }: {
   label: string;
   required: boolean;
   desc?: string | undefined;
   inline?: boolean;
+  /** When present, an optional field the user added → render a remove (×) button. */
+  onRemove?: (() => void) | undefined;
+  removeLabel?: string | undefined;
   children: ReactNode;
 }) {
   return (
@@ -884,8 +889,83 @@ export function FieldRow({
           {required ? <span className="req">*</span> : null}
         </label>
         {desc ? <span className="field-desc">{desc}</span> : null}
+        {onRemove ? (
+          <button
+            type="button"
+            className="field-remove"
+            title={removeLabel}
+            aria-label={removeLabel}
+            onClick={onRemove}
+          >
+            ×
+          </button>
+        ) : null}
       </div>
       <div className="field-input">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * "+ Add option" control (n8n behaviour) — a dropdown of the OPTIONAL fields
+ * the user has not yet added. Selecting one calls `onAdd(key)`; the parent
+ * form then seeds that field's value (so it moves into the visible form).
+ * Pure presentation — it knows nothing about node types.
+ */
+export function AddOptionControl({
+  options,
+  onAdd,
+}: {
+  options: FieldSpec[];
+  onAdd: (key: string) => void;
+}) {
+  const t = useI18n((s) => s.t);
+  const label = useLabel();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Click-away closes the menu.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  if (options.length === 0) return null;
+
+  return (
+    <div className="add-option" ref={ref}>
+      <button
+        type="button"
+        className="add-option-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="add-option-plus">+</span>
+        {t('form.addOption')}
+      </button>
+      {open ? (
+        <ul className="add-option-menu" role="listbox">
+          {options.map((spec) => (
+            <li key={spec.key} role="option" aria-selected={false}>
+              <button
+                type="button"
+                className="add-option-item"
+                onClick={() => {
+                  onAdd(spec.key);
+                  setOpen(false);
+                }}
+              >
+                {label(spec.key)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

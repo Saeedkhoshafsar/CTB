@@ -28,8 +28,10 @@ import {
   emptyValue,
   isConditionsSchema,
   isKeyboardSchema,
+  isSet,
   matchBranch,
   objectFields,
+  partitionFields,
   resolveWidget,
   type JsonSchema,
 } from '../src/form/schema';
@@ -325,5 +327,96 @@ describe('ACCEPTANCE — P1 nodes fully configurable from widget operations', ()
       expect(committed).toEqual(node.params); // prune is a no-op on clean params
       expect(zod!.safeParse(committed).success, `${node.id} valid`).toBe(true);
     }
+  });
+});
+
+// ── progressive disclosure: required-vs-optional split + "+ Add option" ──────
+//
+// The UX fix: a node shows only its REQUIRED fields (plus any optional field
+// the user already filled); the rest hide behind "+ Add option". These tests
+// drive the PURE layer (partitionFields/isSet) against the REAL shared schemas
+// so the behaviour can't drift from what the form renders.
+describe('progressive disclosure (partitionFields / isSet)', () => {
+  it('isSet: blanks are unset; 0 / false / non-empty count as set', () => {
+    expect(isSet(undefined)).toBe(false);
+    expect(isSet(null)).toBe(false);
+    expect(isSet('')).toBe(false);
+    expect(isSet([])).toBe(false);
+    expect(isSet({})).toBe(false);
+    expect(isSet('hi')).toBe(true);
+    expect(isSet(0)).toBe(true); // a deliberate 0 is a real value
+    expect(isSet(false)).toBe(true); // a deliberate false is a real value
+    expect(isSet(['a'])).toBe(true);
+    expect(isSet({ a: 1 })).toBe(true);
+  });
+
+  it('tg.trigger empty: only the required `event` shows, the rest are opt-in', () => {
+    // This is the exact node the user opened and found overwhelming.
+    const { shown, optional } = partitionFields(schemaOf('tg.trigger'), {});
+    expect(shown.map((f) => f.key)).toEqual(['event']);
+    // command/pattern/patternType/button_key are all hidden until added.
+    expect(optional.map((f) => f.key).sort()).toEqual(
+      ['button_key', 'command', 'pattern', 'patternType'],
+    );
+    // sanity: every property is accounted for exactly once.
+    const all = objectFields(schemaOf('tg.trigger')).map((f) => f.key).sort();
+    expect([...shown, ...optional].map((f) => f.key).sort()).toEqual(all);
+  });
+
+  it('tg.trigger: a filled optional field stays visible (does not hide on reopen)', () => {
+    const { shown, optional } = partitionFields(schemaOf('tg.trigger'), {
+      event: 'command',
+      command: '/start',
+    });
+    expect(shown.map((f) => f.key).sort()).toEqual(['command', 'event']);
+    expect(optional.map((f) => f.key)).not.toContain('command');
+  });
+
+  it('adding a blank optional field keeps it shown via the `added` set', () => {
+    const schema = schemaOf('tg.trigger');
+    // user clicks "+ Add option" → pattern; the form seeds emptyValue ('') and
+    // records it in `added` so it stays visible even though '' is not "set".
+    const patternSpec = objectFields(schema).find((f) => f.key === 'pattern')!;
+    const params = setAtPath({ event: 'text' }, ['pattern'], emptyValue(patternSpec.schema)) as Record<
+      string,
+      unknown
+    >;
+    // without `added`, a blank string would hide again:
+    expect(partitionFields(schema, params).shown.map((f) => f.key)).not.toContain('pattern');
+    // with `added`, it stays shown:
+    const added = new Set(['pattern']);
+    expect(partitionFields(schema, params, added).shown.map((f) => f.key)).toContain('pattern');
+  });
+
+  it('a filled optional field is shown even without the `added` set', () => {
+    const schema = schemaOf('tg.trigger');
+    const { shown } = partitionFields(schema, { event: 'text', pattern: 'hi' });
+    expect(shown.map((f) => f.key)).toContain('pattern');
+  });
+
+  it('removing an optional field (unset + drop from added) returns it to the menu', () => {
+    const schema = schemaOf('tg.trigger');
+    const withPattern = { event: 'text', pattern: 'hi' };
+    // the remove (×) handler sets the field to undefined and drops it from added.
+    const removed = pruneEmpty(
+      setAtPath(withPattern, ['pattern'], undefined) as Record<string, unknown>,
+    ) as Record<string, unknown>;
+    const { shown, optional } = partitionFields(schema, removed, new Set());
+    expect(shown.map((f) => f.key)).toEqual(['event']);
+    expect(optional.map((f) => f.key)).toContain('pattern');
+  });
+
+  it('tg.sendMessage empty: required text shows; chat/keyboard/options are opt-in', () => {
+    // type has a default ('text') so it is not in `required`; text is enforced
+    // by superRefine, not the object `required` set — so the baseline shown set
+    // is whatever the schema marks required. We assert the OPT-IN ones hide.
+    const { shown, optional } = partitionFields(schemaOf('tg.sendMessage'), {});
+    const optKeys = optional.map((f) => f.key);
+    expect(optKeys).toContain('chat');
+    expect(optKeys).toContain('keyboard');
+    expect(optKeys).toContain('options');
+    // nothing is silently dropped
+    const all = objectFields(schemaOf('tg.sendMessage')).map((f) => f.key).sort();
+    expect([...shown, ...optional].map((f) => f.key).sort()).toEqual(all);
   });
 });

@@ -142,6 +142,51 @@ export function objectFields(s: JsonSchema): FieldSpec[] {
   }));
 }
 
+/**
+ * Split an object's fields into the ALWAYS-shown set and the OPTIONAL set the
+ * user opts into via "+ Add option" (n8n behaviour) — purely structural, no
+ * node-type knowledge, so Collection forms reuse it.
+ *
+ * A field is in `shown` when it is:
+ *   • required by the schema, OR
+ *   • currently has a value (`isSet` true) — so a field the user already
+ *     filled never disappears behind the add-menu, even on reopen, OR
+ *   • explicitly added this session via "+ Add option" (`added`) — so a freshly
+ *     added field stays visible even before the user types anything into it.
+ * Everything else is `optional` (the add-menu lists it; selecting it moves it
+ * into the visible form, removing it returns it to the menu).
+ *
+ * `value` is the current params object so "has a value" can be decided;
+ * `added` is the set of keys the user opted into but may not have filled yet.
+ */
+export interface PartitionedFields {
+  shown: FieldSpec[];
+  optional: FieldSpec[];
+}
+
+export function partitionFields(
+  s: JsonSchema,
+  value: Record<string, unknown> | undefined,
+  added?: ReadonlySet<string>,
+): PartitionedFields {
+  const shown: FieldSpec[] = [];
+  const optional: FieldSpec[] = [];
+  for (const spec of objectFields(s)) {
+    if (spec.required || isSet(value?.[spec.key]) || added?.has(spec.key)) shown.push(spec);
+    else optional.push(spec);
+  }
+  return { shown, optional };
+}
+
+/** "Has the user given this field a value?" — drives the shown/optional split. */
+export function isSet(v: unknown): boolean {
+  if (v === undefined || v === null) return false;
+  if (typeof v === 'string') return v !== '';
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as object).length > 0;
+  return true; // numbers (incl. 0) and booleans (incl. false) count as set
+}
+
 /** Branches of a union schema, each resolved like a root field. */
 export function unionBranches(s: JsonSchema): FieldSpec[] {
   return (s.anyOf ?? s.oneOf ?? []).map((b) => ({

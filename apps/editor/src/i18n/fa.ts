@@ -657,6 +657,8 @@ export const fa = {
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'این نود تنظیماتی ندارد.',
+  'form.addOption': 'افزودن گزینه',
+  'form.removeOption': 'حذف این گزینه',
   'form.addRow': 'افزودن ردیف',
   'form.removeRow': 'حذف',
   'form.moveUp': 'بالا',

@@ -104,6 +104,18 @@
 - [ ] Plugin/custom-node loading spec (community nodes)
 - [ ] Docs site, screencast, sample flow library
 
+## PLAN3 — n8n-parity & editor polish (the "make it usable" track) 🎯
+
+**Goal:** after PLAN1+PLAN2 built a deep, working engine (61 nodes, pause/resume, AI, open API), close the gap between *capability* and *usability*. An end-to-end audit found the engine is feature-complete for v1 but the editor under-surfaces what exists. PLAN3 is **editor + UX only** — no engine rewrite, no pivot, no n8n fork. Full task breakdown + acceptance criteria live in **`docs/PLAN3.md`**. See Decision Log #17.
+
+- [x] **UX-T1** — progressive-disclosure node forms ("+ Add option") — *shipped (PR #69)*
+- [ ] **Phase F** — first-run & discoverability: guided empty state + quick-start (F-T1), "hello bot" first-run template (F-T2), surface import/export/templates in the toolbar (F-T3)
+- [ ] **Phase G** — field ergonomics: Fixed | Expression toggle per field ⭐ (G-T1), live expression preview (G-T2), explicit simple/advanced field grouping ⭐ (G-T3)
+- [ ] **Phase H** — canvas power: sticky notes (H-T1), node rename/title (H-T2), canvas error surfacing (H-T3), add-node-on-edge + wire-drop (H-T4)
+- [ ] **Phase I** — run & iterate: pin data (I-T1), execute a single node (I-T2), keyboard-shortcut help overlay + coverage (I-T3)
+
+**Demo:** a brand-new user reaches a working bot reply in under 5 minutes, always finds import/export/templates, and a first-timer sees a minimal node with depth one click away. (⭐ = user explicitly asked for it. H-T1/H-T2/I-T1 touch the stored flow schema → each needs its own Decision Log entry when it starts.)
+
 ---
 
 ## Cross-cutting rules (every phase)
@@ -133,3 +145,4 @@
 | 14 | `save_to` rides the reply WaitSpec as `saveTo`; the router applies it on resume through a new `Executor.resume({ varsPatch })` that merges entries into durable `$vars` before the loop continues | same root cause as #13: the wait node never re-executes on resume, so it can't save its own reply. Patching vars through resume() keeps the write durable (I4) and keeps the router free of state-mutation hacks. `NodeCtx.now()` added in the same task so wait nodes compute `timeoutAt` from the injected executor clock (testable deadlines) |
 | 15 | `ExecutorServices.tg` and `.kv` became **per-bot factories** (`tg(botId, chatId)`, `kv(botId)`) instead of single capabilities | one Executor instance serves MANY bots (one engine per server, P1-T8 wiring): the right rate-limited TgSender and the right kv namespace can only be resolved per execution, and the executor knows the execution's botId. Alternative (executor per bot) would duplicate stores/registries and break the single timeout scanner |
 | 16 | Per-step I/O snapshots live in `exec_logs` (executor `StepLogEntry.input/output`, **20-item cap** per port) rather than a new table or full-fidelity capture; NDV (P2-T3.5) reads them via `GET /api/executions[/:id]`. The detail DTO **nulls `output` when `input` is null** — generic debug rows reuse the output column for non-FlowItem data and must not masquerade as port maps. `FIELD_DRAG_MIME` lives in `form/expression.ts` (pure half) | the columns already existed (input was always null), so no migration; the cap bounds row size for loops over big batches while still showing representative data — n8n similarly truncates. Honest DTO beats a schema change; the MIME constant in form/* keeps the form engine standalone (PLAN P2-T3 note) while canvas re-exports it |
+| 17 | **PLAN3 reframes the remaining roadmap from "more capability" to "discoverability + ergonomics."** An end-to-end audit (server + DB + 61-node catalog booted; import/export + template gallery confirmed already shipped) showed the engine is feature-complete for v1, but the editor under-surfaces what exists — the user "couldn't build a single workflow" and "couldn't find how to import/export." PLAN3 (`docs/PLAN3.md`) is editor/UX only — Phases F (first-run & discoverability), G (field ergonomics, incl. Fixed\|Expression toggle), H (canvas power), I (run & iterate) — with **no engine rewrite, no pivot, no n8n fork**. Each editor improvement must be **structural** (like UX-T1) so all 61 nodes benefit at once. The only PLAN3 items that touch the stored flow schema — **sticky notes (H-T1), node title (H-T2), pin data (I-T1)** — each require their own future Decision Log entry when they start | the lived-experience gap was never missing features; it was that CTB modelled its UI on n8n but never finished the *feel* of n8n. Surfacing an existing power (e.g. F-T1/F-T3 expose import/export/templates) is cheaper and higher-impact than building new capability, and structural form-engine work avoids 61× per-node UI code (invariant I2 + UX-T1 precedent) |

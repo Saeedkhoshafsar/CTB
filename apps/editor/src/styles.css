@@ -359,6 +359,78 @@ input[dir='ltr'] { direction: ltr; }
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+/* remove (×) button on an added optional field */
+.field-remove {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  font-size: 15px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.field-remove:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.field-head { position: relative; }
+.field-row:not(.inline) .field-head { padding-inline-end: 22px; }
+
+/* "+ Add option" progressive-disclosure control */
+.add-option { position: relative; margin-top: 0.35rem; }
+.add-option-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  padding: 0.3rem 0.6rem;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.add-option-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.add-option-plus { font-size: 14px; font-weight: 700; line-height: 1; }
+.add-option-menu {
+  position: absolute;
+  z-index: 20;
+  inset-inline-start: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.add-option-menu li { margin: 0; }
+.add-option-item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  font-size: 12px;
+  padding: 0.4rem 0.55rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.add-option-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
 .field-input input[type='text'],
 .field-input input[type='number'],
 .field-input select,

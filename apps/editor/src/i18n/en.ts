@@ -668,6 +668,8 @@ export const en: Record<keyof typeof fa, string> = {
 
   // ── form engine (P2-T3) ──
   'form.noParams': 'This node has no parameters.',
+  'form.addOption': 'Add option',
+  'form.removeOption': 'Remove this option',
   'form.addRow': 'Add row',
   'form.removeRow': 'Remove',
   'form.moveUp': 'Up',

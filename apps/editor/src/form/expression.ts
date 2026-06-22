@@ -41,6 +41,47 @@ export function hasExpression(text: string): boolean {
   return /\{\{.*?\}\}/s.test(text);
 }
 
+// ── Fixed | Expression field mode (G-T1) ─────────────────────────────────────
+//
+// A "simple" field (number / select / duration / single-line text) can be edited
+// either as a literal value (Fixed) or as an expression string (Expression). The
+// mode is INFERRED from the value, not stored separately — a value containing
+// `{{ }}` is an expression, anything else is fixed. This keeps the stored params
+// identical to what the engine already accepts (a lone `{{ … }}` resolves to the
+// raw value before Zod runs — see core/engine/params.ts), so no schema change is
+// needed and Fixed↔Expression is a pure, lossless string/value conversion.
+
+export type FieldMode = 'fixed' | 'expression';
+
+/**
+ * The mode a value is currently in. A string with `{{ }}` ⇒ expression; an empty
+ * string / undefined / a plain literal ⇒ fixed. (An empty value stays "fixed" so
+ * a freshly-shown field doesn't surprise the user with the expression editor.)
+ */
+export function fieldModeOf(value: unknown): FieldMode {
+  return typeof value === 'string' && hasExpression(value) ? 'expression' : 'fixed';
+}
+
+/**
+ * Convert a value when the user flips the toggle, preserving their work
+ * (n8n behaviour):
+ *  • → expression: render the current literal as a string seed the user can
+ *    extend (numbers/booleans become their text; an empty value becomes '').
+ *    We do NOT auto-wrap in `{{ }}` — the user types the expression; the box is
+ *    the expression editor and the `{x}` helper inserts `{{ … }}` scaffolding.
+ *  • → fixed: keep an expression string AS-IS so nothing is lost (the Fixed
+ *    widget shows it verbatim); a non-string value passes through unchanged.
+ * Switching back and forth therefore never drops the user's text.
+ */
+export function convertFieldMode(to: FieldMode, value: unknown): unknown {
+  if (to === 'expression') {
+    if (value === undefined || value === null) return '';
+    return typeof value === 'string' ? value : String(value);
+  }
+  // to 'fixed' — leave the value untouched (string expr kept verbatim, others as-is).
+  return value;
+}
+
 /** Scope roots available inside expressions (ARCHITECTURE §6). */
 export const SCOPE_HINTS: { name: string; example: string }[] = [
   { name: '$json', example: '{{ $json.text }}' },

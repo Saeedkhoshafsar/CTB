@@ -21,7 +21,12 @@ import {
 import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json';
-import { insertHint, splitSegments } from '../src/form/expression';
+import {
+  convertFieldMode,
+  fieldModeOf,
+  insertHint,
+  splitSegments,
+} from '../src/form/expression';
 import { getAtPath, moveRow, pruneEmpty, setAtPath, type Path } from '../src/form/model';
 import {
   convertBranchValue,
@@ -214,6 +219,70 @@ describe('expression awareness', () => {
     expect(out.text.slice(0, out.caret)).toBe('Hi {{ $vars.name'); // caret before " }}"
     const inn = insertHint('{{ ', 3, '$json.text');
     expect(inn.text).toBe('{{ $json.text');
+  });
+});
+
+// ── Fixed | Expression field mode (G-T1) ────────────────────────────────────
+
+describe('field mode (Fixed | Expression) — G-T1', () => {
+  it('infers mode from the value: only a {{ }} string is "expression"', () => {
+    // expression
+    expect(fieldModeOf('{{ $json.age }}')).toBe('expression');
+    expect(fieldModeOf('retries: {{ $vars.n }}')).toBe('expression');
+    // fixed — literals, empty, undefined and non-strings never read as expression
+    expect(fieldModeOf(5)).toBe('fixed');
+    expect(fieldModeOf('5')).toBe('fixed');
+    expect(fieldModeOf('')).toBe('fixed');
+    expect(fieldModeOf(undefined)).toBe('fixed');
+    expect(fieldModeOf(null)).toBe('fixed');
+    expect(fieldModeOf(true)).toBe('fixed');
+    // an unclosed brace is a literal for the engine, so it's fixed here too
+    expect(fieldModeOf('{{ broken')).toBe('fixed');
+  });
+
+  it('Fixed → Expression seeds the editor with the literal as text', () => {
+    expect(convertFieldMode('expression', 5)).toBe('5');
+    expect(convertFieldMode('expression', true)).toBe('true');
+    expect(convertFieldMode('expression', 'hi')).toBe('hi');
+    // empty / nullish become an empty editor (not the string "undefined")
+    expect(convertFieldMode('expression', undefined)).toBe('');
+    expect(convertFieldMode('expression', null)).toBe('');
+  });
+
+  it('Expression → Fixed keeps the expression string verbatim (no data loss)', () => {
+    expect(convertFieldMode('fixed', '{{ $json.age }}')).toBe('{{ $json.age }}');
+    // non-string fixed values pass through untouched
+    expect(convertFieldMode('fixed', 7)).toBe(7);
+  });
+
+  it('round-trips Fixed↔Expression without losing the user\u2019s text', () => {
+    // a literal the user typed survives a there-and-back toggle
+    const lit = 42;
+    const asExpr = convertFieldMode('expression', lit); // '42'
+    expect(fieldModeOf(asExpr)).toBe('fixed'); // plain '42' is still fixed text
+    expect(convertFieldMode('fixed', asExpr)).toBe('42');
+
+    // an expression the user typed survives a there-and-back toggle
+    const expr = '{{ $json.count + 1 }}';
+    expect(fieldModeOf(expr)).toBe('expression');
+    const asFixed = convertFieldMode('fixed', expr);
+    expect(asFixed).toBe(expr);
+    expect(convertFieldMode('expression', asFixed)).toBe(expr);
+  });
+
+  it('an expression value on a NUMBER field validates against the real Zod schema', () => {
+    // tg.waitForReply.max_retries is z.number().int().nonnegative(). In the UI a
+    // user toggles it to Expression and stores the string "{{ $json.tries }}".
+    const stored = convertFieldMode('expression', 0); // '0' seed → user edits…
+    expect(typeof stored).toBe('string');
+    const exprValue = '{{ $json.tries }}';
+    expect(fieldModeOf(exprValue)).toBe('expression');
+
+    // The engine resolves a lone {{ … }} to the RAW value BEFORE Zod runs
+    // (core/engine/params.ts). Simulate that resolution → a number.
+    const resolved = 3; // what `{{ $json.tries }}` evaluates to at runtime
+    const parsed = TgWaitForReplyParamsSchema.safeParse({ max_retries: resolved });
+    expect(parsed.success).toBe(true);
   });
 });
 

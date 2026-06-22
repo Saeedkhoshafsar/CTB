@@ -573,6 +573,37 @@ button.danger { color: var(--danger); }
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
+/* Fixed | Expression toggle (G-T1) — a compact pill switch above "simple"
+   widgets (number / select / duration). Mirrors the .union-tabs segmented
+   control, sized down so it reads as a field affordance rather than a section
+   control. */
+.moded-widget { display: flex; flex-direction: column; gap: 0.35rem; }
+.field-mode {
+  display: inline-flex;
+  align-self: start;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px;
+  gap: 2px;
+}
+.field-mode-btn {
+  font-size: 11px;
+  padding: 0.15rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 3px);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.field-mode-btn:hover:not(.active) { color: var(--text); }
+.field-mode-btn.active {
+  background: var(--bg-hover);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
 /* duration */
 .duration-widget { display: flex; gap: 0.4rem; }
 .duration-widget input { width: 90px; }

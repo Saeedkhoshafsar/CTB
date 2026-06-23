@@ -986,6 +986,7 @@ button.danger { color: var(--danger); }
 .ndv-pinned { color: var(--text); font-weight: 600; }
 .ndv-pin-hint { color: var(--text-dim); }
 .ctb-node-pinned { color: var(--text-dim); }
+.ndv-run-node { font-size: 12px; padding: 0.3rem 0.7rem; }
 .ndv-close {
   background: none;
   border: none;

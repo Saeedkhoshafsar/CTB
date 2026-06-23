@@ -19,6 +19,7 @@ import { pruneEmpty } from '../form/model';
 import { buildPreviewScope, type PreviewScope } from '../form/preview';
 import { SchemaForm } from '../form/SchemaForm';
 import type { JsonSchema } from '../form/schema';
+import { api } from '../api/client';
 import { useCanvas } from '../stores/canvas';
 import { useRunData } from '../stores/run-data';
 import { DataPanel } from './DataPanel';
@@ -122,6 +123,30 @@ function DetailInner({ node }: { node: FlowNode }) {
     useCanvas.getState().updateNode(nodeId, { pinnedData: undefined });
   }, [nodeId]);
 
+  // I-T2 (gap G16): run THIS node alone and show its output, without running
+  // the whole flow. Flush pending edits first so the server runs the latest
+  // graph, then refresh the run-data overlay so the OUTPUT pane updates.
+  const [running, setRunning] = useState(false);
+  const [runNodeError, setRunNodeError] = useState<string | null>(null);
+  const runThisNode = useCallback(async () => {
+    const flowId = useCanvas.getState().flowId;
+    if (!flowId) return;
+    setRunning(true);
+    setRunNodeError(null);
+    try {
+      await useCanvas.getState().saveNow();
+      // Feed the node its last captured input (if any) so a mid-flow node runs
+      // with realistic data; otherwise the engine seeds one empty item.
+      const input = useRunData.getState().byNode.get(nodeId)?.input;
+      await api.runNode(flowId, nodeId, input);
+      await useRunData.getState().refresh();
+    } catch (err) {
+      setRunNodeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [nodeId]);
+
   const typeLabel = info ? t(info.meta.labelKey as MessageKey) : node.type;
   // H-T2: NDV title shows the node's human title when set, else the type label.
   const label = nodeDisplayName(node, typeLabel);
@@ -146,6 +171,15 @@ function DetailInner({ node }: { node: FlowNode }) {
               {t(`exec.status.${execution.status}` as MessageKey)}
             </span>
           ) : null}
+          <button
+            type="button"
+            className="primary ndv-run-node"
+            disabled={running}
+            title={t('editor.node.runNode.hint')}
+            onClick={() => void runThisNode()}
+          >
+            {running ? t('editor.node.runNode.busy') : t('editor.node.runNode.action')}
+          </button>
           <button type="button" className="ghost" disabled={runLoading} onClick={() => void refresh()}>
             {runLoading ? t('data.loading') : t('data.refresh')}
           </button>
@@ -157,6 +191,12 @@ function DetailInner({ node }: { node: FlowNode }) {
         {runError ? (
           <div className="ndv-error" role="alert">
             <strong>{t('editor.node.runError')}:</strong> {runError}
+          </div>
+        ) : null}
+
+        {runNodeError ? (
+          <div className="ndv-error" role="alert">
+            <strong>{t('editor.node.runNode.failed')}:</strong> {runNodeError}
           </div>
         ) : null}
 

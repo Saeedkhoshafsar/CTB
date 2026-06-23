@@ -147,6 +147,8 @@ export interface FakeServer {
   files: Map<string, FilePublic & { bytes: string }>;
   loggedIn: boolean;
   calls: { method: string; path: string; body?: unknown }[];
+  /** Single-node runs requested via POST /api/flows/:id/run-node (I-T2). */
+  runNodeCalls: { flowId: string; nodeId: string; input?: unknown }[];
 }
 
 function json(status: number, body: unknown): Response {
@@ -215,6 +217,7 @@ export function createFakeServer(): FakeServer {
     files: new Map(),
     loggedIn: false,
     calls: [],
+    runNodeCalls: [],
     fetch: async (input, init) => {
       const method = init?.method ?? 'GET';
       const url = new URL(input, 'http://test');
@@ -397,6 +400,23 @@ export function createFakeServer(): FakeServer {
         };
         srv.flows.set(id, flow);
         return json(201, { flow });
+      }
+      {
+        // Single-node run (I-T2). Mirrors the real route's contract so the
+        // client wrapper's method/path/body shape is exercised end-to-end.
+        const runNodeMatch = path.match(/^\/api\/flows\/([^/]+)\/run-node$/);
+        if (runNodeMatch && method === 'POST') {
+          const flow = srv.flows.get(runNodeMatch[1]!);
+          if (!flow) return json(404, { error: 'not_found' });
+          if (typeof body.nodeId !== 'string' || body.nodeId.length === 0) {
+            return json(400, { error: 'invalid_body' });
+          }
+          const node = flow.graph.nodes.find((n) => n.id === body.nodeId);
+          if (!node) return json(404, { error: 'node_not_found' });
+          if (node.disabled) return json(422, { error: 'node_disabled' });
+          srv.runNodeCalls.push({ flowId: flow.id, nodeId: body.nodeId, input: body.input });
+          return json(200, { executionId: uid('exec'), status: 'done', error: null });
+        }
       }
       {
         const exportMatch = path.match(/^\/api\/flows\/([^/]+)\/export$/);

@@ -228,6 +228,19 @@ export interface StartInput {
    * Decision Log #21.
    */
   testRun?: boolean;
+  /**
+   * Run a SINGLE node, then stop (I-T2, gap G16 — "execute a single node").
+   * When set, the executor enters at `entry.nodeId`, executes exactly that node
+   * (full resolve → eval → Zod → execute path, so the result is byte-identical
+   * to a whole-flow run of the node), records its I/O snapshot, and then ENDS
+   * the run — it never routes the output downstream. The node's output is read
+   * back from the step log exactly like any test run. Persisted onto
+   * ExecutionState.stopAfterNode so it survives pause/resume (a single-node run
+   * of a wait node correctly reports `waiting` and stops cleanly when resumed).
+   * Only the editor's "Run this node" button sets it; production runs omit it.
+   * Decision Log #22.
+   */
+  stopAfterNode?: NodeId;
 }
 
 export interface ResumeInput {
@@ -293,6 +306,9 @@ export class Executor {
       // Only stamp the flag when it's a test run, so a production run's
       // persisted state stays byte-identical to pre-I-T1 (the field is omitted).
       ...(input.testRun ? { testRun: true } : {}),
+      // I-T2: single-node run boundary. Omitted on every normal run so the
+      // persisted state stays byte-identical to pre-I-T2.
+      ...(input.stopAfterNode !== undefined ? { stopAfterNode: input.stopAfterNode } : {}),
     };
     const exec = await this.store.create({
       id: input.executionId,
@@ -415,6 +431,22 @@ export class Executor {
         durationMs: this.clock().getTime() - stepStart,
         ts: this.clock().toISOString(),
       });
+
+      // ── single-node run boundary (I-T2) ──
+      // The target node has now executed and its I/O snapshot is logged. End the
+      // run WITHOUT routing the output downstream, so exactly one node ran. A
+      // WAIT result is left to the switch below (a single-node run of a wait
+      // node legitimately reports `waiting`); an `end`/`error` also terminates
+      // naturally. Only `items`/`goto` (which would otherwise enqueue a
+      // successor) are short-circuited here.
+      if (
+        state.stopAfterNode === node.id &&
+        (result.kind === 'items' || result.kind === 'goto')
+      ) {
+        await this.finalize(exec.id, state, 'done', null);
+        this.log(exec.id, node.id, 'info', `single-node run of "${node.id}" complete`);
+        return { status: 'done', steps: state.steps, error: null, wait: null };
+      }
 
       // ── route the result ──
       switch (result.kind) {

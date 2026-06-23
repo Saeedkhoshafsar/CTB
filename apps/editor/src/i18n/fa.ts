@@ -331,6 +331,10 @@ export const fa = {
   'editor.node.pin.pinned': '📌 سنجاق‌شده ({n} مورد) — در اجراهای آزمایشی استفاده می‌شود',
   'editor.node.pin.badge': 'سنجاق‌شده',
   'editor.node.pin.hint': 'دادهٔ سنجاق‌شده فقط در اجرای آزمایشی استفاده می‌شود، هرگز در اجرای واقعی.',
+  'editor.node.runNode.action': '▶ اجرای این نود',
+  'editor.node.runNode.busy': 'در حال اجرا…',
+  'editor.node.runNode.hint': 'فقط همین نود را با آخرین ورودی‌اش (یا خالی) اجرا کن و خروجی را نشان بده — بدون اجرای کل فلو.',
+  'editor.node.runNode.failed': 'اجرا ناموفق بود',
   // H-T4 (gaps G8/G9): افزودن نود روی یال + رها کردن سیم روی بوم خالی.
   'editor.edge.insert': 'افزودن یک نود اینجا',
   'editor.picker.title': 'افزودن نود',

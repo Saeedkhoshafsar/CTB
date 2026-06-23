@@ -25,6 +25,7 @@ import {
   ImportFlowBodySchema,
   ImportTemplateBodySchema,
   RollbackFlowBodySchema,
+  RunNodeBodySchema,
   UpdateFlowBodySchema,
   defaultFlowSettings,
   findFlowTemplate,
@@ -407,6 +408,61 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       // short-circuit to that sample instead of executing. Production runs
       // (router/scheduler/webhook) never set this, so they ignore pins.
       testRun: true,
+    });
+    return { executionId, status: result.status, error: result.error };
+  });
+
+  // ---- single-node run (I-T2, gap G16) ------------------------------------
+  //
+  // Execute ONE node and stop, without running the whole flow. The editor's
+  // "Run this node" button: it enters the engine AT the requested node with the
+  // given input (or one empty item), runs exactly that node via the full
+  // resolve → eval → Zod → execute path (so the result is byte-identical to a
+  // whole-flow run of that node), and ends — the executor's stopAfterNode
+  // boundary never routes the output downstream. It is always a TEST run, so a
+  // pinned node (I-T1) honours its pin. Works on drafts. Chat-less context: the
+  // tg capability is null, so a node needing a chat fails with a pointed log
+  // error — honest for a node test without a chat (pin its upstream instead).
+  app.post('/api/flows/:id/run-node', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!deps.executor) return reply.code(503).send({ error: 'engine_not_configured' });
+    const body = RunNodeBodySchema.safeParse(req.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_body', issues: body.error.issues });
+    }
+    const row = db.select().from(flows).where(eq(flows.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+
+    const graph = FlowGraphSchema.safeParse(row.graph);
+    if (!graph.success) {
+      return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+    }
+    const node = graph.data.nodes.find((n) => n.id === body.data.nodeId);
+    if (!node) {
+      return reply.code(404).send({ error: 'node_not_found' });
+    }
+    if (node.disabled) {
+      return reply.code(422).send({
+        error: 'node_disabled',
+        problems: [`node "${node.id}" is disabled — enable it to run`],
+      });
+    }
+
+    const executionId = randomUUID();
+    const result = await deps.executor.start({
+      executionId,
+      flow: { id: row.id, name: row.name },
+      graph: graph.data,
+      botId: row.botId,
+      chatId: null,
+      userId: null,
+      // Enter the engine AT the target node with the supplied input (one empty
+      // item by default, mirroring a manual-trigger run).
+      entry: { nodeId: node.id, items: { main: body.data.input ?? [{ json: {} }] } },
+      // Always a TEST run so a pinned node honours its pin (I-T1).
+      testRun: true,
+      // The single-node boundary: execute this node, then stop (I-T2).
+      stopAfterNode: node.id,
     });
     return { executionId, status: result.status, error: result.error };
   });

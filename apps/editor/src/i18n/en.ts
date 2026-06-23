@@ -334,6 +334,10 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.node.pin.pinned': '📌 Pinned ({n} item(s)) — used in test runs',
   'editor.node.pin.badge': 'Pinned',
   'editor.node.pin.hint': 'Pinned data is used only in test runs, never in production.',
+  'editor.node.runNode.action': '▶ Run this node',
+  'editor.node.runNode.busy': 'Running…',
+  'editor.node.runNode.hint': 'Run only this node with its last input (or empty) and show the output — without running the whole flow.',
+  'editor.node.runNode.failed': 'Run failed',
   // H-T4 (gaps G8/G9): add-node-on-edge + wire-drop-to-palette.
   'editor.edge.insert': 'Insert a node here',
   'editor.picker.title': 'Add a node',

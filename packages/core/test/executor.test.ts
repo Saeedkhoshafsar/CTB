@@ -285,6 +285,98 @@ describe('executor — pinned data (I-T1, gap G4)', () => {
   });
 });
 
+describe('executor — single-node run (I-T2, gap G16)', () => {
+  it('stopAfterNode: runs ONLY the target node and ends without routing downstream', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' } },
+        // `save` would run on a normal flow; the single-node boundary must stop
+        // before it (and `boom` would throw if ever reached).
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      stopAfterNode: 'src',
+    });
+    expect(res.status).toBe('done');
+    expect(res.steps).toBe(1); // exactly one node executed
+    const exec = await store.load('e1');
+    // `save` never ran → the downstream var is unset
+    expect(exec!.state.vars.trail).toBeUndefined();
+  });
+
+  it('the target node executes via the full path — its output is captured in the log', async () => {
+    const { executor, logs } = makeHarness();
+    const g = graph([{ id: 'src', type: 'test.emit', params: { tag: 'Y' } }], []);
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({ seed: 1 })] } },
+      stopAfterNode: 'src',
+    });
+    // the I/O snapshot row for `src` carries its emitted output (trail:['Y'])
+    const exec = logs.find((l) => l.nodeId === 'src' && l.output);
+    expect(exec).toBeDefined();
+    expect(exec!.output!.main![0]!.json.trail).toEqual(['Y']);
+    expect(logs.some((l) => /single-node run of "src" complete/.test(l.message))).toBe(true);
+  });
+
+  it('stopAfterNode is persisted on the state (I4) and the chosen input reaches the node', async () => {
+    const { executor, store } = makeHarness();
+    // run `mid` alone, feeding it an item that already carries a trail
+    const g = graph(
+      [
+        { id: 'up', type: 'test.emit', params: { tag: 'UP' } },
+        { id: 'mid', type: 'test.emit', params: { tag: 'MID' } },
+      ],
+      [['up', 'mid']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'mid', items: { main: [item({ trail: ['SEED'] })] } },
+      stopAfterNode: 'mid',
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.stopAfterNode).toBe('mid');
+  });
+
+  it('a single-node run of a WAIT node reports `waiting` (the wait is not short-circuited)', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph([{ id: 'ask', type: 'test.ask', params: { question: 'نام؟' } }], []);
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b', chatId: 7,
+      entry: { nodeId: 'ask', items: { main: [item({})] } },
+      stopAfterNode: 'ask',
+    });
+    expect(res.status).toBe('waiting');
+    expect((await store.load('e1'))!.state.stopAfterNode).toBe('ask');
+  });
+
+  it('a normal run (no stopAfterNode) is unaffected — it routes through every node', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' } },
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      // no stopAfterNode → full flow
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.vars.trail).toEqual(['X']); // save DID run
+    expect(exec!.state.stopAfterNode).toBeUndefined();
+  });
+});
+
 describe('executor — step-log I/O snapshots (P2-T3.5, editor NDV data)', () => {
   it('"executed" rows carry the node input items and per-port output items', async () => {
     const { executor, logs } = makeHarness();

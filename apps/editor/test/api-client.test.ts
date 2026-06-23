@@ -95,6 +95,37 @@ describe('ApiClient (P2-T1)', () => {
     expect(await client.listFlows(bot.id)).toHaveLength(0);
   });
 
+  it('runNode (I-T2) sends nodeId + input to the single-node endpoint and returns the run result', async () => {
+    const { srv, client } = loggedInClient();
+    await client.login({ username: 'admin', password: 'pw' });
+    const bot = await client.createBot({ name: 'b', token: VALID_TOKEN, mode: 'polling', settings: {} });
+    const flow = await client.createFlow({
+      botId: bot.id, name: 'f',
+      graph: {
+        nodes: [{ id: 'set', type: 'data.setFields', params: {}, position: { x: 0, y: 0 }, disabled: false }],
+        edges: [],
+      },
+    });
+
+    const res = await client.runNode(flow.id, 'set', [{ json: { who: 'علی' } }]);
+    expect(res.status).toBe('done');
+    expect(res.executionId).toMatch(/^exec/);
+    // the wrapper hit the right endpoint with the right body
+    expect(srv.runNodeCalls).toEqual([
+      { flowId: flow.id, nodeId: 'set', input: [{ json: { who: 'علی' } }] },
+    ]);
+
+    // input is optional — omitting it sends no `input` key
+    srv.runNodeCalls.length = 0;
+    await client.runNode(flow.id, 'set');
+    expect(srv.runNodeCalls[0]).toEqual({ flowId: flow.id, nodeId: 'set', input: undefined });
+
+    // unknown node → 404 node_not_found envelope
+    await expect(client.runNode(flow.id, 'ghost')).rejects.toMatchObject({
+      name: 'ApiError', status: 404, body: { error: 'node_not_found' },
+    });
+  });
+
   it('updateFlow persists execution-policy + error-handler settings (P3-T6)', async () => {
     const { client } = loggedInClient();
     await client.login({ username: 'admin', password: 'pw' });

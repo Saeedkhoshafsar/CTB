@@ -174,3 +174,76 @@ describe('PLAN P2-T2 acceptance — build the P1 demo flow via canvas actions', 
     expect(sortGraph(renamed)).toEqual(sortGraph(fixture));
   });
 });
+
+describe('sticky notes — store actions (H-T1)', () => {
+  it('addNote appends a default note in graph.notes and returns its id', async () => {
+    const { useCanvas } = await setup();
+    const id = useCanvas.getState().addNote({ x: 40, y: 60 });
+    expect(id).toBe('note_1');
+    const notes = useCanvas.getState().graph.notes ?? [];
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toEqual({
+      id: 'note_1',
+      text: '',
+      position: { x: 40, y: 60 },
+      size: { width: 240, height: 160 },
+      color: 'yellow',
+    });
+    // the document remains valid against the shared contract (engine-inert)
+    expect(FlowGraphSchema.safeParse(useCanvas.getState().graph).success).toBe(true);
+  });
+
+  it('notes never touch nodes/edges — the engine-visible graph is unchanged', async () => {
+    const { useCanvas } = await setup();
+    const a = useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    useCanvas.getState().addNote({ x: 10, y: 10 });
+    const g = useCanvas.getState().graph;
+    expect(g.nodes.map((n) => n.id)).toEqual([a]);
+    expect(g.edges).toHaveLength(0);
+  });
+
+  it('updateNote patches text/color of an existing note and ignores unknown ids', async () => {
+    const { useCanvas } = await setup();
+    const id = useCanvas.getState().addNote({ x: 0, y: 0 });
+    useCanvas.getState().updateNote(id, { text: 'remember to test', color: 'blue' });
+    const note = (useCanvas.getState().graph.notes ?? [])[0]!;
+    expect(note.text).toBe('remember to test');
+    expect(note.color).toBe('blue');
+    // unknown id is a no-op (no throw, no spurious note)
+    useCanvas.getState().updateNote('note_999', { text: 'ghost' });
+    expect(useCanvas.getState().graph.notes).toHaveLength(1);
+  });
+
+  it('removeNotes deletes the listed notes only', async () => {
+    const { useCanvas } = await setup();
+    const a = useCanvas.getState().addNote({ x: 0, y: 0 });
+    const b = useCanvas.getState().addNote({ x: 100, y: 0 });
+    useCanvas.getState().removeNotes([a]);
+    const ids = (useCanvas.getState().graph.notes ?? []).map((n) => n.id);
+    expect(ids).toEqual([b]);
+  });
+
+  it('moveNote/resizeNote coalesce into one undo entry per gesture (like node drags)', async () => {
+    const { useCanvas } = await setup();
+    const id = useCanvas.getState().addNote({ x: 0, y: 0 });
+    const baseHistory = useCanvas.getState().past.length;
+
+    // simulate a drag: many live moves, one commit
+    for (let x = 1; x <= 4; x++) useCanvas.getState().moveNote(id, { x: x * 25, y: 0 });
+    useCanvas.getState().commitMove();
+    expect((useCanvas.getState().graph.notes ?? [])[0]!.position).toEqual({ x: 100, y: 0 });
+    expect(useCanvas.getState().past).toHaveLength(baseHistory + 1); // one entry for the whole drag
+
+    // a resize gesture likewise = one entry
+    useCanvas.getState().resizeNote(id, { width: 300, height: 220 });
+    useCanvas.getState().commitMove();
+    expect((useCanvas.getState().graph.notes ?? [])[0]!.size).toEqual({ width: 300, height: 220 });
+    expect(useCanvas.getState().past).toHaveLength(baseHistory + 2);
+
+    // undo rewinds the resize, then the move, atomically
+    useCanvas.getState().undo();
+    expect((useCanvas.getState().graph.notes ?? [])[0]!.size).toEqual({ width: 240, height: 160 });
+    useCanvas.getState().undo();
+    expect((useCanvas.getState().graph.notes ?? [])[0]!.position).toEqual({ x: 0, y: 0 });
+  });
+});

@@ -275,6 +275,93 @@ input[dir='ltr'] { direction: ltr; }
 .ctb-node-flag { font-size: 10.5px; color: var(--warn); margin-top: 0.2rem; }
 .ctb-node-flag.danger { color: var(--danger); }
 
+/* ── sticky notes (H-T1) ─────────────────────────────────────────────────── */
+.sticky-note {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  padding: 6px 8px 8px;
+  color: #1a1a1a;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+.sticky-note.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* a fixed, legible palette (light fills, dark text) */
+.sticky-yellow { background: #fff3b0; }
+.sticky-green { background: #c7f0c2; }
+.sticky-blue { background: #c2dcff; }
+.sticky-pink { background: #ffc9e0; }
+.sticky-gray { background: #e2e4e8; }
+
+.sticky-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.sticky-note:hover .sticky-toolbar,
+.sticky-note.selected .sticky-toolbar { opacity: 1; }
+
+.sticky-colors { display: flex; gap: 3px; }
+.sticky-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+}
+.sticky-color.active { box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45); }
+.sticky-color-yellow { background: #fdd835; }
+.sticky-color-green { background: #66bb6a; }
+.sticky-color-blue { background: #42a5f5; }
+.sticky-color-pink { background: #ec407a; }
+.sticky-color-gray { background: #9e9e9e; }
+
+.sticky-actions { display: flex; gap: 4px; }
+.sticky-btn {
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 5px;
+  color: #1a1a1a;
+}
+.sticky-btn:hover { background: rgba(0, 0, 0, 0.16); }
+
+.sticky-text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  cursor: text;
+}
+.sticky-empty { color: rgba(0, 0, 0, 0.45); font-style: italic; }
+.sticky-text-edit {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  border: none;
+  outline: none;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  padding: 4px;
+  font: inherit;
+  color: #1a1a1a;
+}
+
 .ctb-port-label {
   position: absolute;
   left: calc(100% + 10px);

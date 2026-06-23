@@ -171,6 +171,26 @@ function ExportButton({ flow }: { flow: FlowPublic }) {
   );
 }
 
+/**
+ * Add-sticky-note button (H-T1). Adds a note to the flow document at a small
+ * pseudo-random offset (so repeated clicks don't stack exactly), then the
+ * canvas renders it from `graph.notes`. Placement is intentionally simple —
+ * the user drags it where they want; fitView/scroll already frame the canvas.
+ */
+function AddNoteButton() {
+  const t = useI18n((s) => s.t);
+  const addNote = useCanvas((s) => s.addNote);
+  const onAdd = () => {
+    const jitter = () => Math.round((Math.random() - 0.5) * 80);
+    addNote({ x: 80 + jitter(), y: 80 + jitter() });
+  };
+  return (
+    <button className="ghost" onClick={onAdd} data-testid="add-note" title={t('editor.note.addHint')}>
+      {t('editor.note.add')}
+    </button>
+  );
+}
+
 function Toolbar({
   flow,
   onFlowChange,
@@ -216,6 +236,7 @@ function Toolbar({
         <button className="btn" onClick={() => void saveNow()}>
           {t('editor.save')}
         </button>
+        <AddNoteButton />
         <ExportButton flow={flow} />
         <TestRunButton flow={flow} />
         <div className="versions-anchor">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FlowGraphSchema, NodeTypeSchema } from '@ctb/shared';
+import { FlowGraphSchema, NodeTypeSchema, StickyNoteSchema } from '@ctb/shared';
 import sampleFlow from './fixtures/sample-flow.json';
 
 describe('FlowGraphSchema', () => {
@@ -67,5 +67,79 @@ describe('FlowGraphSchema', () => {
       edges: [],
     });
     expect(res.success).toBe(false);
+  });
+
+  // ── sticky notes (H-T1) ───────────────────────────────────────────────────
+  describe('sticky notes (H-T1)', () => {
+    it('a graph WITHOUT notes parses unchanged — notes is optional/absent', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [{ id: 'a', type: 'flow.if' }],
+        edges: [],
+      });
+      // optional, no default → omitted graphs stay byte-identical (engine inert)
+      expect(graph.notes).toBeUndefined();
+    });
+
+    it('the hand-written sample flow (no notes) still parses byte-identically', () => {
+      const graph = FlowGraphSchema.parse(sampleFlow);
+      expect(graph.notes).toBeUndefined();
+      expect(graph.nodes).toHaveLength(7);
+    });
+
+    it('parses notes and applies StickyNote defaults (size/color/text)', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [],
+        edges: [],
+        notes: [{ id: 'note_1', position: { x: 10, y: 20 } }],
+      });
+      expect(graph.notes).toHaveLength(1);
+      const n = graph.notes![0]!;
+      expect(n.text).toBe('');
+      expect(n.color).toBe('yellow');
+      expect(n.size).toEqual({ width: 240, height: 160 });
+      expect(n.position).toEqual({ x: 10, y: 20 });
+    });
+
+    it('notes round-trip through the graph independent of nodes/edges', () => {
+      const input = {
+        nodes: [{ id: 'a', type: 'flow.if' }],
+        edges: [],
+        notes: [
+          { id: 'note_1', text: 'hi', position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, color: 'blue' as const },
+        ],
+      };
+      const graph = FlowGraphSchema.parse(input);
+      expect(graph.notes![0]).toMatchObject({ id: 'note_1', text: 'hi', color: 'blue' });
+    });
+
+    it('rejects duplicate note ids', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [],
+        edges: [],
+        notes: [{ id: 'dup' }, { id: 'dup' }],
+      });
+      expect(res.success).toBe(false);
+      expect(JSON.stringify(res.error?.issues)).toContain('duplicate note id');
+    });
+
+    it('a note id may coincide with a node id (separate namespaces)', () => {
+      // notes are never referenced by edges/engine, so no collision is possible.
+      const res = FlowGraphSchema.safeParse({
+        nodes: [{ id: 'shared', type: 'flow.if' }],
+        edges: [],
+        notes: [{ id: 'shared', text: 'note named like the node' }],
+      });
+      expect(res.success).toBe(true);
+    });
+
+    it('rejects an unknown note colour', () => {
+      const res = StickyNoteSchema.safeParse({ id: 'n', color: 'rainbow' });
+      expect(res.success).toBe(false);
+    });
+
+    it('clamps reject out-of-bounds sizes', () => {
+      expect(StickyNoteSchema.safeParse({ id: 'n', size: { width: 10, height: 10 } }).success).toBe(false);
+      expect(StickyNoteSchema.safeParse({ id: 'n', size: { width: 200, height: 200 } }).success).toBe(true);
+    });
   });
 });

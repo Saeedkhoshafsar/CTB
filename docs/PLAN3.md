@@ -182,9 +182,18 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
 
 ### Phase H — Canvas power (the "organize a big flow" cure)
 
-- **H-T1 — Sticky notes. (gap G3)** New canvas element type stored in the graph
-  (shared schema addition — Decision Log entry required), React Flow custom node,
-  create/edit/resize/colour, persisted with the flow. Verify: shared + editor tests.
+- **H-T1 — Sticky notes. (gap G3) ✅ DONE** New canvas element type stored in the
+  graph as `FlowGraphSchema.notes` (a NEW optional `StickyNote[]` — Decision Log
+  #19), rendered as a React Flow custom node kind (`sticky`) derived per-render
+  from `graph.notes`; create (toolbar button) / in-place edit / `NodeResizer`
+  resize / 5-colour picker, persisted with the flow (rides undo/redo, autosave and
+  export/import for free). The engine is provably inert — the executor reads only
+  `graph.nodes`/`graph.edges`, so `notes` defaults to `[]` and every existing
+  stored flow, fixture and export parses byte-identically. Verified: shared
+  `flow.test.ts` (8 note tests: defaults/round-trip/clamps/dup-id/colour) +
+  `flow-export.test.ts` (notes survive export→import), editor `canvas-graph.test.ts`
+  (notesToRfNodes / nextNoteId / rfId↔noteId) + `canvas-store.test.ts`
+  (add/update/remove + move/resize gesture coalescing), all 4 workspaces typecheck.
 - **H-T2 — Node rename / human title. (gap G7)** A `title?` on the flow node
   (shared schema), shown on the canvas + editable in the panel; expressions can
   reference a node by title or id. Verify: shared + editor tests.

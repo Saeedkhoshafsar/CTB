@@ -23,6 +23,7 @@ import { useCanvas } from '../stores/canvas';
 import { useRunData } from '../stores/run-data';
 import { DataPanel } from './DataPanel';
 import { nodeDisplayName } from './graph';
+import { flattenOutputForPin } from './run-data';
 
 const COMMIT_MS = 600;
 
@@ -109,6 +110,18 @@ function DetailInner({ node }: { node: FlowNode }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [close]);
 
+  // I-T1 (gap G4): pin/unpin the node's run output. A pin makes a TEST run use
+  // these items as the node's output instead of executing it.
+  const pinned = node.pinnedData;
+  const pinnable = useMemo(() => flattenOutputForPin(run?.output), [run]);
+  const pinOutput = useCallback(() => {
+    const items = flattenOutputForPin(useRunData.getState().byNode.get(nodeId)?.output);
+    if (items) useCanvas.getState().updateNode(nodeId, { pinnedData: items });
+  }, [nodeId]);
+  const unpin = useCallback(() => {
+    useCanvas.getState().updateNode(nodeId, { pinnedData: undefined });
+  }, [nodeId]);
+
   const typeLabel = info ? t(info.meta.labelKey as MessageKey) : node.type;
   // H-T2: NDV title shows the node's human title when set, else the type label.
   const label = nodeDisplayName(node, typeLabel);
@@ -146,6 +159,32 @@ function DetailInner({ node }: { node: FlowNode }) {
             <strong>{t('editor.node.runError')}:</strong> {runError}
           </div>
         ) : null}
+
+        <div className="ndv-pinbar">
+          {pinned ? (
+            <>
+              <span className="ndv-pinned">
+                {t('editor.node.pin.pinned').replace('{n}', String(pinned.length))}
+              </span>
+              <button type="button" className="ghost" onClick={unpin}>
+                {t('editor.node.pin.unpin')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="ghost"
+                disabled={!pinnable}
+                title={t('editor.node.pin.hint')}
+                onClick={pinOutput}
+              >
+                {t('editor.node.pin.action')}
+              </button>
+              <span className="ndv-pin-hint">{t('editor.node.pin.hint')}</span>
+            </>
+          )}
+        </div>
 
         <div className="ndv-body">
           {hasInputs ? (

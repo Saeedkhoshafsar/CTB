@@ -190,4 +190,74 @@ describe('FlowGraphSchema', () => {
       expect(res.success).toBe(true);
     });
   });
+
+  // ── pinned data (I-T1, gap G4) ─────────────────────────────────────────────
+  describe('node pinnedData (I-T1)', () => {
+    it('a node WITHOUT pinnedData parses unchanged — the field is optional/absent', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [{ id: 'a', type: 'flow.if' }],
+        edges: [],
+      });
+      expect(graph.nodes[0]!.pinnedData).toBeUndefined();
+    });
+
+    it('the hand-written sample flow (no pins) still parses byte-identically', () => {
+      const graph = FlowGraphSchema.parse(sampleFlow);
+      expect(graph.nodes.every((n) => n.pinnedData === undefined)).toBe(true);
+    });
+
+    it('parses and preserves pinned FlowItems', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [
+          { id: 'a', type: 'tg.trigger', pinnedData: [{ json: { name: 'علی', age: 30 } }] },
+        ],
+        edges: [],
+      });
+      expect(graph.nodes[0]!.pinnedData).toEqual([{ json: { name: 'علی', age: 30 } }]);
+    });
+
+    it('accepts an empty pin ([])', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [{ id: 'a', type: 'tg.trigger', pinnedData: [] }],
+        edges: [],
+      });
+      expect(res.success).toBe(true);
+    });
+
+    it('rejects a pin item that is not a valid FlowItem (missing json)', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [{ id: 'a', type: 'tg.trigger', pinnedData: [{ notJson: 1 }] }],
+        edges: [],
+      });
+      expect(res.success).toBe(false);
+    });
+
+    it('rejects more than 50 pinned items (a pin is a sample, not a dataset)', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [
+          {
+            id: 'a',
+            type: 'tg.trigger',
+            pinnedData: Array.from({ length: 51 }, (_, i) => ({ json: { i } })),
+          },
+        ],
+        edges: [],
+      });
+      expect(res.success).toBe(false);
+    });
+
+    it('accepts exactly 50 pinned items', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [
+          {
+            id: 'a',
+            type: 'tg.trigger',
+            pinnedData: Array.from({ length: 50 }, (_, i) => ({ json: { i } })),
+          },
+        ],
+        edges: [],
+      });
+      expect(res.success).toBe(true);
+    });
+  });
 });

@@ -83,6 +83,11 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
           </span>
         ) : null}
         {flowNode.note ? <div className="ctb-node-note">{flowNode.note}</div> : null}
+        {flowNode.pinnedData ? (
+          <div className="ctb-node-flag ctb-node-pinned" title={t('editor.node.pin.hint')}>
+            📌 {t('editor.node.pin.badge')}
+          </div>
+        ) : null}
         {flowNode.disabled ? <div className="ctb-node-flag">{t('editor.node.disabled')}</div> : null}
         {!info ? <div className="ctb-node-flag danger">{t('editor.node.unknownType')}</div> : null}
         {nodeProblems && nodeProblems.length > 0 ? (

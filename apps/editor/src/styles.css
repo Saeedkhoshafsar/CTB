@@ -973,6 +973,19 @@ button.danger { color: var(--danger); }
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* I-T1 (gap G4): pin/unpin bar in the NDV head area. */
+.ndv-pinbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.ndv-pinned { color: var(--text); font-weight: 600; }
+.ndv-pin-hint { color: var(--text-dim); }
+.ctb-node-pinned { color: var(--text-dim); }
 .ndv-close {
   background: none;
   border: none;

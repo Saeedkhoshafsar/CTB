@@ -403,6 +403,10 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       chatId: null,
       userId: null,
       entry: { nodeId: trigger.id, items: { main: [] } },
+      // The editor's "Test run" is a TEST run (I-T1): nodes carrying pinnedData
+      // short-circuit to that sample instead of executing. Production runs
+      // (router/scheduler/webhook) never set this, so they ignore pins.
+      testRun: true,
     });
     return { executionId, status: result.status, error: result.error };
   });

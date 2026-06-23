@@ -327,6 +327,13 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.node.problems': '{n} problem(s)',
   // H-T3 (gap G15): a node that failed on the last execution; click → NDV.
   'editor.node.runError': 'Failed on last run',
+  // I-T1 (gap G4): pin a node's sample output so a TEST run uses it instead of
+  // re-running the node.
+  'editor.node.pin.action': '📌 Pin output',
+  'editor.node.pin.unpin': 'Unpin',
+  'editor.node.pin.pinned': '📌 Pinned ({n} item(s)) — used in test runs',
+  'editor.node.pin.badge': 'Pinned',
+  'editor.node.pin.hint': 'Pinned data is used only in test runs, never in production.',
   // H-T4 (gaps G8/G9): add-node-on-edge + wire-drop-to-palette.
   'editor.edge.insert': 'Insert a node here',
   'editor.picker.title': 'Add a node',

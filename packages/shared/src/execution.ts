@@ -87,6 +87,16 @@ export const ExecutionStateSchema = z.object({
   vars: z.record(z.string(), z.unknown()).default({}),
   /** Steps executed so far (loop-safety budget, ARCHITECTURE §7). */
   steps: z.number().int().nonnegative().default(0),
+  /**
+   * This run is a TEST run, started from the editor's "Test run" button (I-T1).
+   * Persisted on the state so the flag SURVIVES pause/resume (invariant I4): a
+   * test run that pauses at a wait node and later resumes must keep honouring
+   * pinned data (`FlowNode.pinnedData`) on the remaining nodes. A production run
+   * (router/scheduler/webhook/trigger) leaves this absent → falsy → pinned data
+   * is ignored. OPTIONAL (no default) so every persisted ExecutionState from
+   * before I-T1 parses byte-identically. Decision Log #21.
+   */
+  testRun: z.boolean().optional(),
 });
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 

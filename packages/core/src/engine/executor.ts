@@ -219,6 +219,15 @@ export interface StartInput {
    * only for the synchronous nested run that creates it.
    */
   depth?: number;
+  /**
+   * Mark this as a TEST run (I-T1) — only the editor's "Test run" button sets
+   * it. When true, a node carrying `pinnedData` short-circuits to that data as
+   * its output instead of executing (the n8n "pin data" affordance). Persisted
+   * onto ExecutionState.testRun so it survives pause/resume; absent/false on
+   * every production run (router/scheduler/webhook) → pinned data is ignored.
+   * Decision Log #21.
+   */
+  testRun?: boolean;
 }
 
 export interface ResumeInput {
@@ -281,6 +290,9 @@ export class Executor {
       items: input.entry.items ?? { main: [{ json: {} }] },
       vars: {},
       steps: 0,
+      // Only stamp the flag when it's a test run, so a production run's
+      // persisted state stays byte-identical to pre-I-T1 (the field is omitted).
+      ...(input.testRun ? { testRun: true } : {}),
     };
     const exec = await this.store.create({
       id: input.executionId,
@@ -357,7 +369,17 @@ export class Executor {
       let result: NodeResult;
       const stepStart = this.clock().getTime();
 
-      if (node.disabled) {
+      const pinned = state.testRun === true ? node.pinnedData : undefined;
+      if (pinned !== undefined) {
+        // Pinned data (I-T1, TEST run only): emit the stored sample as the
+        // node's output on `main` INSTEAD of executing it — so a downstream
+        // node is built/tested with stable data and a node that couldn't run in
+        // a chat-less test (e.g. one needing ctx.tg) is bypassed. A deep clone
+        // keeps the stored pin immutable as items flow on. Even an empty pin
+        // (`[]`) is honoured — it deliberately produces no downstream items.
+        result = { kind: 'items', outputs: { main: structuredClone(pinned) } };
+        this.log(exec.id, node.id, 'info', `node "${node.id}" using pinned data (${pinned.length} item(s))`);
+      } else if (node.disabled) {
         // disabled nodes are skipped — items pass through "main"
         result = { kind: 'items', outputs: { main: inputItems } };
         this.log(exec.id, node.id, 'debug', `node "${node.id}" disabled — passing through`);

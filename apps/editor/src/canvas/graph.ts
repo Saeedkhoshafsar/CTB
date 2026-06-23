@@ -23,6 +23,18 @@ export function effectiveOutputs(node: FlowNode, info: NodeTypeInfo | undefined)
   return info?.ports.outputs ?? ['main'];
 }
 
+/**
+ * The human-facing name of a node (H-T2, gap G7). A node's optional `title`
+ * wins when it is a non-blank string (trimmed); otherwise we fall back to the
+ * node type's i18n label the caller supplies. Pure + DOM-free so the precedence
+ * rule is unit-tested directly (the React head/panel are thin glue, the F-T3
+ * pattern). The title NEVER affects routing — it is presentational only.
+ */
+export function nodeDisplayName(node: Pick<FlowNode, 'title'>, typeLabel: string): string {
+  const title = node.title?.trim();
+  return title ? title : typeLabel;
+}
+
 /** Data payload carried by every canvas node. */
 export interface CtbNodeData extends Record<string, unknown> {
   flowNode: FlowNode;

@@ -270,6 +270,13 @@ input[dir='ltr'] { direction: ltr; }
   color: #fff;
 }
 .ctb-node-body { padding: 0.4rem 0.6rem 0.5rem; }
+/* H-T2: the node type label shown under a custom title. */
+.ctb-node-type {
+  padding: 0.15rem 0.6rem 0;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-style: italic;
+}
 .ctb-node-id { color: var(--text-dim); font-size: 11px; direction: ltr; unicode-bidi: plaintext; }
 .ctb-node-note { color: var(--text-dim); font-size: 11px; margin-top: 0.2rem; }
 .ctb-node-flag { font-size: 10.5px; color: var(--warn); margin-top: 0.2rem; }

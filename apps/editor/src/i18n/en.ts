@@ -768,6 +768,7 @@ export const en: Record<keyof typeof fa, string> = {
 
   // ── param panel ──
   'panel.enabled': 'Enabled',
+  'panel.title': 'Name',
   'panel.note': 'Note',
 
   // ── param labels ──
@@ -880,6 +881,7 @@ export const en: Record<keyof typeof fa, string> = {
   'paramDesc.protect_content': 'Prevent forwarding and saving of the message.',
   'paramDesc.reply_to': 'Id of the message this one replies to.',
   'paramDesc.silent': 'Deliver without a notification sound.',
+  'paramDesc.panel.title': 'A custom name shown on the canvas instead of the node type — has no effect on execution.',
   'paramDesc.panel.note': 'A note to yourself — has no effect on execution.',
   'paramDesc.buttons': 'Each row is one line of buttons. Every button becomes a separate output on the canvas.',
   'paramDesc.key': 'Button id — becomes the output name on the canvas. Letters, digits and _ . - only.',

@@ -142,4 +142,52 @@ describe('FlowGraphSchema', () => {
       expect(StickyNoteSchema.safeParse({ id: 'n', size: { width: 200, height: 200 } }).success).toBe(true);
     });
   });
+
+  // ── node title / human name (H-T2) ─────────────────────────────────────────
+  describe('node title (H-T2)', () => {
+    it('a node WITHOUT a title parses unchanged — title is optional/absent', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [{ id: 'a', type: 'flow.if' }],
+        edges: [],
+      });
+      expect(graph.nodes[0]!.title).toBeUndefined();
+    });
+
+    it('the hand-written sample flow (no titles) still parses byte-identically', () => {
+      const graph = FlowGraphSchema.parse(sampleFlow);
+      expect(graph.nodes.every((n) => n.title === undefined)).toBe(true);
+    });
+
+    it('parses and preserves a custom node title', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [{ id: 'a', type: 'tg.sendMessage', title: 'Welcome message' }],
+        edges: [],
+      });
+      expect(graph.nodes[0]!.title).toBe('Welcome message');
+    });
+
+    it('a title may use any script (RTL/Persian) and is presentational only', () => {
+      const graph = FlowGraphSchema.parse({
+        nodes: [{ id: 'a', type: 'tg.sendMessage', title: 'پیام خوش‌آمد' }],
+        edges: [],
+      });
+      expect(graph.nodes[0]!.title).toBe('پیام خوش‌آمد');
+    });
+
+    it('rejects a title longer than 120 chars', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [{ id: 'a', type: 'flow.if', title: 'x'.repeat(121) }],
+        edges: [],
+      });
+      expect(res.success).toBe(false);
+    });
+
+    it('accepts a title exactly 120 chars', () => {
+      const res = FlowGraphSchema.safeParse({
+        nodes: [{ id: 'a', type: 'flow.if', title: 'x'.repeat(120) }],
+        edges: [],
+      });
+      expect(res.success).toBe(true);
+    });
+  });
 });

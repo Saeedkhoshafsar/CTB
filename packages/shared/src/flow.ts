@@ -33,6 +33,17 @@ export const FlowNodeSchema = z.object({
   position: z.object({ x: z.number(), y: z.number() }).default({ x: 0, y: 0 }),
   /** Disabled nodes are skipped by the executor (items pass through "main"). */
   disabled: z.boolean().default(false),
+  /**
+   * Human label for the node, distinct from its `type` (H-T2, gap G7). PURELY
+   * presentational: the canvas head and the node panel show `title` when set
+   * (otherwise the type's i18n label), but the executor NEVER reads it — it
+   * routes solely by `id`/`type`/edges, exactly as it already ignores
+   * `position`/`note`. OPTIONAL (no default) so every existing stored flow,
+   * fixture and export literal stays byte-identical (a node with no title
+   * omits the field); editor consumers fall back to the type label.
+   * Decision Log #20.
+   */
+  title: z.string().max(120).optional(),
   /** Free-form note shown on canvas. */
   note: z.string().max(2000).optional(),
 });

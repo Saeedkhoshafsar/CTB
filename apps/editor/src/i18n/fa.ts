@@ -757,6 +757,7 @@ export const fa = {
 
   // ── param panel ──
   'panel.enabled': 'فعال',
+  'panel.title': 'نام',
   'panel.note': 'یادداشت',
 
   // ── param labels (fallback = humanized key) ──
@@ -869,6 +870,7 @@ export const fa = {
   'paramDesc.protect_content': 'جلوی فوروارد و ذخیرهٔ پیام گرفته شود.',
   'paramDesc.reply_to': 'شناسهٔ پیامی که این پیام در پاسخ به آن ارسال می‌شود.',
   'paramDesc.silent': 'پیام بدون صدای نوتیفیکیشن برسد.',
+  'paramDesc.panel.title': 'یک نام دلخواه که به‌جای نوع نود روی بوم نمایش داده می‌شود — روی اجرا اثری ندارد.',
   'paramDesc.panel.note': 'توضیح دلخواه برای خودتان — روی اجرا اثری ندارد.',
   'paramDesc.buttons': 'هر ردیف یک سطر دکمه است. هر دکمه یک خروجی جداگانه روی بوم می‌سازد.',
   'paramDesc.key': 'شناسهٔ دکمه — نام خروجی روی بوم می‌شود. فقط حروف انگلیسی، عدد و _ . -',

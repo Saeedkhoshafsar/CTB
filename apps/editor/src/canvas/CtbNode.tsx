@@ -12,7 +12,7 @@ import { memo, useEffect } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
-import { effectiveOutputs, inputSlots, isProvider, type CtbNodeData } from './graph';
+import { effectiveOutputs, inputSlots, isProvider, nodeDisplayName, type CtbNodeData } from './graph';
 
 const CATEGORY_COLOR: Record<string, string> = {
   trigger: 'var(--node-trigger)',
@@ -54,16 +54,21 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   }, [portsKey, flowNode.id, updateNodeInternals]);
   const color = info ? (CATEGORY_COLOR[info.category] ?? 'var(--border)') : 'var(--danger)';
   // node labels live in the shared registry as i18n keys (nodes.tg.trigger.label)
-  const label = info ? t(info.meta.labelKey as MessageKey) : flowNode.type;
+  const typeLabel = info ? t(info.meta.labelKey as MessageKey) : flowNode.type;
+  // H-T2: a custom `title` (if set) is the head; the type label drops to a
+  // sub-line so the user still sees WHAT the node is. No title → head = type.
+  const displayName = nodeDisplayName(flowNode, typeLabel);
+  const showType = displayName !== typeLabel;
 
   return (
     <div
       className={`ctb-node${flowNode.disabled ? ' disabled' : ''}${info ? '' : ' unknown'}`}
       style={{ borderColor: color }}
     >
-      <div className="ctb-node-head" style={{ background: color }}>
-        {label}
+      <div className="ctb-node-head" style={{ background: color }} dir="auto">
+        {displayName}
       </div>
+      {showType ? <div className="ctb-node-type">{typeLabel}</div> : null}
       <div className="ctb-node-body">
         <span className="ctb-node-id">{flowNode.id}</span>
         {outCount !== null && outCount > 0 ? (

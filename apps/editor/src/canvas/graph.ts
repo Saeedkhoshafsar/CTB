@@ -7,7 +7,7 @@
  * semantics" acceptance) and connection rules are unit-testable without DOM.
  */
 import { dynamicOutputPorts } from '@ctb/shared';
-import type { FlowEdge, FlowGraph, FlowNode, NodeTypeInfo } from '@ctb/shared';
+import type { FlowEdge, FlowGraph, FlowNode, NodeTypeInfo, StickyNote } from '@ctb/shared';
 import type { Edge as RfEdge, Node as RfNode } from '@xyflow/react';
 
 /**
@@ -31,6 +31,15 @@ export interface CtbNodeData extends Record<string, unknown> {
 
 export type CtbRfNode = RfNode<CtbNodeData, 'ctb'>;
 
+/** Data payload carried by every sticky-note canvas node (H-T1). */
+export interface StickyNodeData extends Record<string, unknown> {
+  note: StickyNote;
+}
+export type StickyRfNode = RfNode<StickyNodeData, 'sticky'>;
+
+/** Any canvas node React Flow renders — a real flow node OR a sticky note. */
+export type AnyRfNode = CtbRfNode | StickyRfNode;
+
 // ---------------------------------------------------------------------------
 // FlowGraph → React Flow
 // ---------------------------------------------------------------------------
@@ -46,6 +55,39 @@ export function flowToRfNodes(
     position: { x: n.position.x, y: n.position.y },
     selected: selected.has(n.id),
     data: { flowNode: n, info: byType.get(n.type) },
+  }));
+}
+
+/**
+ * Sticky notes → React Flow nodes (H-T1). Rendered BEHIND the flow nodes (a
+ * lower z-index via the 'sticky' type's CSS) so wires stay readable. Notes are
+ * never connectable — they carry no handles — so the connection rules above are
+ * untouched. The note id is prefixed so it can never clash with a flow-node id
+ * in React Flow's flat id space (notesToRf must not collide with flowToRf).
+ */
+export const NOTE_RF_PREFIX = 'note:' as const;
+
+export function rfIdForNote(noteId: string): string {
+  return `${NOTE_RF_PREFIX}${noteId}`;
+}
+export function noteIdFromRf(rfId: string): string | null {
+  return rfId.startsWith(NOTE_RF_PREFIX) ? rfId.slice(NOTE_RF_PREFIX.length) : null;
+}
+
+export function notesToRfNodes(
+  graph: FlowGraph,
+  selected: ReadonlySet<string>,
+): StickyRfNode[] {
+  return (graph.notes ?? []).map((note) => ({
+    id: rfIdForNote(note.id),
+    type: 'sticky' as const,
+    position: { x: note.position.x, y: note.position.y },
+    width: note.size.width,
+    height: note.size.height,
+    selected: selected.has(rfIdForNote(note.id)),
+    // notes render under flow nodes and don't intercept connection drags
+    zIndex: 0,
+    data: { note },
   }));
 }
 
@@ -229,6 +271,15 @@ export function nextNodeId(type: string, graph: FlowGraph): string {
   const taken = new Set(graph.nodes.map((n) => n.id));
   for (let i = 1; ; i++) {
     const candidate = `${local}_${i}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/** Sticky-note ids: smallest unused "note_<n>" — readable + stable. */
+export function nextNoteId(graph: FlowGraph): string {
+  const taken = new Set((graph.notes ?? []).map((n) => n.id));
+  for (let i = 1; ; i++) {
+    const candidate = `note_${i}`;
     if (!taken.has(candidate)) return candidate;
   }
 }

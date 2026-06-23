@@ -45,10 +45,47 @@ export const FlowEdgeSchema = z.object({
 });
 export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
 
+/** Sticky-note ids share the node-id alphabet but are namespaced "note_*". */
+export const NoteIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+export type NoteId = z.infer<typeof NoteIdSchema>;
+
+/**
+ * Sticky note (H-T1) — a CANVAS-ONLY annotation element. It is NOT a node:
+ * it has no type, no params, no ports and the executor never sees it (the
+ * engine reads only `graph.nodes`/`graph.edges`, Decision Log #19). It lives
+ * in the same flow document so a note travels with export/import and undo/redo
+ * for free. A small fixed colour palette keeps the canvas legible (RTL-safe).
+ */
+export const NoteColorSchema = z.enum(['yellow', 'green', 'blue', 'pink', 'gray']);
+export type NoteColor = z.infer<typeof NoteColorSchema>;
+
+export const StickyNoteSchema = z.object({
+  id: NoteIdSchema,
+  /** Free-form markdown-ish text (rendered as plain text in v1). */
+  text: z.string().max(5000).default(''),
+  /** Top-left canvas position, same coordinate space as nodes. */
+  position: z.object({ x: z.number(), y: z.number() }).default({ x: 0, y: 0 }),
+  /** Box size in canvas units; clamped to sane bounds the resizer enforces. */
+  size: z
+    .object({ width: z.number().min(80).max(2000), height: z.number().min(60).max(2000) })
+    .default({ width: 240, height: 160 }),
+  color: NoteColorSchema.default('yellow'),
+});
+export type StickyNote = z.infer<typeof StickyNoteSchema>;
+
 export const FlowGraphSchema = z
   .object({
     nodes: z.array(FlowNodeSchema),
     edges: z.array(FlowEdgeSchema),
+    /**
+     * Canvas sticky notes (H-T1). OPTIONAL (no default) so EVERY existing
+     * stored flow, fixture, export and in-code graph literal stays valid
+     * byte-for-byte — a flow with no notes simply omits the field. The engine
+     * ignores this field entirely (it is purely an editor concern, like
+     * `node.position`); editor consumers read `graph.notes ?? []`.
+     * Decision Log #19.
+     */
+    notes: z.array(StickyNoteSchema).optional(),
   })
   .superRefine((graph, ctx) => {
     const ids = new Set<string>();
@@ -66,5 +103,15 @@ export const FlowGraphSchema = z
         ctx.addIssue({ code: 'custom', message: `edge "${e.id}" to unknown node "${e.to.node}"`, path: ['edges', i] });
       }
     });
+    // Sticky notes (H-T1) must have unique ids too; they share no namespace
+    // with nodes (a note id may coincide with a node id — they never collide
+    // since the engine and edges only ever reference node ids).
+    const noteIds = new Set<string>();
+    for (const n of graph.notes ?? []) {
+      if (noteIds.has(n.id)) {
+        ctx.addIssue({ code: 'custom', message: `duplicate note id "${n.id}"`, path: ['notes'] });
+      }
+      noteIds.add(n.id);
+    }
   });
 export type FlowGraph = z.infer<typeof FlowGraphSchema>;

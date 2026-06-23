@@ -20,12 +20,21 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
-import { canConnect, flowToRfEdges, flowToRfNodes, type CtbRfNode } from './graph';
+import {
+  canConnect,
+  flowToRfEdges,
+  flowToRfNodes,
+  noteIdFromRf,
+  notesToRfNodes,
+  type AnyRfNode,
+  type CtbRfNode,
+} from './graph';
+import { StickyNote } from './StickyNote';
 import { useNodeDetail } from './NodeDetail';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
 
-const nodeTypes = { ctb: CtbNode };
+const nodeTypes = { ctb: CtbNode, sticky: StickyNote };
 
 /** selection is view-state, not document-state — lives outside undo history. */
 interface SelectionState {
@@ -46,8 +55,12 @@ function CanvasInner() {
   const selection = useSelection();
   const { screenToFlowPosition } = useReactFlow();
 
-  const rfNodes = useMemo(
-    () => flowToRfNodes(graph, byType, selection.nodes),
+  const rfNodes = useMemo<AnyRfNode[]>(
+    // notes first so they paint BEHIND the flow nodes (z-index also set to 0)
+    () => [
+      ...notesToRfNodes(graph, selection.nodes),
+      ...flowToRfNodes(graph, byType, selection.nodes),
+    ],
     [graph, byType, selection.nodes],
   );
   const rfEdges = useMemo(
@@ -56,23 +69,40 @@ function CanvasInner() {
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<CtbRfNode>[]) => {
+    (changes: NodeChange<AnyRfNode>[]) => {
       let selNodes: Set<string> | null = null;
-      const removed: string[] = [];
+      const removedNodes: string[] = [];
+      const removedNotes: string[] = [];
+      const store = useCanvas.getState();
       for (const ch of changes) {
+        // A sticky note's RF id is "note:<id>"; everything else is a flow node.
+        const noteId = 'id' in ch ? noteIdFromRf(ch.id) : null;
         if (ch.type === 'position' && ch.position) {
-          useCanvas.getState().moveNode(ch.id, ch.position);
-          if (ch.dragging === false) useCanvas.getState().commitMove();
+          if (noteId) store.moveNote(noteId, ch.position);
+          else store.moveNode(ch.id, ch.position);
+          if (ch.dragging === false) store.commitMove();
+        } else if (ch.type === 'dimensions' && ch.dimensions && ch.resizing !== undefined) {
+          // live resize of a sticky note (NodeResizer drives this); the final
+          // size is also committed via the component's onResizeEnd, but driving
+          // the live value here keeps the box tracking the handle smoothly.
+          if (noteId)
+            store.resizeNote(noteId, {
+              width: ch.dimensions.width,
+              height: ch.dimensions.height,
+            });
+          if (ch.resizing === false) store.commitMove();
         } else if (ch.type === 'select') {
           selNodes ??= new Set(useSelection.getState().nodes);
           if (ch.selected) selNodes.add(ch.id);
           else selNodes.delete(ch.id);
         } else if (ch.type === 'remove') {
-          removed.push(ch.id);
+          if (noteId) removedNotes.push(noteId);
+          else removedNodes.push(ch.id);
         }
       }
       if (selNodes) useSelection.getState().set(selNodes, useSelection.getState().edges);
-      if (removed.length) useCanvas.getState().removeNodes(removed);
+      if (removedNodes.length) store.removeNodes(removedNodes);
+      if (removedNotes.length) store.removeNotes(removedNotes);
     },
     [],
   );
@@ -139,7 +169,9 @@ function CanvasInner() {
     const onDbl = (e: globalThis.MouseEvent) => {
       const direct = nodeIdAt(e);
       const id = direct ?? (Date.now() - pressedAt <= 700 ? pressedId : null);
-      if (id) useNodeDetail.getState().open(id);
+      // Sticky notes ("note:<id>") handle their own in-place edit on dblclick —
+      // don't open the node-detail view for them.
+      if (id && noteIdFromRf(id) === null) useNodeDetail.getState().open(id);
     };
     el.addEventListener('mousedown', onDown, true); // capture, before React Flow
     el.addEventListener('dblclick', onDbl, true);

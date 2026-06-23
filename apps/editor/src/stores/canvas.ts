@@ -10,10 +10,23 @@
  *  - autosave: every history-committing change marks dirty and arms a debounce;
  *    save PATCHes /api/flows/:id {graph} (server bumps version + snapshots).
  */
-import { FlowGraphSchema, type FlowGraph, type FlowNode, type NodeTypeInfo } from '@ctb/shared';
+import {
+  FlowGraphSchema,
+  type FlowGraph,
+  type FlowNode,
+  type NodeTypeInfo,
+  type StickyNote,
+} from '@ctb/shared';
 import { create } from 'zustand';
 import { type ApiClient, api } from '../api/client';
-import { buildEdge, canConnect, nextNodeId, type ConnectionAttempt, type ConnectVerdict } from '../canvas/graph';
+import {
+  buildEdge,
+  canConnect,
+  nextNodeId,
+  nextNoteId,
+  type ConnectionAttempt,
+  type ConnectVerdict,
+} from '../canvas/graph';
 
 export type SaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
 
@@ -43,6 +56,20 @@ export interface CanvasState {
   /** drag finished — one history entry for the whole gesture. */
   commitMove: () => void;
   updateNode: (nodeId: string, patch: Partial<Pick<FlowNode, 'params' | 'disabled' | 'note'>>) => void;
+
+  // ── sticky notes (H-T1) ──────────────────────────────────────────────────
+  /** add a sticky note at canvas position; returns its new id. */
+  addNote: (position: { x: number; y: number }) => string;
+  /** edit a note's text / colour / size (one history entry). */
+  updateNote: (
+    noteId: string,
+    patch: Partial<Pick<StickyNote, 'text' | 'color' | 'size'>>,
+  ) => void;
+  removeNotes: (noteIds: string[]) => void;
+  /** live drag update of a note — no history entry (coalesced like moveNode). */
+  moveNote: (noteId: string, position: { x: number; y: number }) => void;
+  /** live resize update of a note — no history entry (commit via commitMove). */
+  resizeNote: (noteId: string, size: { width: number; height: number }) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
@@ -79,7 +106,7 @@ export function createCanvasStore(client: ApiClient = api, autosaveMs: number = 
 
     return {
       flowId: null,
-      graph: { nodes: [], edges: [] },
+      graph: { nodes: [], edges: [], notes: [] },
       nodeTypes: [],
       byType: new Map(),
       loading: false,
@@ -180,6 +207,63 @@ export function createCanvasStore(client: ApiClient = api, autosaveMs: number = 
         });
       },
 
+      // ── sticky notes (H-T1) ───────────────────────────────────────────────
+      addNote: (position) => {
+        const { graph } = get();
+        const id = nextNoteId(graph);
+        const note: StickyNote = {
+          id,
+          text: '',
+          position,
+          size: { width: 240, height: 160 },
+          color: 'yellow',
+        };
+        commit({ ...graph, notes: [...(graph.notes ?? []), note] });
+        return id;
+      },
+
+      updateNote: (noteId, patch) => {
+        const { graph } = get();
+        const notes = graph.notes ?? [];
+        if (!notes.some((n) => n.id === noteId)) return;
+        commit({
+          ...graph,
+          notes: notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)),
+        });
+      },
+
+      removeNotes: (noteIds) => {
+        if (noteIds.length === 0) return;
+        const gone = new Set(noteIds);
+        const { graph } = get();
+        commit({ ...graph, notes: (graph.notes ?? []).filter((n) => !gone.has(n.id)) });
+      },
+
+      // Live note drag/resize reuse the same preMove/commitMove coalescing as
+      // node drags, so one gesture = one undo entry (commitMove is called on
+      // gesture end by the canvas change handler).
+      moveNote: (noteId, position) => {
+        const { graph } = get();
+        if (!preMove) preMove = graph;
+        set({
+          graph: {
+            ...graph,
+            notes: (graph.notes ?? []).map((n) => (n.id === noteId ? { ...n, position } : n)),
+          },
+        });
+      },
+
+      resizeNote: (noteId, size) => {
+        const { graph } = get();
+        if (!preMove) preMove = graph;
+        set({
+          graph: {
+            ...graph,
+            notes: (graph.notes ?? []).map((n) => (n.id === noteId ? { ...n, size } : n)),
+          },
+        });
+      },
+
       undo: () => {
         const { past, future, graph } = get();
         const prev = past[past.length - 1];
@@ -236,7 +320,7 @@ export function createCanvasStore(client: ApiClient = api, autosaveMs: number = 
         preMove = null;
         set({
           flowId: null,
-          graph: { nodes: [], edges: [] },
+          graph: { nodes: [], edges: [], notes: [] },
           loading: false,
           loadError: null,
           saveState: 'clean',

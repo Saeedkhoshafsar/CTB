@@ -323,6 +323,18 @@ export const fa = {
   'editor.node.unknownType': 'نوع ناشناخته',
   'editor.node.problems': '{n} مشکل',
 
+  // ── sticky notes (H-T1) ──
+  'editor.note.add': '+ یادداشت',
+  'editor.note.addHint': 'یک یادداشت چسبان برای توضیح این فلو اضافه کنید.',
+  'editor.note.edit': 'ویرایش یادداشت',
+  'editor.note.empty': 'برای نوشتن دوبار کلیک کنید…',
+  'editor.note.placeholder': 'یادداشتی بنویسید…',
+  'editor.note.color.yellow': 'زرد',
+  'editor.note.color.green': 'سبز',
+  'editor.note.color.blue': 'آبی',
+  'editor.note.color.pink': 'صورتی',
+  'editor.note.color.gray': 'خاکستری',
+
   // ── flow lifecycle (P2-T4) ──
   'editor.versions.button': 'نسخه‌ها',
   'editor.versions.title': 'تاریخچهٔ نسخه‌ها',

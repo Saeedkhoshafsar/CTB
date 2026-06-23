@@ -123,6 +123,24 @@ describe('export → import → identical semantics (PLAN acceptance)', () => {
     const reExp = toFlowExport({ name: imported.value.name, graph: imported.value.graph, settings: imported.value.settings });
     expect(reExp).toEqual(exp);
   });
+
+  it('sticky notes (H-T1) ride the document through export→import unchanged', () => {
+    const graph = FlowGraphSchema.parse({
+      ...sampleGraph,
+      notes: [
+        { id: 'note_1', text: 'explain the trigger', position: { x: -40, y: 20 }, size: { width: 260, height: 180 }, color: 'green' },
+        { id: 'note_2', text: '', position: { x: 320, y: 0 }, size: { width: 240, height: 160 }, color: 'pink' },
+      ],
+    });
+    const exp = toFlowExport({ name: 'With notes', graph, settings: { executionPolicy: 'ignore', errorHandlerFlowId: null } });
+    const wire = JSON.parse(JSON.stringify(exp));
+    const imported = parseFlowExport(wire);
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    // notes survive byte-for-byte alongside nodes/edges — they ride the one flow document
+    expect(imported.value.graph).toEqual(graph);
+    expect(imported.value.graph.notes).toHaveLength(2);
+  });
 });
 
 describe('starter template gallery (P3-T7, all GENERIC — I2)', () => {

@@ -6,6 +6,7 @@ import { FlowGraphSchema, type NodeTypeInfo } from '@ctb/shared';
 import { describe, expect, it } from 'vitest';
 import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json';
 import {
+  NOTE_RF_PREFIX,
   buildEdge,
   canConnect,
   effectiveOutputs,
@@ -13,6 +14,10 @@ import {
   flowToRfNodes,
   nextEdgeId,
   nextNodeId,
+  nextNoteId,
+  noteIdFromRf,
+  notesToRfNodes,
+  rfIdForNote,
   rfToFlow,
 } from '../src/canvas/graph';
 import { FAKE_NODE_TYPES } from './fake-fetch';
@@ -403,5 +408,75 @@ describe('id generation', () => {
       from: { node: 'greet', port: 'main' },
       to: { node: 'greet_minor', port: 'main' },
     });
+  });
+});
+
+describe('sticky notes — canvas mapping (H-T1)', () => {
+  const noteGraph = FlowGraphSchema.parse({
+    nodes: [],
+    edges: [],
+    notes: [
+      {
+        id: 'note_1',
+        text: 'first',
+        position: { x: 10, y: 20 },
+        size: { width: 240, height: 160 },
+        color: 'yellow',
+      },
+      {
+        id: 'note_2',
+        text: 'second',
+        position: { x: 300, y: 40 },
+        size: { width: 320, height: 200 },
+        color: 'blue',
+      },
+    ],
+  });
+
+  it('namespaces note ids under a "note:" prefix and round-trips them', () => {
+    expect(rfIdForNote('note_1')).toBe(`${NOTE_RF_PREFIX}note_1`);
+    expect(noteIdFromRf(rfIdForNote('note_7'))).toBe('note_7');
+    // a flow-node rf id (no prefix) is NOT a note
+    expect(noteIdFromRf('sendMessage_1')).toBeNull();
+    // empty / partial prefixes are not mistaken for notes
+    expect(noteIdFromRf('note')).toBeNull();
+  });
+
+  it('maps graph.notes to "sticky" rf nodes carrying size, position and the note payload', () => {
+    const rf = notesToRfNodes(noteGraph, none);
+    expect(rf).toHaveLength(2);
+    const first = rf[0]!;
+    const second = rf[1]!;
+    expect(first.id).toBe(rfIdForNote('note_1'));
+    expect(first.type).toBe('sticky');
+    expect(first.position).toEqual({ x: 10, y: 20 });
+    expect(first.width).toBe(240);
+    expect(first.height).toBe(160);
+    expect(first.data.note.text).toBe('first');
+    // notes always sit BEHIND flow nodes and never intercept connection drags
+    expect(first.zIndex).toBe(0);
+    expect(second.data.note.color).toBe('blue');
+  });
+
+  it('reflects selection onto the mapped sticky node', () => {
+    const selected = new Set([rfIdForNote('note_2')]);
+    const rf = notesToRfNodes(noteGraph, selected);
+    expect(rf.find((n) => n.id === rfIdForNote('note_1'))!.selected).toBe(false);
+    expect(rf.find((n) => n.id === rfIdForNote('note_2'))!.selected).toBe(true);
+  });
+
+  it('yields an empty list when the graph has no notes (engine-shaped graph)', () => {
+    expect(notesToRfNodes(FlowGraphSchema.parse({ nodes: [], edges: [] }), none)).toEqual([]);
+  });
+
+  it('note ids fill the smallest free note_<n> slot, independent of node ids', () => {
+    expect(nextNoteId({ nodes: [], edges: [] })).toBe('note_1');
+    // a node literally named note_1 must NOT block the first note slot (separate namespaces)
+    const withNode = FlowGraphSchema.parse({
+      nodes: [{ id: 'note_1', type: 'tg.sendMessage', params: {}, position: { x: 0, y: 0 } }],
+      edges: [],
+    });
+    expect(nextNoteId(withNode)).toBe('note_1');
+    expect(nextNoteId(noteGraph)).toBe('note_3'); // note_1, note_2 taken
   });
 });

@@ -326,6 +326,18 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.node.unknownType': 'Unknown type',
   'editor.node.problems': '{n} problem(s)',
 
+  // ── sticky notes (H-T1) ──
+  'editor.note.add': '+ Note',
+  'editor.note.addHint': 'Add a sticky note to annotate this flow.',
+  'editor.note.edit': 'Edit note',
+  'editor.note.empty': 'Double-click to write…',
+  'editor.note.placeholder': 'Write a note…',
+  'editor.note.color.yellow': 'Yellow',
+  'editor.note.color.green': 'Green',
+  'editor.note.color.blue': 'Blue',
+  'editor.note.color.pink': 'Pink',
+  'editor.note.color.gray': 'Gray',
+
   // ── flow lifecycle (P2-T4) ──
   'editor.versions.button': 'Versions',
   'editor.versions.title': 'Version history',

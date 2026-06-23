@@ -194,9 +194,27 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
   `flow-export.test.ts` (notes survive export→import), editor `canvas-graph.test.ts`
   (notesToRfNodes / nextNoteId / rfId↔noteId) + `canvas-store.test.ts`
   (add/update/remove + move/resize gesture coalescing), all 4 workspaces typecheck.
-- **H-T2 — Node rename / human title. (gap G7)** A `title?` on the flow node
-  (shared schema), shown on the canvas + editable in the panel; expressions can
-  reference a node by title or id. Verify: shared + editor tests.
+- **H-T2 — Node rename / human title. (gap G7) ✅ DONE** A NEW optional
+  `FlowNode.title?` (`string` ≤120 — Decision Log #20), a PRESENTATIONAL human
+  name shown on the canvas head (with the type label dropping to a sub-line so
+  the user still sees WHAT the node is), the param-panel header, and the NDV
+  header; editable via a "Name" text field in the param panel (placeholder = the
+  type label). The precedence rule is a pure, DOM-free `nodeDisplayName(node,
+  typeLabel)` (a non-blank trimmed title wins, else the type label) so it is
+  unit-tested directly; the React surfaces are thin glue (F-T3 pattern). The
+  executor NEVER reads `title` (it routes by `id`/`type`/edges, like it already
+  ignores `position`/`note`), so the field is `.optional()` (no default) and
+  every existing stored flow/fixture/export parses byte-identically. **Scope
+  note:** "expressions can reference a node by title" is deliberately NOT
+  shipped — CTB's linear cursor executor doesn't retain every node's output
+  keyed by name, so an `$('Node Name')` handle is a deep durability change
+  outside an atomic H-T2 (a node id already uniquely addresses a node); if ever
+  wanted it is a separate engine task with its own Decision Log entry.
+  - Verify: shared `flow.test.ts` (+6 title: optional/absent, sample byte-id,
+    custom title preserved, RTL title, >120 rejected, =120 accepted) + editor
+    `canvas-graph.test.ts` (+5 `nodeDisplayName`: fallback, title-wins, blank/ws
+    unset, trim, RTL); shared **89** + editor **221** GREEN; all 6 workspaces
+    typecheck. Additive — no server/registry/node change.
 - **H-T3 — Canvas error surfacing. (gap G15)** A node that failed in the last
   execution glows red on the canvas; click → its error from `exec_logs`. Verify:
   editor tests + a fixture execution with a failed node.

@@ -15,6 +15,7 @@ import {
   nextEdgeId,
   nextNodeId,
   nextNoteId,
+  nodeDisplayName,
   noteIdFromRf,
   notesToRfNodes,
   rfIdForNote,
@@ -478,5 +479,29 @@ describe('sticky notes — canvas mapping (H-T1)', () => {
     });
     expect(nextNoteId(withNode)).toBe('note_1');
     expect(nextNoteId(noteGraph)).toBe('note_3'); // note_1, note_2 taken
+  });
+});
+
+describe('nodeDisplayName — node title / human name (H-T2)', () => {
+  it('falls back to the type label when no title is set', () => {
+    expect(nodeDisplayName({}, 'Send Message')).toBe('Send Message');
+    expect(nodeDisplayName({ title: undefined }, 'Send Message')).toBe('Send Message');
+  });
+
+  it('uses a non-blank title in preference to the type label', () => {
+    expect(nodeDisplayName({ title: 'Welcome' }, 'Send Message')).toBe('Welcome');
+  });
+
+  it('treats a blank / whitespace-only title as unset (falls back to type)', () => {
+    expect(nodeDisplayName({ title: '' }, 'Send Message')).toBe('Send Message');
+    expect(nodeDisplayName({ title: '   ' }, 'Send Message')).toBe('Send Message');
+  });
+
+  it('trims surrounding whitespace from a real title', () => {
+    expect(nodeDisplayName({ title: '  Greeting  ' }, 'Send Message')).toBe('Greeting');
+  });
+
+  it('preserves RTL/Persian titles verbatim (presentational only)', () => {
+    expect(nodeDisplayName({ title: 'پیام خوش‌آمد' }, 'Send Message')).toBe('پیام خوش‌آمد');
   });
 });

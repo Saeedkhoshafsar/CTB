@@ -22,6 +22,7 @@ import type { JsonSchema } from '../form/schema';
 import { useCanvas } from '../stores/canvas';
 import { useRunData } from '../stores/run-data';
 import { DataPanel } from './DataPanel';
+import { nodeDisplayName } from './graph';
 
 const COMMIT_MS = 600;
 
@@ -105,7 +106,9 @@ function DetailInner({ node }: { node: FlowNode }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [close]);
 
-  const label = info ? t(info.meta.labelKey as MessageKey) : node.type;
+  const typeLabel = info ? t(info.meta.labelKey as MessageKey) : node.type;
+  // H-T2: NDV title shows the node's human title when set, else the type label.
+  const label = nodeDisplayName(node, typeLabel);
   const descKey = `nodeDesc.${node.type}`;
   const descMsg = t(descKey as MessageKey);
   const nodeDesc = descMsg === descKey ? null : descMsg;

@@ -14,6 +14,7 @@ import { pruneEmpty } from '../form/model';
 import { SchemaForm } from '../form/SchemaForm';
 import type { JsonSchema } from '../form/schema';
 import { useCanvas } from '../stores/canvas';
+import { nodeDisplayName } from './graph';
 import { useSelection } from './FlowCanvas';
 
 const COMMIT_MS = 600;
@@ -78,7 +79,9 @@ function PanelInner({ node }: { node: FlowNode }) {
     [nodeId],
   );
 
-  const label = info ? t(info.meta.labelKey as MessageKey) : node.type;
+  const typeLabel = info ? t(info.meta.labelKey as MessageKey) : node.type;
+  // H-T2: the panel header shows the node's human title when set, else type.
+  const displayName = nodeDisplayName(node, typeLabel);
   // node-level help: `nodeDesc.<type>` — what the node does, in one line.
   const descKey = `nodeDesc.${node.type}`;
   const descMsg = t(descKey as MessageKey);
@@ -87,7 +90,7 @@ function PanelInner({ node }: { node: FlowNode }) {
   return (
     <aside className="param-panel" data-testid="param-panel">
       <div className="param-head">
-        <strong>{label}</strong>
+        <strong dir="auto">{displayName}</strong>
         <span className="ctb-node-id">{node.id}</span>
       </div>
       {nodeDesc ? <p className="param-desc">{nodeDesc}</p> : null}
@@ -104,6 +107,25 @@ function PanelInner({ node }: { node: FlowNode }) {
       )}
 
       <hr className="param-sep" />
+
+      <div className="field-row">
+        <div className="field-head">
+          <label className="field-label">{t('panel.title')}</label>
+          <span className="field-desc">{t('paramDesc.panel.title')}</span>
+        </div>
+        <div className="field-input">
+          <input
+            type="text"
+            value={node.title ?? ''}
+            dir="auto"
+            maxLength={120}
+            placeholder={typeLabel}
+            onChange={(e) =>
+              useCanvas.getState().updateNode(nodeId, { title: e.target.value === '' ? undefined : e.target.value })
+            }
+          />
+        </div>
+      </div>
 
       <div className="field-row inline">
         <label className="field-label">{t('panel.enabled')}</label>

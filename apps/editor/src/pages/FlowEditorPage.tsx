@@ -11,6 +11,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../api/client';
 import { FlowCanvas } from '../canvas/FlowCanvas';
 import { NodeDetail } from '../canvas/NodeDetail';
+import { ShortcutHelp, useShortcutHelp } from '../canvas/ShortcutHelp';
 import { Palette } from '../canvas/Palette';
 import { ParamPanel } from '../canvas/ParamPanel';
 import { CanvasEmptyHint } from '../components/EmptyState';
@@ -257,6 +258,14 @@ function Toolbar({
             />
           ) : null}
         </div>
+        <button
+          className="ghost shortcut-help-btn"
+          onClick={() => useShortcutHelp.getState().toggle()}
+          title={t('editor.shortcut.title')}
+          aria-label={t('editor.shortcut.title')}
+        >
+          ?
+        </button>
         {status === 'active' ? (
           <button className="danger" disabled={busy} onClick={() => void useLifecycle.getState().deactivate()}>
             {t('flows.action.deactivate')}
@@ -412,27 +421,9 @@ export function FlowEditorPage() {
     };
   }, [flowId, load]);
 
-  // keyboard shortcuts — global on this page
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const target = e.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-      if (e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        useCanvas.getState().undo();
-      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        useCanvas.getState().redo();
-      } else if (e.key === 's') {
-        e.preventDefault();
-        void useCanvas.getState().saveNow();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // Global keyboard shortcuts (undo/redo/save/duplicate/select-all/fit-view/?)
+  // now live in the canvas (FlowCanvas) where React Flow + selection are
+  // available; the matcher + catalog are the single source of truth (I-T3).
 
   const shownError = error ?? loadError;
   if (shownError) {
@@ -457,6 +448,7 @@ export function FlowEditorPage() {
           <ParamPanel />
         </div>
         <NodeDetail />
+        <ShortcutHelp />
       </div>
     </ReactFlowProvider>
   );

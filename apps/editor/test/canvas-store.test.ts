@@ -308,3 +308,38 @@ describe('add-node-on-edge + wire-drop-to-palette — store actions (H-T4)', () 
     expect(FlowGraphSchema.safeParse(g).success).toBe(true);
   });
 });
+
+describe('duplicateNodes — store action (I-T3, gap G11)', () => {
+  it('duplicates a connected pair as ONE undoable edit, returns new ids', async () => {
+    const { useCanvas } = await setup();
+    const a = useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    const b = useCanvas.getState().addNode('tg.sendMessage', { x: 200, y: 0 });
+    useCanvas.getState().connect({ from: { node: a, port: 'main' }, to: { node: b, port: 'main' } });
+    const history = useCanvas.getState().past.length;
+
+    const newIds = useCanvas.getState().duplicateNodes([a, b]);
+    expect(newIds).toHaveLength(2);
+    const g = useCanvas.getState().graph;
+    expect(g.nodes).toHaveLength(4); // originals + 2 clones
+    // the internal edge A→B was copied between the two clones
+    expect(
+      g.edges.some((e) => e.from.node === newIds[0] && e.to.node === newIds[1]),
+    ).toBe(true);
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+    // single history entry → one undo removes both clones + their edge
+    expect(useCanvas.getState().past.length).toBe(history + 1);
+    useCanvas.getState().undo();
+    expect(useCanvas.getState().graph.nodes).toHaveLength(2);
+    expect(useCanvas.getState().graph.edges).toHaveLength(1);
+  });
+
+  it('an empty / unknown selection is a no-op (no nodes added, no history)', async () => {
+    const { useCanvas } = await setup();
+    useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    const history = useCanvas.getState().past.length;
+    expect(useCanvas.getState().duplicateNodes([])).toEqual([]);
+    expect(useCanvas.getState().duplicateNodes(['ghost'])).toEqual([]);
+    expect(useCanvas.getState().graph.nodes).toHaveLength(1);
+    expect(useCanvas.getState().past.length).toBe(history);
+  });
+});

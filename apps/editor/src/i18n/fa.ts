@@ -322,6 +322,8 @@ export const fa = {
   'editor.node.disabled': 'غیرفعال',
   'editor.node.unknownType': 'نوع ناشناخته',
   'editor.node.problems': '{n} مشکل',
+  // H-T3 (gap G15): نودی که در آخرین اجرا با خطا مواجه شده؛ کلیک → نمای جزئیات نود.
+  'editor.node.runError': 'خطا در آخرین اجرا',
 
   // ── sticky notes (H-T1) ──
   'editor.note.add': '+ یادداشت',

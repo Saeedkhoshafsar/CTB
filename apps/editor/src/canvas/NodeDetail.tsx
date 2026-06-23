@@ -45,6 +45,9 @@ function DetailInner({ node }: { node: FlowNode }) {
   const close = useNodeDetail((s) => s.close);
 
   const run = useRunData((s) => s.byNode.get(node.id));
+  // H-T3: the error this node threw on the latest run (if any) — shown as a
+  // banner under the head so the cause is visible without leaving the NDV.
+  const runError = useRunData((s) => s.errorsByNode.get(node.id));
   const execution = useRunData((s) => s.execution);
   const runLoading = useRunData((s) => s.loading);
   const refresh = useRunData((s) => s.refresh);
@@ -137,6 +140,12 @@ function DetailInner({ node }: { node: FlowNode }) {
             ✕
           </button>
         </div>
+
+        {runError ? (
+          <div className="ndv-error" role="alert">
+            <strong>{t('editor.node.runError')}:</strong> {runError}
+          </div>
+        ) : null}
 
         <div className="ndv-body">
           {hasInputs ? (

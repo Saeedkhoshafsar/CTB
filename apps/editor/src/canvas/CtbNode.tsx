@@ -13,6 +13,7 @@ import { useI18n, type MessageKey } from '../i18n';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
 import { effectiveOutputs, inputSlots, isProvider, nodeDisplayName, type CtbNodeData } from './graph';
+import { useNodeDetail } from './NodeDetail';
 
 const CATEGORY_COLOR: Record<string, string> = {
   trigger: 'var(--node-trigger)',
@@ -35,6 +36,11 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
   const outCount = run ? Object.values(run.output).reduce((n, arr) => n + arr.length, 0) : null;
   // activation problems for THIS node (P2-T4) — badge on the offending node
   const nodeProblems = useLifecycle((s) => s.problemsByNode.get(flowNode.id));
+  // H-T3 (gap G15): the error this node threw on the latest execution, if any.
+  // Drives the red "glow" + a clickable flag that opens the NDV (where the
+  // run's INPUT and the failing params live side by side).
+  const runError = useRunData((s) => s.errorsByNode.get(flowNode.id));
+  const openDetail = useNodeDetail((s) => s.open);
 
   const inputs = info?.ports.inputs ?? ['main'];
   // dynamic-port nodes (tg.menu / flow.switch, P2-T6) grow one handle per
@@ -62,7 +68,7 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
 
   return (
     <div
-      className={`ctb-node${flowNode.disabled ? ' disabled' : ''}${info ? '' : ' unknown'}`}
+      className={`ctb-node${flowNode.disabled ? ' disabled' : ''}${info ? '' : ' unknown'}${runError ? ' errored' : ''}`}
       style={{ borderColor: color }}
     >
       <div className="ctb-node-head" style={{ background: color }} dir="auto">
@@ -83,6 +89,21 @@ export const CtbNode = memo(function CtbNode({ data }: { data: CtbNodeData }) {
           <div className="ctb-node-flag danger" title={nodeProblems.join('\n')}>
             ⚠ {t('editor.node.problems', { n: nodeProblems.length })}
           </div>
+        ) : null}
+        {runError ? (
+          <button
+            type="button"
+            className="ctb-node-flag danger ctb-node-error"
+            title={runError}
+            onClick={(e) => {
+              // stop the click from reaching React Flow (selection/drag); open
+              // the NDV where the failing input + params are shown together.
+              e.stopPropagation();
+              openDetail(flowNode.id);
+            }}
+          >
+            ✖ {t('editor.node.runError')}
+          </button>
         ) : null}
       </div>
 

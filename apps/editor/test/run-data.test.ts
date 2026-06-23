@@ -7,7 +7,7 @@ import type { ExecLogEntry, ExecutionDetail } from '@ctb/shared';
 import { describe, expect, it } from 'vitest';
 import { ApiClient } from '../src/api/client';
 import { childRows, pathToExpression } from '../src/canvas/json-tree';
-import { mapRunData } from '../src/canvas/run-data';
+import { mapRunData, mapRunErrors } from '../src/canvas/run-data';
 import { FIELD_DRAG_MIME } from '../src/form/expression';
 import { createAuthStore } from '../src/stores/auth';
 import { createRunDataStore } from '../src/stores/run-data';
@@ -105,6 +105,47 @@ describe('run-data — mapRunData', () => {
 });
 
 // ---------------------------------------------------------------------------
+// run-data — mapRunErrors (H-T3, gap G15: canvas error surfacing)
+// ---------------------------------------------------------------------------
+
+describe('run-data — mapRunErrors', () => {
+  it("collects error-level rows mapRunData skips (no input snapshot)", () => {
+    const logs: ExecLogEntry[] = [
+      logRow({ id: 1, nodeId: 'a', input: [item({ v: 1 })], output: { main: [item({ v: 2 })] } }),
+      logRow({ id: 2, nodeId: 'b', level: 'error', error: 'boom', input: null }),
+    ];
+    // mapRunData drops the error-only row; mapRunErrors keeps exactly it.
+    expect(mapRunData(logs).has('b')).toBe(false);
+    const errs = mapRunErrors(logs);
+    expect(errs.size).toBe(1);
+    expect(errs.get('b')).toBe('boom');
+  });
+
+  it('prefers the structured error column, falls back to message', () => {
+    const errs = mapRunErrors([
+      logRow({ nodeId: 'a', level: 'error', error: 'TypeError: x', message: 'step failed' }),
+      logRow({ nodeId: 'b', level: 'error', error: null, message: 'no token' }),
+      logRow({ nodeId: 'c', level: 'error', error: null, message: '' }),
+    ]);
+    expect(errs.get('a')).toBe('TypeError: x');
+    expect(errs.get('b')).toBe('no token');
+    // empty error AND empty message → a stable non-empty placeholder
+    expect(errs.get('c')).toBe('error');
+  });
+
+  it('keeps the LAST error per node and ignores non-error / nodeless rows', () => {
+    const errs = mapRunErrors([
+      logRow({ nodeId: 'a', level: 'error', error: 'first' }),
+      logRow({ nodeId: 'a', level: 'error', error: 'latest' }), // loop revisit
+      logRow({ nodeId: 'a', level: 'warn', error: 'a warning' }), // not an error
+      logRow({ nodeId: null, level: 'error', error: 'flow-level' }), // no node
+    ]);
+    expect(errs.size).toBe(1);
+    expect(errs.get('a')).toBe('latest');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // run-data store — load latest execution via fake /api/executions
 // ---------------------------------------------------------------------------
 
@@ -151,13 +192,40 @@ describe('run-data store', () => {
     expect(s.error).toBeNull();
   });
 
-  it('flow that never ran → null execution, empty map (no error)', async () => {
+  it('flow that never ran → null execution, empty maps (no error)', async () => {
     const { useRun } = await setup();
     await useRun.getState().load('flow-never');
     const s = useRun.getState();
     expect(s.execution).toBeNull();
     expect(s.byNode.size).toBe(0);
+    expect(s.errorsByNode.size).toBe(0);
     expect(s.error).toBeNull();
+  });
+
+  it('H-T3: a failed execution exposes the failing node via errorsByNode', async () => {
+    const { srv, useRun } = await setup();
+    // fixture: a run where node "send" succeeded but node "fetch" threw.
+    srv.executions.set(
+      'exec-fail',
+      fakeExecution({
+        id: 'exec-fail',
+        status: 'error',
+        error: 'Request failed',
+        startedAt: '2026-06-11T12:00:00.000Z',
+        logs: [
+          logRow({ id: 1, nodeId: 'send', input: [item({ chat: 1 })], output: { main: [item({ ok: true })] } }),
+          logRow({ id: 2, nodeId: 'fetch', level: 'error', error: 'HTTP 500: upstream', input: null }),
+        ],
+      }),
+    );
+    await useRun.getState().load('flow-x');
+    const s = useRun.getState();
+    expect(s.execution?.status).toBe('error');
+    // the canvas overlay can now glow the offending node + read its message
+    expect(s.errorsByNode.get('fetch')).toBe('HTTP 500: upstream');
+    expect(s.errorsByNode.has('send')).toBe(false);
+    // the successful node still carries its I/O snapshot for the NDV
+    expect(s.byNode.get('send')?.output).toEqual({ main: [item({ ok: true })] });
   });
 
   it('refresh re-fetches; reset clears everything', async () => {
@@ -178,5 +246,6 @@ describe('run-data store', () => {
     expect(s.flowId).toBeNull();
     expect(s.execution).toBeNull();
     expect(s.byNode.size).toBe(0);
+    expect(s.errorsByNode.size).toBe(0);
   });
 });

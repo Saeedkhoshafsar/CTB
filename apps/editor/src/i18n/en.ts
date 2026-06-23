@@ -325,6 +325,8 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.node.disabled': 'Disabled',
   'editor.node.unknownType': 'Unknown type',
   'editor.node.problems': '{n} problem(s)',
+  // H-T3 (gap G15): a node that failed on the last execution; click → NDV.
+  'editor.node.runError': 'Failed on last run',
 
   // ── sticky notes (H-T1) ──
   'editor.note.add': '+ Note',

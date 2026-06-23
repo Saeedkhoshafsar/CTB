@@ -215,9 +215,24 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
     `canvas-graph.test.ts` (+5 `nodeDisplayName`: fallback, title-wins, blank/ws
     unset, trim, RTL); shared **89** + editor **221** GREEN; all 6 workspaces
     typecheck. Additive — no server/registry/node change.
-- **H-T3 — Canvas error surfacing. (gap G15)** A node that failed in the last
-  execution glows red on the canvas; click → its error from `exec_logs`. Verify:
-  editor tests + a fixture execution with a failed node.
+- **H-T3 — Canvas error surfacing. (gap G15) ✅ DONE** A node that failed on the
+  LATEST execution now glows red on the canvas (pulsing `.ctb-node.errored`
+  outline, motion-reduced for `prefers-reduced-motion`) and shows a clickable
+  "Failed on last run" flag; the click opens the NDV, which renders the failing
+  node's error as a banner under the head alongside its INPUT/params. The error
+  text comes from a NEW pure, DOM-free `mapRunErrors(logs)` (sibling to
+  `mapRunData`) that keeps exactly the `level:'error'` rows `mapRunData` SKIPS
+  (a failed step has no I/O snapshot) — it prefers the structured `error` column,
+  falls back to `message`, defaults to `'error'`, and keeps the LAST error per
+  node (loop-revisit = most recent, matching mapRunData's "latest visit"). The
+  run-data store gained `errorsByNode: Map<string,string>` populated next to
+  `byNode` (cleared on empty/reset); the canvas surfaces are thin glue (F-T3
+  pattern). Read-only overlay — no schema/server/executor change.
+  - Verify: editor `run-data.test.ts` (+8: mapRunErrors skip-vs-keep,
+    error-over-message fallback, empty→`'error'`, last-wins/ignore non-error &
+    nodeless; store exposes `errorsByNode` on a fixture run where one node throws
+    while another succeeds, and clears it on empty/reset) + i18n parity; editor
+    **226** + shared **89** GREEN; all 6 workspaces typecheck; editor build OK.
 - **H-T4 — Add-node-on-edge + wire-drop-to-palette. (gaps G8/G9)** Insert a node
   onto an existing edge via an inline "+"; drop a dangling wire on empty canvas to
   open the palette pre-targeted. Verify: canvas-graph tests.

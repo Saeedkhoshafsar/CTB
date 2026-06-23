@@ -313,3 +313,88 @@ export function buildEdge(attempt: ConnectionAttempt, graph: FlowGraph): FlowEdg
     to: { node: attempt.to.node, port: attempt.to.port },
   };
 }
+
+// ---------------------------------------------------------------------------
+// H-T4 — add-node-on-edge + wire-drop-to-palette (gaps G8/G9)
+//
+// These are the RISKY structural edits behind the two canvas affordances, kept
+// here as PURE, DOM-free functions so they unit-test directly (the React glue
+// in FlowCanvas just calls them and hands the result to the store; F-T3
+// pattern). Every produced edge is the SAME shape buildEdge makes and lands on
+// the node's `'main'` port — the universal in/out port the executor wires by.
+// ---------------------------------------------------------------------------
+
+/** A freshly-created flow node with empty params at a canvas position. */
+export function buildNode(type: string, position: { x: number; y: number }, graph: FlowGraph): FlowNode {
+  return { id: nextNodeId(type, graph), type, params: {}, position, disabled: false };
+}
+
+/**
+ * Insert a new node of `type` ONTO an existing edge (gap G8): an edge
+ * `A.outPort → B.inPort` becomes `A.outPort → N.main` and `N.main → B.inPort`,
+ * with the original edge removed. Returns the next graph + the new node id, or
+ * `null` when the edge id is unknown. The two new edges get fresh ids computed
+ * AFTER the node is added so they never collide with the removed edge's id.
+ *
+ * The midpoint position keeps N visually on the wire; the caller may override.
+ */
+export function insertNodeOnEdge(
+  graph: FlowGraph,
+  edgeId: string,
+  type: string,
+  position: { x: number; y: number },
+): { graph: FlowGraph; nodeId: string } | null {
+  const edge = graph.edges.find((e) => e.id === edgeId);
+  if (!edge) return null;
+  const node = buildNode(type, position, graph);
+  const withNode: FlowGraph = { ...graph, nodes: [...graph.nodes, node] };
+  // Compute the two fresh edge ids against the graph that STILL contains the
+  // original edge, so neither new id can reuse the id we are about to remove
+  // (that would silently resurrect the original A→B edge). We add the head to
+  // the id-pool when minting the tail, then drop the original at the very end.
+  const head: FlowEdge = {
+    id: nextEdgeId(withNode),
+    from: { node: edge.from.node, port: edge.from.port },
+    to: { node: node.id, port: 'main' },
+  };
+  const tail: FlowEdge = {
+    id: nextEdgeId({ ...withNode, edges: [...withNode.edges, head] }),
+    from: { node: node.id, port: 'main' },
+    to: { node: edge.to.node, port: edge.to.port },
+  };
+  const edges = [...withNode.edges.filter((e) => e.id !== edgeId), head, tail];
+  return { graph: { ...withNode, edges }, nodeId: node.id };
+}
+
+/**
+ * A connection the user dragged out but dropped on empty canvas (gap G9). RF
+ * tells us which END was fixed: dragging from an OUTPUT gives a `source`
+ * (+`fromPort`); dragging from an INPUT gives a `target` (+`toPort`). The other
+ * end is the node we are about to create from the palette.
+ */
+export type PendingConnect =
+  | { source: string; fromPort: string; target?: undefined; toPort?: undefined }
+  | { target: string; toPort: string; source?: undefined; fromPort?: undefined };
+
+/**
+ * Create a node of `type` at `position` and wire it to the dangling end of a
+ * `PendingConnect` (gap G9). A pending SOURCE (`A.outPort →`) wires
+ * `A.outPort → N.main`; a pending TARGET (`→ B.inPort`) wires `N.main → B.inPort`.
+ * Returns the next graph + the new node id; the new edge is the universal
+ * `'main'` port either side, exactly like add-node-on-edge.
+ */
+export function nodeFromDangling(
+  graph: FlowGraph,
+  pending: PendingConnect,
+  type: string,
+  position: { x: number; y: number },
+): { graph: FlowGraph; nodeId: string } {
+  const node = buildNode(type, position, graph);
+  const withNode: FlowGraph = { ...graph, nodes: [...graph.nodes, node] };
+  const attempt: ConnectionAttempt =
+    pending.source !== undefined
+      ? { from: { node: pending.source, port: pending.fromPort }, to: { node: node.id, port: 'main' } }
+      : { from: { node: node.id, port: 'main' }, to: { node: pending.target, port: pending.toPort } };
+  const edge = buildEdge(attempt, withNode);
+  return { graph: { ...withNode, edges: [...withNode.edges, edge] }, nodeId: node.id };
+}

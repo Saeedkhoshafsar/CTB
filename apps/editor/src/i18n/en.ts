@@ -327,6 +327,9 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.node.problems': '{n} problem(s)',
   // H-T3 (gap G15): a node that failed on the last execution; click → NDV.
   'editor.node.runError': 'Failed on last run',
+  // H-T4 (gaps G8/G9): add-node-on-edge + wire-drop-to-palette.
+  'editor.edge.insert': 'Insert a node here',
+  'editor.picker.title': 'Add a node',
 
   // ── sticky notes (H-T1) ──
   'editor.note.add': '+ Note',

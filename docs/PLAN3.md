@@ -180,7 +180,7 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
   - Verify: editor typecheck + build GREEN; editor tests **206 GREEN** (+5);
     shared 74 + server 450 GREEN (schema-meta touch inert).
 
-### Phase H — Canvas power (the "organize a big flow" cure)
+### Phase H — Canvas power (the "organize a big flow" cure) — ✅ COMPLETE (H-T1…H-T4)
 
 - **H-T1 — Sticky notes. (gap G3) ✅ DONE** New canvas element type stored in the
   graph as `FlowGraphSchema.notes` (a NEW optional `StickyNote[]` — Decision Log
@@ -233,9 +233,33 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
     nodeless; store exposes `errorsByNode` on a fixture run where one node throws
     while another succeeds, and clears it on empty/reset) + i18n parity; editor
     **226** + shared **89** GREEN; all 6 workspaces typecheck; editor build OK.
-- **H-T4 — Add-node-on-edge + wire-drop-to-palette. (gaps G8/G9)** Insert a node
-  onto an existing edge via an inline "+"; drop a dangling wire on empty canvas to
-  open the palette pre-targeted. Verify: canvas-graph tests.
+- **H-T4 — Add-node-on-edge + wire-drop-to-palette. (gaps G8/G9) ✅ DONE** Two
+  "wire-first" authoring affordances, both built as PURE structural edits in
+  `apps/editor/src/canvas/graph.ts` (the React/RF layer is thin glue, F-T3
+  pattern). **(G8) Add-node-on-edge:** a custom `CtbEdge` renders an inline "+"
+  at the wire midpoint (hover/selection-revealed); clicking it opens a small
+  `NodePicker` popup pre-targeted at THAT edge, and choosing a type runs
+  `insertNodeOnEdge(graph, edgeId, type, pos)` — an edge `A.outPort → B.inPort`
+  becomes `A.outPort → N.main` + `N.main → B.inPort`, original removed. The new
+  edge ids are minted against the graph that STILL contains the original (then
+  it's dropped last) so a freed id can never silently resurrect the old edge —
+  the bug the tests caught. **(G9) Wire-drop-to-palette:** `onConnectStart`
+  remembers the dragged handle; `onConnectEnd` on the empty pane opens the same
+  `NodePicker` at the drop point, and `nodeFromDangling(graph, pending, type,
+  pos)` creates the node already wired to the dangling end (a pending SOURCE →
+  `A.outPort → N.main`; a pending TARGET → `N.main → B.inPort`). Both go through
+  new store actions (`insertNodeOnEdge` / `addNodeFromDangling`) so each is ONE
+  undoable, autosaved edit; every produced edge lands on the universal `'main'`
+  port and the result re-validates against `FlowGraphSchema`. i18n `editor.edge.insert`
+  + `editor.picker.title` (en/fa parity); CSS `.ctb-edge-add` / `.node-picker`
+  (also fixed a latent undefined `--panel` var → `--bg-raised`). No
+  schema/server/registry/engine change.
+  - Verify: editor `canvas-graph.test.ts` +5 (`insertNodeOnEdge` split + branch-
+    port preservation + unknown-edge→null; `nodeFromDangling` source/target;
+    `buildNode` uniqueness) + `canvas-store.test.ts` +4 (insert commits one
+    undoable A→N→B + unknown-edge no-op-no-history; dangling source/target
+    wiring); editor **235** + shared **89** GREEN; all 6 workspaces typecheck;
+    editor build OK.
 
 ### Phase I — Run & iterate (the "test fast" cure)
 

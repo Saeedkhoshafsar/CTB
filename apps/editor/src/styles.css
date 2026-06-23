@@ -282,6 +282,123 @@ input[dir='ltr'] { direction: ltr; }
 .ctb-node-flag { font-size: 10.5px; color: var(--warn); margin-top: 0.2rem; }
 .ctb-node-flag.danger { color: var(--danger); }
 
+/* ── H-T3 (gap G15): canvas error surfacing ──────────────────────────────── */
+/* A node that failed on the last execution glows red so the eye finds it on a
+   busy canvas; the flag is a real <button> (click → NDV) so reset its chrome. */
+.ctb-node.errored {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 1px var(--danger), 0 0 14px color-mix(in srgb, var(--danger) 55%, transparent);
+  animation: ctb-node-error-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ctb-node-error-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--danger), 0 0 10px color-mix(in srgb, var(--danger) 40%, transparent); }
+  50% { box-shadow: 0 0 0 1px var(--danger), 0 0 18px color-mix(in srgb, var(--danger) 70%, transparent); }
+}
+.ctb-node-error {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 0;
+  margin-top: 0.2rem;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.ctb-node-error:hover { text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) {
+  .ctb-node.errored { animation: none; }
+}
+
+/* ── H-T4 (gaps G8/G9): add-node-on-edge "+" + node picker popup ──────────── */
+.ctb-edge-tools {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: all;
+}
+.ctb-edge-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+/* the "+" is unobtrusive until the wire (or its group) is hovered/selected */
+.ctb-edge-add {
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.react-flow__edge:hover .ctb-edge-add,
+.ctb-edge-tools.selected .ctb-edge-add,
+.ctb-edge-add:focus-visible {
+  opacity: 1;
+}
+.ctb-edge-add:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.node-picker {
+  position: fixed;
+  z-index: 60;
+  width: 224px;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
+}
+.node-picker-head {
+  padding: 0.4rem 0.6rem;
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-raised);
+}
+.node-picker-body { padding: 0.3rem; }
+.node-picker-cat {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 0.3rem 0.4rem 0.15rem;
+}
+.node-picker-item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 0.35rem 0.5rem;
+  margin: 1px 0;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 3px);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.node-picker-item:hover {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
 /* ── sticky notes (H-T1) ─────────────────────────────────────────────────── */
 .sticky-note {
   width: 100%;
@@ -845,6 +962,17 @@ button.danger { color: var(--danger); }
 .ndv-head .ndv-title { font-weight: 700; font-size: 14px; }
 .ndv-head .ndv-type { color: var(--text-dim); font-size: 12px; direction: ltr; unicode-bidi: plaintext; }
 .ndv-head .spacer { flex: 1; }
+/* H-T3: the failing-node banner under the NDV head. */
+.ndv-error {
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  font-size: 12.5px;
+  flex-shrink: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .ndv-close {
   background: none;
   border: none;
@@ -1049,7 +1177,7 @@ button.danger { color: var(--danger); }
   min-width: 340px;
   max-height: 320px;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);

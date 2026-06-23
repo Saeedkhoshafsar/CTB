@@ -22,10 +22,13 @@ import { type ApiClient, api } from '../api/client';
 import {
   buildEdge,
   canConnect,
+  insertNodeOnEdge,
   nextNodeId,
   nextNoteId,
+  nodeFromDangling,
   type ConnectionAttempt,
   type ConnectVerdict,
+  type PendingConnect,
 } from '../canvas/graph';
 
 export type SaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -51,6 +54,24 @@ export interface CanvasState {
   removeNodes: (nodeIds: string[]) => void;
   removeEdges: (edgeIds: string[]) => void;
   connect: (attempt: ConnectionAttempt) => ConnectVerdict;
+  /**
+   * H-T4 (gap G8): split an edge with a new node of `type` (A→B ⇒ A→N→B).
+   * Returns the new node id, or null when the edge id is unknown.
+   */
+  insertNodeOnEdge: (
+    edgeId: string,
+    type: string,
+    position: { x: number; y: number },
+  ) => string | null;
+  /**
+   * H-T4 (gap G9): create a node of `type` and wire it to the dangling end of a
+   * connection the user dropped on empty canvas. Returns the new node id.
+   */
+  addNodeFromDangling: (
+    pending: PendingConnect,
+    type: string,
+    position: { x: number; y: number },
+  ) => string;
   /** live drag update — no history entry. */
   moveNode: (nodeId: string, position: { x: number; y: number }) => void;
   /** drag finished — one history entry for the whole gesture. */
@@ -169,6 +190,21 @@ export function createCanvasStore(client: ApiClient = api, autosaveMs: number = 
           commit({ ...graph, edges: [...graph.edges, buildEdge(attempt, graph)] });
         }
         return verdict;
+      },
+
+      insertNodeOnEdge: (edgeId, type, position) => {
+        const { graph } = get();
+        const result = insertNodeOnEdge(graph, edgeId, type, position);
+        if (!result) return null;
+        commit(result.graph);
+        return result.nodeId;
+      },
+
+      addNodeFromDangling: (pending, type, position) => {
+        const { graph } = get();
+        const result = nodeFromDangling(graph, pending, type, position);
+        commit(result.graph);
+        return result.nodeId;
       },
 
       moveNode: (nodeId, position) => {

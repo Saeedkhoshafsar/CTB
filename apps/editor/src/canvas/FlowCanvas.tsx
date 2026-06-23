@@ -15,11 +15,13 @@ import {
   type Connection,
   type EdgeChange,
   type NodeChange,
+  type OnConnectStartParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react';
 import { useCanvas } from '../stores/canvas';
 import { CtbNode } from './CtbNode';
+import { CtbEdge } from './CtbEdge';
 import {
   canConnect,
   flowToRfEdges,
@@ -28,13 +30,16 @@ import {
   notesToRfNodes,
   type AnyRfNode,
   type CtbRfNode,
+  type PendingConnect,
 } from './graph';
 import { StickyNote } from './StickyNote';
 import { useNodeDetail } from './NodeDetail';
+import { NodePicker, useNodePicker, type PickerIntent } from './NodePicker';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
 
 const nodeTypes = { ctb: CtbNode, sticky: StickyNote };
+const edgeTypes = { default: CtbEdge };
 
 /** selection is view-state, not document-state — lives outside undo history. */
 interface SelectionState {
@@ -190,6 +195,57 @@ function CanvasInner() {
   }, []);
 
   /**
+   * H-T4 (gap G9) — wire-drop-to-palette. We remember which handle a connection
+   * drag STARTED from (onConnectStart); if it ends on the empty pane rather than
+   * a handle (onConnectEnd with no valid Connection), we open the NodePicker
+   * pre-targeted at the dangling end so picking a type creates + wires the node.
+   */
+  const pending = useRef<OnConnectStartParams | null>(null);
+  const onConnectStart = useCallback(
+    (_e: unknown, params: OnConnectStartParams) => {
+      pending.current = params;
+    },
+    [],
+  );
+  const onConnectEnd = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      const params = pending.current;
+      pending.current = null;
+      if (!params?.nodeId) return;
+      // a drop ON a handle is handled by onConnect; only act on a pane drop
+      const target = e.target as HTMLElement | null;
+      const onPane = !!target?.classList?.contains('react-flow__pane');
+      if (!onPane) return;
+      const pt = 'changedTouches' in e ? e.changedTouches[0] : e;
+      const at = { x: pt?.clientX ?? 0, y: pt?.clientY ?? 0 };
+      // dragging FROM an output handle gives a source; FROM an input gives a target
+      const port = params.handleId ?? 'main';
+      const pc: PendingConnect =
+        params.handleType === 'target'
+          ? { target: params.nodeId, toPort: port }
+          : { source: params.nodeId, fromPort: port };
+      useNodePicker.getState().open(at, { kind: 'dangling', pending: pc });
+    },
+    [],
+  );
+
+  /**
+   * The NodePicker reports the chosen type + the live intent + the screen point.
+   * Add-on-edge splits the edge; wire-drop creates the node at the drop point
+   * (converted to flow coords) already wired to the dangling end.
+   */
+  const onPick = useCallback(
+    (type: string, intent: PickerIntent, at: { x: number; y: number }) => {
+      const store = useCanvas.getState();
+      const pos = screenToFlowPosition({ x: at.x, y: at.y });
+      const position = { x: Math.round(pos.x), y: Math.round(pos.y) };
+      if (intent.kind === 'edge') store.insertNodeOnEdge(intent.edgeId, type, position);
+      else store.addNodeFromDangling(intent.pending, type, position);
+    },
+    [screenToFlowPosition],
+  );
+
+  /**
    * port-aware pre-check so React Flow shows invalid targets as forbidden.
    * Delegates to the SAME shared `canConnect` the store commits with, so the
    * drag preview and the actual edit agree — including the PB-T1 typed
@@ -235,9 +291,12 @@ function CanvasInner() {
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         onDragOver={onDragOver}
         onDrop={onDrop}
@@ -250,6 +309,7 @@ function CanvasInner() {
         <Controls position="bottom-right" />
         <MiniMap pannable zoomable position="bottom-left" />
       </ReactFlow>
+      <NodePicker onPick={onPick} />
     </div>
   );
 }

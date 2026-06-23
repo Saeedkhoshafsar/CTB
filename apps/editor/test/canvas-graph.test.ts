@@ -8,14 +8,17 @@ import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json'
 import {
   NOTE_RF_PREFIX,
   buildEdge,
+  buildNode,
   canConnect,
   effectiveOutputs,
   flowToRfEdges,
   flowToRfNodes,
+  insertNodeOnEdge,
   nextEdgeId,
   nextNodeId,
   nextNoteId,
   nodeDisplayName,
+  nodeFromDangling,
   noteIdFromRf,
   notesToRfNodes,
   rfIdForNote,
@@ -503,5 +506,88 @@ describe('nodeDisplayName — node title / human name (H-T2)', () => {
 
   it('preserves RTL/Persian titles verbatim (presentational only)', () => {
     expect(nodeDisplayName({ title: 'پیام خوش‌آمد' }, 'Send Message')).toBe('پیام خوش‌آمد');
+  });
+});
+
+describe('insertNodeOnEdge — add a node ON an edge (H-T4, gap G8)', () => {
+  it('splits A→B into A→N→B, removing the original edge', () => {
+    // e1: trigger.main → ask_name.main
+    const res = insertNodeOnEdge(graph, 'e1', 'tg.sendMessage', { x: 100, y: 100 });
+    expect(res).not.toBeNull();
+    const { graph: g, nodeId } = res!;
+    // a new node was added with empty params at the given position
+    const node = g.nodes.find((n) => n.id === nodeId)!;
+    expect(node.type).toBe('tg.sendMessage');
+    expect(node.position).toEqual({ x: 100, y: 100 });
+    expect(node.params).toEqual({});
+    // the original edge is gone; two new edges route through the node on 'main'
+    expect(g.edges.some((e) => e.id === 'e1')).toBe(false);
+    const head = g.edges.find((e) => e.from.node === 'trigger' && e.to.node === nodeId)!;
+    const tail = g.edges.find((e) => e.from.node === nodeId && e.to.node === 'ask_name')!;
+    expect(head.from.port).toBe('main'); // trigger's original out port
+    expect(head.to.port).toBe('main');
+    expect(tail.from.port).toBe('main');
+    expect(tail.to.port).toBe('main'); // ask_name's original in port
+    // exactly one node + one net edge added; both new edges have fresh unique ids
+    expect(g.nodes.length).toBe(graph.nodes.length + 1);
+    expect(g.edges.length).toBe(graph.edges.length + 1);
+    expect(new Set(g.edges.map((e) => e.id)).size).toBe(g.edges.length);
+    // and the result is still a valid flow document
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it('preserves the original ports of a branch edge it splits', () => {
+    // e4: ask_age.invalid → too_many_retries.main
+    const { graph: g, nodeId } = insertNodeOnEdge(graph, 'e4', 'tg.sendMessage', { x: 0, y: 0 })!;
+    const head = g.edges.find((e) => e.from.node === 'ask_age' && e.to.node === nodeId)!;
+    const tail = g.edges.find((e) => e.from.node === nodeId && e.to.node === 'too_many_retries')!;
+    expect(head.from.port).toBe('invalid'); // the source's original branch port is kept
+    expect(tail.to.port).toBe('main');
+  });
+
+  it('returns null for an unknown edge id (no mutation)', () => {
+    expect(insertNodeOnEdge(graph, 'nope', 'tg.sendMessage', { x: 0, y: 0 })).toBeNull();
+  });
+});
+
+describe('nodeFromDangling — wire-drop-to-palette (H-T4, gap G9)', () => {
+  it('a dangling SOURCE wires A.port → new.main', () => {
+    const { graph: g, nodeId } = nodeFromDangling(
+      graph,
+      { source: 'trigger', fromPort: 'main' },
+      'tg.sendMessage',
+      { x: 50, y: 60 },
+    );
+    const node = g.nodes.find((n) => n.id === nodeId)!;
+    expect(node.position).toEqual({ x: 50, y: 60 });
+    const edge = g.edges.find((e) => e.from.node === 'trigger' && e.to.node === nodeId)!;
+    expect(edge.from.port).toBe('main');
+    expect(edge.to.port).toBe('main');
+    expect(g.edges.length).toBe(graph.edges.length + 1);
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it('a dangling TARGET wires new.main → B.port', () => {
+    const { graph: g, nodeId } = nodeFromDangling(
+      graph,
+      { target: 'greet', toPort: 'main' },
+      'tg.trigger',
+      { x: 0, y: 0 },
+    );
+    const edge = g.edges.find((e) => e.from.node === nodeId && e.to.node === 'greet')!;
+    expect(edge.from.port).toBe('main');
+    expect(edge.to.port).toBe('main');
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it('buildNode mints a unique id, empty params, enabled, at the position', () => {
+    const node = buildNode('tg.sendMessage', { x: 7, y: 8 }, graph);
+    expect(graph.nodes.some((n) => n.id === node.id)).toBe(false); // unique vs existing
+    expect(node).toMatchObject({
+      type: 'tg.sendMessage',
+      params: {},
+      disabled: false,
+      position: { x: 7, y: 8 },
+    });
   });
 });

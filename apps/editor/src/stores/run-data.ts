@@ -10,13 +10,15 @@
 import type { ExecutionSummary } from '@ctb/shared';
 import { create } from 'zustand';
 import { type ApiClient, api } from '../api/client';
-import { mapRunData, type NodeRunData } from '../canvas/run-data';
+import { mapRunData, mapRunErrors, type NodeRunData } from '../canvas/run-data';
 
 export interface RunDataState {
   flowId: string | null;
   /** Latest execution of the flow, or null when it never ran. */
   execution: ExecutionSummary | null;
   byNode: Map<string, NodeRunData>;
+  /** H-T3: nodeId → error message for nodes that failed on the latest run. */
+  errorsByNode: Map<string, string>;
   loading: boolean;
   error: string | null;
 
@@ -30,6 +32,7 @@ export function createRunDataStore(client: ApiClient = api) {
     flowId: null,
     execution: null,
     byNode: new Map(),
+    errorsByNode: new Map(),
     loading: false,
     error: null,
 
@@ -39,11 +42,16 @@ export function createRunDataStore(client: ApiClient = api) {
         const list = await client.listExecutions({ flowId, limit: 1 });
         const latest = list[0];
         if (!latest) {
-          set({ execution: null, byNode: new Map(), loading: false });
+          set({ execution: null, byNode: new Map(), errorsByNode: new Map(), loading: false });
           return;
         }
         const detail = await client.getExecution(latest.id);
-        set({ execution: latest, byNode: mapRunData(detail.logs), loading: false });
+        set({
+          execution: latest,
+          byNode: mapRunData(detail.logs),
+          errorsByNode: mapRunErrors(detail.logs),
+          loading: false,
+        });
       } catch (err) {
         set({ loading: false, error: err instanceof Error ? err.message : String(err) });
       }
@@ -55,7 +63,14 @@ export function createRunDataStore(client: ApiClient = api) {
     },
 
     reset: () =>
-      set({ flowId: null, execution: null, byNode: new Map(), loading: false, error: null }),
+      set({
+        flowId: null,
+        execution: null,
+        byNode: new Map(),
+        errorsByNode: new Map(),
+        loading: false,
+        error: null,
+      }),
   }));
 }
 

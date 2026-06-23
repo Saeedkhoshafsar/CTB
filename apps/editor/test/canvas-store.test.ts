@@ -247,3 +247,64 @@ describe('sticky notes — store actions (H-T1)', () => {
     expect((useCanvas.getState().graph.notes ?? [])[0]!.position).toEqual({ x: 0, y: 0 });
   });
 });
+
+describe('add-node-on-edge + wire-drop-to-palette — store actions (H-T4)', () => {
+  it('insertNodeOnEdge commits A→N→B as ONE undoable edit', async () => {
+    const { useCanvas } = await setup();
+    const a = useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    const b = useCanvas.getState().addNode('tg.sendMessage', { x: 200, y: 0 });
+    useCanvas.getState().connect({ from: { node: a, port: 'main' }, to: { node: b, port: 'main' } });
+    const edgeId = useCanvas.getState().graph.edges[0]!.id;
+    const history = useCanvas.getState().past.length;
+
+    const newId = useCanvas.getState().insertNodeOnEdge(edgeId, 'tg.sendMessage', { x: 100, y: 0 });
+    expect(newId).not.toBeNull();
+    const g = useCanvas.getState().graph;
+    expect(g.nodes).toHaveLength(3);
+    expect(g.edges.some((e) => e.id === edgeId)).toBe(false); // original split out
+    expect(g.edges.some((e) => e.from.node === a && e.to.node === newId)).toBe(true);
+    expect(g.edges.some((e) => e.from.node === newId && e.to.node === b)).toBe(true);
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+    // a single history entry → one undo restores the original A→B edge
+    expect(useCanvas.getState().past.length).toBe(history + 1);
+    useCanvas.getState().undo();
+    const after = useCanvas.getState().graph;
+    expect(after.nodes).toHaveLength(2);
+    expect(after.edges).toHaveLength(1);
+    expect(after.edges[0]!.id).toBe(edgeId);
+  });
+
+  it('insertNodeOnEdge on an unknown edge id is a no-op (no node, no history)', async () => {
+    const { useCanvas } = await setup();
+    useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    const history = useCanvas.getState().past.length;
+    const res = useCanvas.getState().insertNodeOnEdge('nope', 'tg.sendMessage', { x: 0, y: 0 });
+    expect(res).toBeNull();
+    expect(useCanvas.getState().graph.nodes).toHaveLength(1);
+    expect(useCanvas.getState().past.length).toBe(history);
+  });
+
+  it('addNodeFromDangling (source) creates the node already wired from the source', async () => {
+    const { useCanvas } = await setup();
+    const a = useCanvas.getState().addNode('tg.trigger', { x: 0, y: 0 });
+    const newId = useCanvas
+      .getState()
+      .addNodeFromDangling({ source: a, fromPort: 'main' }, 'tg.sendMessage', { x: 150, y: 0 });
+    const g = useCanvas.getState().graph;
+    expect(g.nodes.map((n) => n.id)).toContain(newId);
+    expect(g.edges).toHaveLength(1);
+    expect(g.edges[0]).toMatchObject({ from: { node: a, port: 'main' }, to: { node: newId, port: 'main' } });
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it('addNodeFromDangling (target) creates the node wired INTO the target', async () => {
+    const { useCanvas } = await setup();
+    const b = useCanvas.getState().addNode('tg.sendMessage', { x: 200, y: 0 });
+    const newId = useCanvas
+      .getState()
+      .addNodeFromDangling({ target: b, toPort: 'main' }, 'tg.trigger', { x: 0, y: 0 });
+    const g = useCanvas.getState().graph;
+    expect(g.edges[0]).toMatchObject({ from: { node: newId, port: 'main' }, to: { node: b, port: 'main' } });
+    expect(FlowGraphSchema.safeParse(g).success).toBe(true);
+  });
+});

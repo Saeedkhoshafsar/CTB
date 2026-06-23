@@ -28,7 +28,13 @@ import {
   AddOptionControl,
 } from './widgets';
 import type { PreviewScope } from './preview';
-import { partitionFields, emptyValue, type FieldSpec, type JsonSchema } from './schema';
+import {
+  partitionFields,
+  anyAdvancedSet,
+  emptyValue,
+  type FieldSpec,
+  type JsonSchema,
+} from './schema';
 import { setAtPath } from './model';
 import { useI18n } from '../i18n';
 
@@ -51,12 +57,12 @@ function FormBody({
   // already visible via isSet, so this only matters for not-yet-typed ones.
   const [added, setAdded] = useState<ReadonlySet<string>>(() => new Set());
 
-  const { shown, optional } = useMemo(
+  const { shown, optional, advanced } = useMemo(
     () => partitionFields(schema, value, added),
     [schema, value, added],
   );
 
-  if (shown.length === 0 && optional.length === 0) {
+  if (shown.length === 0 && optional.length === 0 && advanced.length === 0) {
     return <p className="form-empty">{t('form.noParams')}</p>;
   }
 
@@ -83,25 +89,27 @@ function FormBody({
     setField(key, undefined);
   };
 
+  // One field row — shared by the always-shown set and the Advanced section so
+  // a field renders identically wherever it lives. `removable` is false inside
+  // the Advanced section: those fields are author-exposed, not user-added, so
+  // there is no "×" to return them to a menu (they always belong to the node).
+  const renderField = (spec: FieldSpec, removable: boolean) => (
+    <FieldRow
+      key={spec.key}
+      label={label(spec.key)}
+      required={spec.required}
+      desc={desc(spec.key)}
+      inline={spec.widget === 'boolean'}
+      onRemove={removable && !spec.required ? () => removeOption(spec.key) : undefined}
+      removeLabel={t('form.removeOption')}
+    >
+      <SchemaWidget spec={spec} value={value[spec.key]} onChange={(v) => setField(spec.key, v)} />
+    </FieldRow>
+  );
+
   return (
     <div className="schema-form">
-      {shown.map((spec) => (
-        <FieldRow
-          key={spec.key}
-          label={label(spec.key)}
-          required={spec.required}
-          desc={desc(spec.key)}
-          inline={spec.widget === 'boolean'}
-          onRemove={spec.required ? undefined : () => removeOption(spec.key)}
-          removeLabel={t('form.removeOption')}
-        >
-          <SchemaWidget
-            spec={spec}
-            value={value[spec.key]}
-            onChange={(v) => setField(spec.key, v)}
-          />
-        </FieldRow>
-      ))}
+      {shown.map((spec) => renderField(spec, true))}
       <AddOptionControl
         options={optional}
         onAdd={(key) => {
@@ -109,6 +117,23 @@ function FormBody({
           if (spec) addOption(spec);
         }}
       />
+      {advanced.length > 0 && (
+        // Native <details> = zero-JS collapsible, keyboard-accessible by
+        // default. Opens automatically when an advanced field already carries a
+        // value (anyAdvancedSet) so editing an existing node never hides the
+        // user's own data behind a closed flap. `key` forces a remount when the
+        // auto-open verdict flips, so the default-open reflects the latest data.
+        <details
+          className="form-advanced"
+          key={anyAdvancedSet(advanced, value) ? 'adv-open' : 'adv-closed'}
+          open={anyAdvancedSet(advanced, value)}
+        >
+          <summary className="form-advanced-summary">{t('form.advanced.title')}</summary>
+          <div className="form-advanced-body">
+            {advanced.map((spec) => renderField(spec, false))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -38,6 +38,7 @@ import {
   type ImportTemplateBody,
   ImportTemplateBodySchema,
   type RunFlowResult,
+  type FlowItem,
   type FlowPublic,
   type FlowVersionInfo,
   RollbackFlowBodySchema,
@@ -477,6 +478,18 @@ export class ApiClient {
    */
   async runFlow(id: string): Promise<RunFlowResult> {
     return this.request<RunFlowResult>('POST', `/api/flows/${id}/run`);
+  }
+
+  /**
+   * Single-node run (I-T2, gap G16): execute ONE node and stop, without running
+   * the whole flow. Always a TEST run, so a pinned node honours its pin. The
+   * editor reads the node's output from the execution log (run-data store).
+   */
+  async runNode(id: string, nodeId: string, input?: FlowItem[]): Promise<RunFlowResult> {
+    return this.request<RunFlowResult>('POST', `/api/flows/${id}/run-node`, {
+      nodeId,
+      ...(input !== undefined ? { input } : {}),
+    });
   }
 
   /** Cancel a waiting/running execution (P2-T5). 409 ApiError when already finished. */

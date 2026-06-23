@@ -76,7 +76,7 @@ export interface CanvasState {
   moveNode: (nodeId: string, position: { x: number; y: number }) => void;
   /** drag finished — one history entry for the whole gesture. */
   commitMove: () => void;
-  updateNode: (nodeId: string, patch: Partial<Pick<FlowNode, 'params' | 'disabled' | 'note' | 'title'>>) => void;
+  updateNode: (nodeId: string, patch: Partial<Pick<FlowNode, 'params' | 'disabled' | 'note' | 'title' | 'pinnedData'>>) => void;
 
   // ── sticky notes (H-T1) ──────────────────────────────────────────────────
   /** add a sticky note at canvas position; returns its new id. */

@@ -7,7 +7,7 @@ import type { ExecLogEntry, ExecutionDetail } from '@ctb/shared';
 import { describe, expect, it } from 'vitest';
 import { ApiClient } from '../src/api/client';
 import { childRows, pathToExpression } from '../src/canvas/json-tree';
-import { mapRunData, mapRunErrors } from '../src/canvas/run-data';
+import { flattenOutputForPin, mapRunData, mapRunErrors, PIN_ITEMS_CAP } from '../src/canvas/run-data';
 import { FIELD_DRAG_MIME } from '../src/form/expression';
 import { createAuthStore } from '../src/stores/auth';
 import { createRunDataStore } from '../src/stores/run-data';
@@ -247,5 +247,39 @@ describe('run-data store', () => {
     expect(s.execution).toBeNull();
     expect(s.byNode.size).toBe(0);
     expect(s.errorsByNode.size).toBe(0);
+  });
+});
+
+describe('flattenOutputForPin — I-T1 (gap G4)', () => {
+  it('returns null for null/undefined/empty output', () => {
+    expect(flattenOutputForPin(null)).toBeNull();
+    expect(flattenOutputForPin(undefined)).toBeNull();
+    expect(flattenOutputForPin({})).toBeNull();
+    expect(flattenOutputForPin({ main: [] })).toBeNull();
+  });
+
+  it('flattens a single-port output to a flat FlowItem[]', () => {
+    expect(flattenOutputForPin({ main: [item({ a: 1 }), item({ a: 2 })] })).toEqual([
+      { json: { a: 1 } },
+      { json: { a: 2 } },
+    ]);
+  });
+
+  it('orders `main` first, then other ports', () => {
+    const out = flattenOutputForPin({
+      false: [item({ p: 'F' })],
+      main: [item({ p: 'M' })],
+      true: [item({ p: 'T' })],
+    });
+    expect(out?.[0]).toEqual({ json: { p: 'M' } });
+    // the rest follow main, both present
+    expect(out).toHaveLength(3);
+    expect(out).toContainEqual({ json: { p: 'F' } });
+    expect(out).toContainEqual({ json: { p: 'T' } });
+  });
+
+  it('caps the result at PIN_ITEMS_CAP items', () => {
+    const many = { main: Array.from({ length: PIN_ITEMS_CAP + 10 }, (_, i) => item({ i })) };
+    expect(flattenOutputForPin(many)).toHaveLength(PIN_ITEMS_CAP);
   });
 });

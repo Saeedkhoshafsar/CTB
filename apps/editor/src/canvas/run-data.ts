@@ -49,3 +49,34 @@ export function mapRunErrors(logs: ExecLogEntry[]): Map<string, string> {
   }
   return byNode;
 }
+
+/** Schema cap on pinned items (mirrors `FlowNodeSchema.pinnedData.max(50)`). */
+export const PIN_ITEMS_CAP = 50;
+
+/**
+ * I-T1 (gap G4) — flatten a node's per-port run OUTPUT into the flat
+ * `FlowItem[]` we pin onto the node. Pure + DOM-free so it unit-tests directly.
+ *
+ * The engine replays a pin on the universal `main` port (executor short-circuit),
+ * so a multi-port node's pin is the concatenation of every port's items in a
+ * stable port order (`main` first if present, then the rest as encountered).
+ * Capped at {@link PIN_ITEMS_CAP} to satisfy the schema — a pin is a sample,
+ * not a dataset. Returns `null` when there is nothing to pin (no output items),
+ * so the caller can disable the Pin action.
+ */
+export function flattenOutputForPin(
+  output: Record<string, FlowItem[]> | null | undefined,
+): FlowItem[] | null {
+  if (!output) return null;
+  const ports = Object.keys(output);
+  // main first (the port the engine replays on), then the rest in object order
+  ports.sort((a, b) => (a === 'main' ? -1 : b === 'main' ? 1 : 0));
+  const flat: FlowItem[] = [];
+  for (const port of ports) {
+    for (const it of output[port] ?? []) {
+      flat.push(it);
+      if (flat.length >= PIN_ITEMS_CAP) return flat;
+    }
+  }
+  return flat.length > 0 ? flat : null;
+}

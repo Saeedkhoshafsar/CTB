@@ -324,6 +324,17 @@ export const fa = {
   'editor.node.problems': '{n} مشکل',
   // H-T3 (gap G15): نودی که در آخرین اجرا با خطا مواجه شده؛ کلیک → نمای جزئیات نود.
   'editor.node.runError': 'خطا در آخرین اجرا',
+  // I-T1 (gap G4): سنجاق‌کردن خروجی نمونهٔ یک نود تا در اجرای آزمایشی به‌جای
+  // اجرای دوبارهٔ نود استفاده شود.
+  'editor.node.pin.action': '📌 سنجاق خروجی',
+  'editor.node.pin.unpin': 'برداشتن سنجاق',
+  'editor.node.pin.pinned': '📌 سنجاق‌شده ({n} مورد) — در اجراهای آزمایشی استفاده می‌شود',
+  'editor.node.pin.badge': 'سنجاق‌شده',
+  'editor.node.pin.hint': 'دادهٔ سنجاق‌شده فقط در اجرای آزمایشی استفاده می‌شود، هرگز در اجرای واقعی.',
+  'editor.node.runNode.action': '▶ اجرای این نود',
+  'editor.node.runNode.busy': 'در حال اجرا…',
+  'editor.node.runNode.hint': 'فقط همین نود را با آخرین ورودی‌اش (یا خالی) اجرا کن و خروجی را نشان بده — بدون اجرای کل فلو.',
+  'editor.node.runNode.failed': 'اجرا ناموفق بود',
   // H-T4 (gaps G8/G9): افزودن نود روی یال + رها کردن سیم روی بوم خالی.
   'editor.edge.insert': 'افزودن یک نود اینجا',
   'editor.picker.title': 'افزودن نود',

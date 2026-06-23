@@ -174,6 +174,209 @@ describe('executor — GOTO', () => {
   });
 });
 
+describe('executor — pinned data (I-T1, gap G4)', () => {
+  it('TEST run: a node with pinnedData emits the pin INSTEAD of executing', async () => {
+    const { executor, store, logs } = makeHarness();
+    // `boom` would throw if executed — pinned data must bypass execution entirely.
+    const g = graph(
+      [
+        { id: 'boom', type: 'test.boom', pinnedData: [item({ name: 'علی', vip: true })] },
+        { id: 'save', type: 'test.saveVar', params: { name: 'got', from: 'name' } },
+      ],
+      [['boom', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'boom', items: { main: [item({})] } },
+      testRun: true,
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    // the pinned item flowed downstream → save read its `name`
+    expect(exec!.state.vars.got).toBe('علی');
+    expect(logs.some((l) => /node "boom" using pinned data \(1 item/.test(l.message))).toBe(true);
+  });
+
+  it('PRODUCTION run: pinnedData is IGNORED — the node executes normally', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      // boom throws when executed; in production the pin is ignored so it runs → error
+      [{ id: 'boom', type: 'test.boom', pinnedData: [item({ name: 'علی' })] }],
+      [],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'boom', items: { main: [item({})] } },
+      // no testRun flag → production
+    });
+    expect(res.status).toBe('error');
+    expect(res.error).toMatch(/kaboom/);
+    expect((await store.load('e1'))!.status).toBe('error');
+  });
+
+  it('TEST run: a pin on the entry node feeds downstream stable data', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' }, pinnedData: [item({ trail: ['PINNED'] })] },
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      testRun: true,
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    // emit's normal output would be trail:['X']; the pin replaced it
+    expect(exec!.state.vars.trail).toEqual(['PINNED']);
+  });
+
+  it('TEST run: an EMPTY pin ([]) produces no downstream items', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' }, pinnedData: [] },
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      testRun: true,
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    // save never ran (no items routed) → var stays unset
+    expect(exec!.state.vars.trail).toBeUndefined();
+    expect(res.steps).toBe(1); // only `src` executed (as a pin)
+  });
+
+  it('the testRun flag is persisted on the state and survives a WAIT (I4 durability)', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'ask', type: 'test.ask', params: { question: 'نام؟' } },
+        { id: 'after', type: 'test.boom', pinnedData: [item({ ok: true })] },
+        { id: 'save', type: 'test.saveVar', params: { name: 'done', from: 'ok' } },
+      ],
+      [['ask', 'after', 'reply'], ['after', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b', chatId: 7,
+      entry: { nodeId: 'ask', items: { main: [item({})] } },
+      testRun: true,
+    });
+    expect(res.status).toBe('waiting');
+    // the flag round-tripped through the persisted state
+    const paused = await store.load('e1');
+    expect(paused!.state.testRun).toBe(true);
+
+    // resume: the test-run pin on `after` must STILL be honoured (boom bypassed)
+    const r2 = await executor.resume({
+      executionId: 'e1', graph: g, flow: FLOW, port: 'reply', items: [item({ reply: 'علی' })],
+    });
+    expect(r2.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.vars.done).toBe(true);
+  });
+});
+
+describe('executor — single-node run (I-T2, gap G16)', () => {
+  it('stopAfterNode: runs ONLY the target node and ends without routing downstream', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' } },
+        // `save` would run on a normal flow; the single-node boundary must stop
+        // before it (and `boom` would throw if ever reached).
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      stopAfterNode: 'src',
+    });
+    expect(res.status).toBe('done');
+    expect(res.steps).toBe(1); // exactly one node executed
+    const exec = await store.load('e1');
+    // `save` never ran → the downstream var is unset
+    expect(exec!.state.vars.trail).toBeUndefined();
+  });
+
+  it('the target node executes via the full path — its output is captured in the log', async () => {
+    const { executor, logs } = makeHarness();
+    const g = graph([{ id: 'src', type: 'test.emit', params: { tag: 'Y' } }], []);
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({ seed: 1 })] } },
+      stopAfterNode: 'src',
+    });
+    // the I/O snapshot row for `src` carries its emitted output (trail:['Y'])
+    const exec = logs.find((l) => l.nodeId === 'src' && l.output);
+    expect(exec).toBeDefined();
+    expect(exec!.output!.main![0]!.json.trail).toEqual(['Y']);
+    expect(logs.some((l) => /single-node run of "src" complete/.test(l.message))).toBe(true);
+  });
+
+  it('stopAfterNode is persisted on the state (I4) and the chosen input reaches the node', async () => {
+    const { executor, store } = makeHarness();
+    // run `mid` alone, feeding it an item that already carries a trail
+    const g = graph(
+      [
+        { id: 'up', type: 'test.emit', params: { tag: 'UP' } },
+        { id: 'mid', type: 'test.emit', params: { tag: 'MID' } },
+      ],
+      [['up', 'mid']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'mid', items: { main: [item({ trail: ['SEED'] })] } },
+      stopAfterNode: 'mid',
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.stopAfterNode).toBe('mid');
+  });
+
+  it('a single-node run of a WAIT node reports `waiting` (the wait is not short-circuited)', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph([{ id: 'ask', type: 'test.ask', params: { question: 'نام؟' } }], []);
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b', chatId: 7,
+      entry: { nodeId: 'ask', items: { main: [item({})] } },
+      stopAfterNode: 'ask',
+    });
+    expect(res.status).toBe('waiting');
+    expect((await store.load('e1'))!.state.stopAfterNode).toBe('ask');
+  });
+
+  it('a normal run (no stopAfterNode) is unaffected — it routes through every node', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'src', type: 'test.emit', params: { tag: 'X' } },
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['src', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'src', items: { main: [item({})] } },
+      // no stopAfterNode → full flow
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.vars.trail).toEqual(['X']); // save DID run
+    expect(exec!.state.stopAfterNode).toBeUndefined();
+  });
+});
+
 describe('executor — step-log I/O snapshots (P2-T3.5, editor NDV data)', () => {
   it('"executed" rows carry the node input items and per-port output items', async () => {
     const { executor, logs } = makeHarness();

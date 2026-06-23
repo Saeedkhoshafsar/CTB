@@ -263,13 +263,44 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
 
 ### Phase I — Run & iterate (the "test fast" cure)
 
-- **I-T1 — Pin data on a node. (gap G4)** Store a pinned sample item on a node
-  (shared schema + engine: use pinned data instead of upstream when present in a
-  TEST run only, never in production). Decision Log entry (engine behaviour).
-  Verify: core executor test (pin used in test run, ignored in prod) + editor.
-- **I-T2 — Execute a single node. (gap G16)** From the editor, run one node with
-  its (pinned or upstream) input and show the output, without running the whole
-  flow. Verify: server + editor tests.
+- **I-T1 — Pin data on a node. (gap G4)** ✅ DONE (ROADMAP Decision Log #21).
+  A NEW optional `FlowNode.pinnedData: FlowItem[]?` (capped at 50 — a pin is a
+  sample, not a dataset) + a NEW persisted `ExecutionState.testRun?` flag.
+  **Engine behaviour:** the executor's `start()` stamps `testRun` from the new
+  `StartInput.testRun`; in `runLoop`, BEFORE the disabled-branch, a node carrying
+  `pinnedData` in a TEST run short-circuits — it EMITS the stored sample on the
+  universal `main` port (a `structuredClone`) INSTEAD of executing, never in a
+  production run. The flag is persisted on the state so it SURVIVES pause/resume
+  (I4). **Server:** the editor's "Test run" endpoint `/api/flows/:id/run` passes
+  `testRun: true`; production runs (router/scheduler/webhook) never set it →
+  pins ignored. **Editor:** `updateNode` accepts `pinnedData`; a pure
+  `flattenOutputForPin(output)` (DOM-free, F-T3 pattern) flattens a node's last
+  run output (main-first, capped at `PIN_ITEMS_CAP`); the NDV gains a pin bar
+  (Pin output / Unpin) and `CtbNode` shows a 📌 Pinned badge; i18n en/fa parity.
+  All optional/no-default → every existing flow parses byte-identically.
+  Verify: core executor (5 — pin used in test run, ignored in prod, feeds
+  downstream, empty pin → no items, flag survives WAIT/resume) + shared (7
+  schema) + editor (4 `flattenOutputForPin`); typecheck all 6 workspaces;
+  shared 96 / core 55 / editor 239 / nodes 535 / server 450 all GREEN.
+- **I-T2 — Execute a single node. (gap G16)** ✅ DONE (ROADMAP Decision Log #22).
+  From the editor, run ONE node with its (last-run or empty) input and show the
+  output, without running the whole flow. A NEW optional
+  `StartInput.stopAfterNode?: NodeId` + a NEW persisted
+  `ExecutionState.stopAfterNode?`. **Engine behaviour:** the executor enters at
+  the target node and, after that node executes, ENDS the run instead of routing
+  downstream — the boundary is checked in `runLoop` AFTER the I/O snapshot log
+  (so the node's output is captured) and only short-circuits `items`/`goto`
+  results (a `wait`/`end`/`error` already terminates the step naturally). The
+  flag is persisted on the state so a single-node run of a WAIT node behaves
+  correctly across pause/resume (I4). **Server:** NEW `POST /api/flows/:id/run-node`
+  (always a TEST run, so pins are honoured) — 404 `node_not_found`, 422
+  `node_disabled`, 400 `invalid_body`; the output is read back from `exec_logs`.
+  **Editor:** `api.runNode(id, nodeId, input?)`; the NDV gains a "▶ Run this node"
+  button that `saveNow()`s, runs only this node with its last input (or empty),
+  and refreshes the run-data overlay; i18n en/fa parity. All optional/no-default →
+  every existing flow + persisted state parses byte-identically. Verify: core
+  executor (5) + server run-node (6) + editor api-client (1); typecheck all 6
+  workspaces; shared 96 / core 60 / editor 240 / nodes 535 / server 456 all GREEN.
 - **I-T3 — Keyboard shortcut help overlay + coverage sweep. (gap G11)** A `?`
   overlay listing shortcuts; fill obvious gaps (delete, duplicate, select-all,
   fit-view). Verify: editor tests.

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FlowItemSchema } from './item';
 
 /**
  * Flow graph — THE document the canvas edits and the engine executes.
@@ -46,6 +47,23 @@ export const FlowNodeSchema = z.object({
   title: z.string().max(120).optional(),
   /** Free-form note shown on canvas. */
   note: z.string().max(2000).optional(),
+  /**
+   * Pinned sample data (I-T1, gap G4). When set, a TEST run uses these items as
+   * the node's OUTPUT (on the universal `main` port) INSTEAD of executing the
+   * node — so a downstream node can be built/tested with stable, known data
+   * without re-running (or even being able to run) the upstream node. This is
+   * the n8n "pin data" affordance, kept generic at the engine level.
+   *
+   * CRITICAL durability/safety contract (Decision Log #21): pinned data is
+   * honoured ONLY in a TEST run (`ExecutionState.testRun === true`); a
+   * production run IGNORES it entirely and executes the node normally — a pin is
+   * a build-time convenience, never a live behaviour. OPTIONAL (no default) so
+   * every existing stored flow, fixture and export literal stays byte-identical
+   * (a node with no pin omits the field); the executor reads `node.pinnedData`
+   * only on the test-run path. Capped at 50 items — a pin is a sample, not a
+   * dataset.
+   */
+  pinnedData: z.array(FlowItemSchema).max(50).optional(),
 });
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
 

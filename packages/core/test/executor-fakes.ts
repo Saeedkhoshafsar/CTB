@@ -178,7 +178,7 @@ export function makeHarness(overrides: Partial<ExecutorServices> = {}): Harness 
   return { executor, store, logs };
 }
 
-export function graph(nodes: { id: string; type: string; params?: Record<string, unknown>; disabled?: boolean }[], edges: [string, string, string?, string?][]): FlowGraph {
+export function graph(nodes: { id: string; type: string; params?: Record<string, unknown>; disabled?: boolean; pinnedData?: FlowItem[] }[], edges: [string, string, string?, string?][]): FlowGraph {
   return {
     nodes: nodes.map((n) => ({
       id: n.id,
@@ -186,6 +186,7 @@ export function graph(nodes: { id: string; type: string; params?: Record<string,
       params: n.params ?? {},
       position: { x: 0, y: 0 },
       disabled: n.disabled ?? false,
+      ...(n.pinnedData !== undefined ? { pinnedData: n.pinnedData } : {}),
     })),
     edges: edges.map(([from, to, fromPort, toPort], i) => ({
       id: `e${i}`,

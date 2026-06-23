@@ -8,8 +8,8 @@
  */
 import { z } from 'zod';
 import type { ExecutionStatus, WaitSpec } from './execution';
-import { FlowGraphSchema } from './flow';
-import type { FlowItem } from './item';
+import { FlowGraphSchema, NodeIdSchema } from './flow';
+import { FlowItemSchema, type FlowItem } from './item';
 import type { InputSlot, NodeRole, SlotKind } from './node-def';
 import { KeyboardSchema } from './node-params';
 
@@ -364,6 +364,20 @@ export interface RunFlowResult {
   status: ExecutionStatus;
   error: string | null;
 }
+
+/**
+ * Body of `POST /api/flows/:id/run-node` — execute a SINGLE node (I-T2, gap
+ * G16). `nodeId` is the canvas node to run; `input` is the optional item list
+ * fed to it (defaults to one empty item, like a manual-trigger run). The run is
+ * always a TEST run (so a pinned node honours its pin), enters AT that node,
+ * executes it, and stops without routing downstream. Result reuses
+ * RunFlowResult; the editor reads the node's output from the execution log.
+ */
+export const RunNodeBodySchema = z.object({
+  nodeId: NodeIdSchema,
+  input: z.array(FlowItemSchema).max(200).optional(),
+});
+export type RunNodeBody = z.infer<typeof RunNodeBodySchema>;
 
 // ---------------------------------------------------------------------------
 // users (Users page — P3-T5)

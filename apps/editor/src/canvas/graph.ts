@@ -398,3 +398,63 @@ export function nodeFromDangling(
   const edge = buildEdge(attempt, withNode);
   return { graph: { ...withNode, edges: [...withNode.edges, edge] }, nodeId: node.id };
 }
+
+// ---------------------------------------------------------------------------
+// I-T3 — duplicate selected nodes (gap G11, keyboard shortcut Ctrl/⌘+D)
+//
+// A PURE structural edit (F-T3 pattern): clone the selected nodes (fresh unique
+// ids, a small canvas offset, params/title/disabled/note carried over) and copy
+// any edge whose BOTH ends are inside the selection, re-wired to the clones.
+// Edges crossing the selection boundary are NOT duplicated (a clone shouldn't
+// silently fan-in/out to existing nodes). Returns the next graph + the new node
+// ids (for selecting them), or `null` when nothing valid is selected (no-op).
+// ---------------------------------------------------------------------------
+
+/** Offset (px) applied to a duplicated node so the clone is visible, not stacked. */
+export const DUPLICATE_OFFSET = 40 as const;
+
+export function duplicateNodes(
+  graph: FlowGraph,
+  nodeIds: readonly string[],
+): { graph: FlowGraph; newIds: string[] } | null {
+  const wanted = new Set(nodeIds);
+  const originals = graph.nodes.filter((n) => wanted.has(n.id));
+  if (originals.length === 0) return null;
+
+  // Mint unique ids one-by-one, growing a working graph so successive clones of
+  // the same type don't collide (nextNodeId reads the current id set each time).
+  const idMap = new Map<string, string>();
+  let working: FlowGraph = graph;
+  const clones: FlowNode[] = [];
+  for (const orig of originals) {
+    const id = nextNodeId(orig.type, working);
+    idMap.set(orig.id, id);
+    const clone: FlowNode = {
+      ...orig,
+      id,
+      position: { x: orig.position.x + DUPLICATE_OFFSET, y: orig.position.y + DUPLICATE_OFFSET },
+      // params/title/disabled/note are value-copied; clone params so editing a
+      // clone never mutates the original's params object.
+      params: structuredClone(orig.params),
+    };
+    clones.push(clone);
+    working = { ...working, nodes: [...working.nodes, clone] };
+  }
+
+  // Copy only edges fully inside the selection, re-pointed at the clones, with
+  // fresh ids minted against the growing graph (same anti-collision rule as
+  // insertNodeOnEdge).
+  for (const e of graph.edges) {
+    const from = idMap.get(e.from.node);
+    const to = idMap.get(e.to.node);
+    if (!from || !to) continue; // skip boundary-crossing edges
+    const edge: FlowEdge = {
+      id: nextEdgeId(working),
+      from: { node: from, port: e.from.port },
+      to: { node: to, port: e.to.port },
+    };
+    working = { ...working, edges: [...working.edges, edge] };
+  }
+
+  return { graph: working, newIds: clones.map((c) => c.id) };
+}

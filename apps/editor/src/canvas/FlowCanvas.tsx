@@ -37,6 +37,8 @@ import { useNodeDetail } from './NodeDetail';
 import { NodePicker, useNodePicker, type PickerIntent } from './NodePicker';
 import { PALETTE_MIME } from './Palette';
 import { create } from 'zustand';
+import { isTypingTarget, matchShortcut } from './shortcuts';
+import { useShortcutHelp } from './ShortcutHelp';
 
 const nodeTypes = { ctb: CtbNode, sticky: StickyNote };
 const edgeTypes = { default: CtbEdge };
@@ -58,7 +60,7 @@ function CanvasInner() {
   const byType = useCanvas((s) => s.byType);
   const canvas = useRef(useCanvas.getState()).current; // stable action refs
   const selection = useSelection();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   const rfNodes = useMemo<AnyRfNode[]>(
     // notes first so they paint BEHIND the flow nodes (z-index also set to 0)
@@ -185,6 +187,69 @@ function CanvasInner() {
       el.removeEventListener('dblclick', onDbl, true);
     };
   }, []);
+
+  /**
+   * Global keyboard shortcuts (I-T3, gap G11). One handler, fed by the PURE
+   * `matchShortcut` matcher so the catalog + the help overlay can't drift from
+   * the live bindings. Canvas-aware actions (duplicate / select-all / fit-view)
+   * live HERE because they need React Flow + the selection store; undo/redo/save
+   * delegate to the canvas store; `?` toggles the help overlay; Esc closes it.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const inText = isTypingTarget((e.target as HTMLElement | null)?.tagName);
+      const action = matchShortcut(e, inText);
+      if (!action) return;
+      const store = useCanvas.getState();
+      switch (action) {
+        case 'undo':
+          e.preventDefault();
+          store.undo();
+          break;
+        case 'redo':
+          e.preventDefault();
+          store.redo();
+          break;
+        case 'save':
+          e.preventDefault();
+          void store.saveNow();
+          break;
+        case 'duplicate': {
+          e.preventDefault();
+          const ids = [...useSelection.getState().nodes];
+          const newIds = store.duplicateNodes(ids);
+          if (newIds.length) useSelection.getState().set(new Set(newIds), new Set());
+          break;
+        }
+        case 'selectAll': {
+          e.preventDefault();
+          const all = new Set(useCanvas.getState().graph.nodes.map((n) => n.id));
+          useSelection.getState().set(all, new Set());
+          break;
+        }
+        case 'fitView':
+          e.preventDefault();
+          void fitView({ duration: 200 });
+          break;
+        case 'help':
+          e.preventDefault();
+          useShortcutHelp.getState().toggle();
+          break;
+        case 'closeOverlay':
+          // only consume Esc when the overlay is open (else let other UI use it)
+          if (useShortcutHelp.getState().open) {
+            e.preventDefault();
+            useShortcutHelp.getState().hide();
+          }
+          break;
+        case 'delete':
+          // Delete/Backspace is handled by React Flow's deleteKeyCode → no-op here.
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fitView]);
 
   const onConnect = useCallback((conn: Connection) => {
     if (!conn.source || !conn.target) return;

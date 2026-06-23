@@ -301,9 +301,29 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
   every existing flow + persisted state parses byte-identically. Verify: core
   executor (5) + server run-node (6) + editor api-client (1); typecheck all 6
   workspaces; shared 96 / core 60 / editor 240 / nodes 535 / server 456 all GREEN.
-- **I-T3 — Keyboard shortcut help overlay + coverage sweep. (gap G11)** A `?`
-  overlay listing shortcuts; fill obvious gaps (delete, duplicate, select-all,
-  fit-view). Verify: editor tests.
+- **I-T3 — Keyboard shortcut help overlay + coverage sweep. (gap G11)** ✅ DONE
+  (ROADMAP Decision Log #23). The matching logic is a PURE, DOM-free
+  `matchShortcut(ev, inTextField)` + a `SHORTCUTS` catalog in NEW
+  `apps/editor/src/canvas/shortcuts.ts` (cross-platform Ctrl/⌘, redo special-cased
+  for `Ctrl+Shift+Z`, Escape the only `allowInInput`) → unit-tested directly; the
+  single `window` keydown handler MOVED into `FlowCanvas` (inside
+  `ReactFlowProvider`, where `fitView` + the selection store live), the old
+  FlowEditorPage handler deleted. NEW bindings beside the existing
+  Ctrl/⌘+Z/Y/(Shift+Z)/S + RF Delete/Backspace: `Ctrl/⌘+D` duplicate (a PURE
+  `duplicateNodes(graph, ids)` that clones selected nodes — fresh ids,
+  `DUPLICATE_OFFSET`, deep-cloned params — and copies only INTERNAL edges, as one
+  undoable store edit), `Ctrl/⌘+A` select-all, `Shift+1` fit-view, `?` toggle the
+  help overlay, `Esc` close. The `?` overlay (`ShortcutHelp.tsx` + `useShortcutHelp`
+  store + toolbar `?` button) is GENERATED from `SHORTCUTS` so help can't drift
+  from bindings. i18n `editor.shortcut.*` en/fa parity; CSS `.shortcut-help*`.
+  Editor-only — no schema/server/registry/engine change.
+  - Verify: editor `shortcuts.test.ts` +13 (matcher mod/redo/text-field/null +
+    catalog uniqueness/labels-resolve-fa+en/matchable) + `canvas-graph.test.ts`
+    +5 (`duplicateNodes` ids/offset/params-clone, internal-edge copy + branch
+    port, boundary-edge skip, multi same-type, null on empty) +
+    `canvas-store.test.ts` +2 (one undoable duplicate + no-op selection); editor
+    **260** GREEN; typecheck shared/core/nodes/sandbox/editor GREEN; editor build
+    GREEN. **COMPLETES Phase I and all of PLAN3.**
 
 ---
 

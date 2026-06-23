@@ -339,6 +339,21 @@ export const fa = {
   'editor.edge.insert': 'افزودن یک نود اینجا',
   'editor.picker.title': 'افزودن نود',
 
+  // ── میان‌برهای صفحه‌کلید (I-T3) — راهنمای «؟» و کلیدها ──
+  'editor.shortcut.title': 'میان‌برهای صفحه‌کلید',
+  'editor.shortcut.close': 'بستن',
+  'editor.shortcut.group.edit': 'ویرایش',
+  'editor.shortcut.group.canvas': 'بوم',
+  'editor.shortcut.group.general': 'عمومی',
+  'editor.shortcut.undo': 'واگرد',
+  'editor.shortcut.redo': 'ازنو',
+  'editor.shortcut.duplicate': 'تکثیر انتخاب‌شده‌ها',
+  'editor.shortcut.delete': 'حذف انتخاب‌شده‌ها',
+  'editor.shortcut.selectAll': 'انتخاب همهٔ نودها',
+  'editor.shortcut.fitView': 'جا دادن فلو در نما',
+  'editor.shortcut.save': 'ذخیرهٔ فوری',
+  'editor.shortcut.help': 'نمایش این راهنما',
+
   // ── sticky notes (H-T1) ──
   'editor.note.add': '+ یادداشت',
   'editor.note.addHint': 'یک یادداشت چسبان برای توضیح این فلو اضافه کنید.',

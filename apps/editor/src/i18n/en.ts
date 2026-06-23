@@ -342,6 +342,21 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.edge.insert': 'Insert a node here',
   'editor.picker.title': 'Add a node',
 
+  // ── keyboard shortcuts (I-T3, gap G11) — the `?` help overlay + bindings ──
+  'editor.shortcut.title': 'Keyboard shortcuts',
+  'editor.shortcut.close': 'Close',
+  'editor.shortcut.group.edit': 'Edit',
+  'editor.shortcut.group.canvas': 'Canvas',
+  'editor.shortcut.group.general': 'General',
+  'editor.shortcut.undo': 'Undo',
+  'editor.shortcut.redo': 'Redo',
+  'editor.shortcut.duplicate': 'Duplicate selection',
+  'editor.shortcut.delete': 'Delete selection',
+  'editor.shortcut.selectAll': 'Select all nodes',
+  'editor.shortcut.fitView': 'Fit flow to view',
+  'editor.shortcut.save': 'Save now',
+  'editor.shortcut.help': 'Show this help',
+
   // ── sticky notes (H-T1) ──
   'editor.note.add': '+ Note',
   'editor.note.addHint': 'Add a sticky note to annotate this flow.',

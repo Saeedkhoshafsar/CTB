@@ -6,10 +6,12 @@ import { FlowGraphSchema, type NodeTypeInfo } from '@ctb/shared';
 import { describe, expect, it } from 'vitest';
 import sampleFlow from '../../../packages/shared/test/fixtures/sample-flow.json';
 import {
+  DUPLICATE_OFFSET,
   NOTE_RF_PREFIX,
   buildEdge,
   buildNode,
   canConnect,
+  duplicateNodes,
   effectiveOutputs,
   flowToRfEdges,
   flowToRfNodes,
@@ -589,5 +591,64 @@ describe('nodeFromDangling — wire-drop-to-palette (H-T4, gap G9)', () => {
       disabled: false,
       position: { x: 7, y: 8 },
     });
+  });
+});
+
+describe('duplicateNodes — clone selected nodes (I-T3, gap G11)', () => {
+  it('clones nodes with fresh unique ids, offset position, copied params', () => {
+    const result = duplicateNodes(graph, ['greet'])!;
+    expect(result).not.toBeNull();
+    expect(result.newIds.length).toBe(1);
+    const clone = result.graph.nodes.find((n) => n.id === result.newIds[0])!;
+    const orig = graph.nodes.find((n) => n.id === 'greet')!;
+    expect(clone.id).not.toBe('greet');
+    expect(graph.nodes.some((n) => n.id === clone.id)).toBe(false); // unique vs existing
+    expect(clone.type).toBe(orig.type);
+    expect(clone.params).toEqual(orig.params);
+    expect(clone.params).not.toBe(orig.params); // deep-cloned, not shared
+    expect(clone.position).toEqual({
+      x: orig.position.x + DUPLICATE_OFFSET,
+      y: orig.position.y + DUPLICATE_OFFSET,
+    });
+    expect(FlowGraphSchema.safeParse(result.graph).success).toBe(true);
+  });
+
+  it('copies edges fully INSIDE the selection (re-pointed at the clones)', () => {
+    // check_adult --true--> greet --false--> greet_minor are both internal when
+    // we select check_adult + greet (edge e5: check_adult.true → greet).
+    const result = duplicateNodes(graph, ['check_adult', 'greet'])!;
+    // newIds correspond to originals in selection order [check_adult, greet]
+    const cloneCheck = result.newIds[0]!;
+    const cloneGreet = result.newIds[1]!;
+    const internal = result.graph.edges.find(
+      (e) => e.from.node === cloneCheck && e.to.node === cloneGreet,
+    );
+    expect(internal).toBeDefined();
+    expect(internal!.from.port).toBe('true'); // branch port preserved
+    expect(FlowGraphSchema.safeParse(result.graph).success).toBe(true);
+  });
+
+  it('does NOT copy edges crossing the selection boundary', () => {
+    // selecting only greet: edge check_adult.true → greet crosses the boundary,
+    // so the clone has no incoming edge from the (un-cloned) check_adult.
+    const before = graph.edges.length;
+    const result = duplicateNodes(graph, ['greet'])!;
+    const clone = result.newIds[0];
+    const crossing = result.graph.edges.filter(
+      (e) => e.to.node === clone || e.from.node === clone,
+    );
+    expect(crossing.length).toBe(0);
+    expect(result.graph.edges.length).toBe(before); // no new edges added
+  });
+
+  it('clones MULTIPLE same-type nodes without id collision', () => {
+    const result = duplicateNodes(graph, ['greet', 'greet_minor'])!;
+    expect(new Set(result.newIds).size).toBe(2); // distinct ids
+    expect(FlowGraphSchema.safeParse(result.graph).success).toBe(true);
+  });
+
+  it('returns null when nothing valid is selected (no-op)', () => {
+    expect(duplicateNodes(graph, [])).toBeNull();
+    expect(duplicateNodes(graph, ['does-not-exist'])).toBeNull();
   });
 });

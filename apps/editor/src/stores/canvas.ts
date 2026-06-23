@@ -22,6 +22,7 @@ import { type ApiClient, api } from '../api/client';
 import {
   buildEdge,
   canConnect,
+  duplicateNodes,
   insertNodeOnEdge,
   nextNodeId,
   nextNoteId,
@@ -53,6 +54,9 @@ export interface CanvasState {
   addNode: (type: string, position: { x: number; y: number }) => string;
   removeNodes: (nodeIds: string[]) => void;
   removeEdges: (edgeIds: string[]) => void;
+  /** Duplicate the given nodes (+ internal edges) as a single undoable edit;
+   *  returns the new node ids (empty when nothing valid was selected). */
+  duplicateNodes: (nodeIds: string[]) => string[];
   connect: (attempt: ConnectionAttempt) => ConnectVerdict;
   /**
    * H-T4 (gap G8): split an edge with a new node of `type` (A→B ⇒ A→N→B).
@@ -181,6 +185,14 @@ export function createCanvasStore(client: ApiClient = api, autosaveMs: number = 
         const gone = new Set(edgeIds);
         const { graph } = get();
         commit({ ...graph, edges: graph.edges.filter((e) => !gone.has(e.id)) });
+      },
+
+      duplicateNodes: (nodeIds) => {
+        const { graph } = get();
+        const result = duplicateNodes(graph, nodeIds);
+        if (!result) return []; // nothing valid selected → no-op, no history
+        commit(result.graph);
+        return result.newIds;
       },
 
       connect: (attempt) => {

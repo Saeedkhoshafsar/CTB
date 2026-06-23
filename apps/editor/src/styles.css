@@ -432,6 +432,40 @@ input[dir='ltr'] { direction: ltr; }
   background: var(--bg-hover);
   border-color: var(--accent);
 }
+
+/* Advanced collapsible (G-T3) — author-flagged params tucked under a flap. */
+.form-advanced {
+  margin-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+}
+.form-advanced-summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim, var(--text));
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+}
+.form-advanced-summary::-webkit-details-marker { display: none; }
+.form-advanced-summary::before {
+  content: '▸';
+  font-size: 10px;
+  transition: transform 0.12s ease;
+}
+.form-advanced[open] > .form-advanced-summary::before { transform: rotate(90deg); }
+.form-advanced-summary:hover { color: var(--accent); }
+.form-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.55rem;
+}
+
 .field-input input[type='text'],
 .field-input input[type='number'],
 .field-input select,

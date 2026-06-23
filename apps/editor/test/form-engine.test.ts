@@ -36,8 +36,10 @@ import {
 } from '../src/form/preview';
 import { getAtPath, moveRow, pruneEmpty, setAtPath, type Path } from '../src/form/model';
 import {
+  anyAdvancedSet,
   convertBranchValue,
   emptyValue,
+  isAdvanced,
   isConditionsSchema,
   isKeyboardSchema,
   isSet,
@@ -583,13 +585,76 @@ describe('progressive disclosure (partitionFields / isSet)', () => {
     // type has a default ('text') so it is not in `required`; text is enforced
     // by superRefine, not the object `required` set — so the baseline shown set
     // is whatever the schema marks required. We assert the OPT-IN ones hide.
-    const { shown, optional } = partitionFields(schemaOf('tg.sendMessage'), {});
+    const { shown, optional, advanced } = partitionFields(schemaOf('tg.sendMessage'), {});
     const optKeys = optional.map((f) => f.key);
     expect(optKeys).toContain('chat');
     expect(optKeys).toContain('keyboard');
     expect(optKeys).toContain('options');
-    // nothing is silently dropped
+    // parse_mode is author-flagged advanced (G-T3) → neither shown nor opt-in.
+    expect(optKeys).not.toContain('parse_mode');
+    expect(advanced.map((f) => f.key)).toContain('parse_mode');
+    // nothing is silently dropped — all three buckets together cover every prop.
     const all = objectFields(schemaOf('tg.sendMessage')).map((f) => f.key).sort();
-    expect([...shown, ...optional].map((f) => f.key).sort()).toEqual(all);
+    expect([...shown, ...optional, ...advanced].map((f) => f.key).sort()).toEqual(all);
+  });
+});
+
+// G-T3 — explicit "simple vs advanced" field grouping. A node author flags a
+// power-user param `z.meta({ advanced: true })`; z.toJSONSchema carries it to
+// the editor, where partitionFields routes it to a third `advanced` bucket the
+// SchemaForm renders under a collapsible. Purely structural — no node-type
+// lookup — so it works against the REAL shared schemas and Collection forms
+// reuse it. These tests drive the PURE layer the UI is a thin shell over.
+describe('advanced field grouping — G-T3', () => {
+  it('isAdvanced reads the structural `advanced:true` annotation off the schema', () => {
+    const fields = objectFields(schemaOf('tg.sendMessage'));
+    const parseMode = fields.find((f) => f.key === 'parse_mode')!;
+    const text = fields.find((f) => f.key === 'text')!;
+    expect(isAdvanced(parseMode)).toBe(true);
+    expect(isAdvanced(text)).toBe(false);
+  });
+
+  it('an advanced field is routed to `advanced`, never to shown or optional — even when set', () => {
+    const schema = schemaOf('tg.sendMessage');
+    // Filled in AND would otherwise be "shown" (isSet) — advanced still wins.
+    const { shown, optional, advanced } = partitionFields(schema, {
+      text: 'hi',
+      parse_mode: 'HTML',
+    });
+    expect(advanced.map((f) => f.key)).toEqual(['parse_mode']);
+    expect(shown.map((f) => f.key)).not.toContain('parse_mode');
+    expect(optional.map((f) => f.key)).not.toContain('parse_mode');
+  });
+
+  it('default (unannotated) behaviour is unchanged: a node with no advanced param has an empty advanced bucket', () => {
+    // tg.trigger has no advanced-flagged param → the bucket is empty and the
+    // shown/optional split is byte-identical to the pre-G-T3 behaviour.
+    const { shown, optional, advanced } = partitionFields(schemaOf('tg.trigger'), {});
+    expect(advanced).toEqual([]);
+    expect(shown.map((f) => f.key)).toEqual(['event']);
+    expect(optional.map((f) => f.key).sort()).toEqual(
+      ['button_key', 'command', 'pattern', 'patternType'],
+    );
+  });
+
+  it('anyAdvancedSet: true only when an advanced field carries a value (drives auto-open)', () => {
+    const { advanced } = partitionFields(schemaOf('tg.sendMessage'), {});
+    expect(anyAdvancedSet(advanced, {})).toBe(false);
+    expect(anyAdvancedSet(advanced, { text: 'hi' })).toBe(false); // non-advanced value
+    expect(anyAdvancedSet(advanced, { parse_mode: 'HTML' })).toBe(true);
+    expect(anyAdvancedSet(advanced, { parse_mode: '' })).toBe(false); // blank is unset
+    expect(anyAdvancedSet([], { parse_mode: 'HTML' })).toBe(false); // no advanced fields
+  });
+
+  it('an advanced field still validates against the REAL Zod schema (presentational only)', () => {
+    // The whole point of #18: demoting a param to "advanced" changes nothing
+    // about its value/validation. parse_mode='HTML' must still pass.
+    const params = { type: 'text', text: 'hello', parse_mode: 'HTML' };
+    expect(TgSendMessageParamsSchema.safeParse(params).success).toBe(true);
+    // and the buckets cover it exactly once (no field lost to the third split).
+    const schema = schemaOf('tg.sendMessage');
+    const { shown, optional, advanced } = partitionFields(schema, params);
+    const all = objectFields(schema).map((f) => f.key).sort();
+    expect([...shown, ...optional, ...advanced].map((f) => f.key).sort()).toEqual(all);
   });
 });

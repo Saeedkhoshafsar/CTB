@@ -700,6 +700,7 @@ export const en: Record<keyof typeof fa, string> = {
   'form.fieldMode.label': 'Value mode',
   'form.fieldMode.fixed': 'Fixed',
   'form.fieldMode.expression': 'Expression',
+  'form.advanced.title': 'Advanced',
   'form.union.simple': 'Simple',
   'form.union.advanced': 'Advanced',
   'form.duration.ms': 'milliseconds',

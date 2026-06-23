@@ -80,7 +80,12 @@ export const TgSendMessageParamsSchema = z
     caption: z.string().optional(),
     /** Media source: URL | file_id (expression). */
     media: z.string().optional(),
-    parse_mode: ParseModeSchema.optional(),
+    // `parse_mode` is a power-user formatting toggle (HTML / MarkdownV2) most
+    // beginners never touch → demoted to the editor's "Advanced" collapsible via
+    // the structural `advanced` annotation (G-T3). Purely presentational: the
+    // value/validation are unchanged, so the engine and stored params are
+    // byte-identical (Decision Log #18).
+    parse_mode: ParseModeSchema.optional().meta({ advanced: true }),
     keyboard: KeyboardSchema.optional(),
     options: z
       .object({

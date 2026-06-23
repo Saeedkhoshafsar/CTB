@@ -163,15 +163,22 @@ Order = highest user-pain-relief first. Each task is one session, ends green.
     shows an inline error, never throws.
   - Verify: editor + (if endpoint added) server tests.
 
-- **G-T3 — Explicit "simple vs advanced" field grouping. (⭐ gap G5)**
+- **G-T3 — Explicit "simple vs advanced" field grouping. (⭐ gap G5) ✅ DONE**
   - Files: `form/schema.ts` (extend partition with a `z.meta({ advanced:true })`
-    annotation read structurally), `SchemaForm.tsx`.
+    annotation read structurally), `SchemaForm.tsx`, i18n, `styles.css`,
+    `packages/shared/src/node-params.ts` (`tg.sendMessage.parse_mode` demoted).
   - Build: a node author can mark a param "advanced"; the form shows simple fields
     + the "+ Add option" menu, and an "Advanced" collapsible for the rest. Builds
     directly on UX-T1's partition.
+  - Done: structural `advanced` annotation (proven to survive `z.toJSONSchema`
+    like `ctbWidget`, Decision Log #18) → `partitionFields` third bucket rendered
+    under a native `<details>` collapsible (auto-opens via `anyAdvancedSet` when
+    any advanced field already has a value); purely presentational so the engine /
+    stored params / exports are byte-identical.
   - Acceptance: a field annotated advanced is hidden under the collapsible; default
-    (unannotated) behaviour is unchanged; tests against real schemas.
-  - Verify: `npm run test -w apps/editor`.
+    (unannotated) behaviour is unchanged; tests against real schemas. ✅
+  - Verify: editor typecheck + build GREEN; editor tests **206 GREEN** (+5);
+    shared 74 + server 450 GREEN (schema-meta touch inert).
 
 ### Phase H — Canvas power (the "organize a big flow" cure)
 

@@ -689,6 +689,7 @@ export const fa = {
   'form.fieldMode.label': 'حالت مقدار',
   'form.fieldMode.fixed': 'ثابت',
   'form.fieldMode.expression': 'عبارت',
+  'form.advanced.title': 'پیشرفته',
   'form.union.simple': 'ساده',
   'form.union.advanced': 'پیشرفته',
   'form.duration.ms': 'میلی‌ثانیه',

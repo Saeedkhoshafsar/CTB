@@ -26,6 +26,14 @@ export interface JsonSchema {
   maximum?: number;
   default?: unknown;
   description?: string;
+  /**
+   * G-T3 author annotation (`z.meta({ advanced: true })`) — survives
+   * z.toJSONSchema as a plain field property, so the form engine reads it
+   * STRUCTURALLY (no node-type lookup, Collection forms reuse it). Marks a
+   * param as "advanced": it lives under the collapsible "Advanced" section
+   * instead of the always-shown set / "+ Add option" menu.
+   */
+  advanced?: boolean;
   [k: string]: unknown;
 }
 
@@ -142,19 +150,31 @@ export function objectFields(s: JsonSchema): FieldSpec[] {
   }));
 }
 
+/** A field a node author flagged `z.meta({ advanced: true })` (G-T3). */
+export function isAdvanced(spec: FieldSpec): boolean {
+  return spec.schema.advanced === true;
+}
+
 /**
- * Split an object's fields into the ALWAYS-shown set and the OPTIONAL set the
- * user opts into via "+ Add option" (n8n behaviour) — purely structural, no
- * node-type knowledge, so Collection forms reuse it.
+ * Split an object's fields into the ALWAYS-shown set, the OPTIONAL set the
+ * user opts into via "+ Add option" (n8n behaviour), and the ADVANCED set a
+ * node author flagged `z.meta({ advanced: true })` (G-T3). All three splits are
+ * purely structural — no node-type knowledge — so Collection forms reuse them.
  *
- * A field is in `shown` when it is:
+ * Precedence: an `advanced` field is routed to `advanced` FIRST, regardless of
+ * required/isSet/added, so an author who marked a param advanced gets a stable
+ * "tuck it under the collapsible" guarantee. (A required field is normally
+ * always shown; marking it advanced is a deliberate authoring choice to demote
+ * it, so we honour it.) The collapsible itself opens automatically when any of
+ * its fields already has a value — handled in the UI, not here.
+ *
+ * Among the NON-advanced fields, a field is in `shown` when it is:
  *   • required by the schema, OR
  *   • currently has a value (`isSet` true) — so a field the user already
  *     filled never disappears behind the add-menu, even on reopen, OR
  *   • explicitly added this session via "+ Add option" (`added`) — so a freshly
  *     added field stays visible even before the user types anything into it.
- * Everything else is `optional` (the add-menu lists it; selecting it moves it
- * into the visible form, removing it returns it to the menu).
+ * Everything else (non-advanced) is `optional` (the add-menu lists it).
  *
  * `value` is the current params object so "has a value" can be decided;
  * `added` is the set of keys the user opted into but may not have filled yet.
@@ -162,6 +182,7 @@ export function objectFields(s: JsonSchema): FieldSpec[] {
 export interface PartitionedFields {
   shown: FieldSpec[];
   optional: FieldSpec[];
+  advanced: FieldSpec[];
 }
 
 export function partitionFields(
@@ -171,11 +192,25 @@ export function partitionFields(
 ): PartitionedFields {
   const shown: FieldSpec[] = [];
   const optional: FieldSpec[] = [];
+  const advanced: FieldSpec[] = [];
   for (const spec of objectFields(s)) {
-    if (spec.required || isSet(value?.[spec.key]) || added?.has(spec.key)) shown.push(spec);
-    else optional.push(spec);
+    if (isAdvanced(spec)) {
+      advanced.push(spec);
+    } else if (spec.required || isSet(value?.[spec.key]) || added?.has(spec.key)) {
+      shown.push(spec);
+    } else {
+      optional.push(spec);
+    }
   }
-  return { shown, optional };
+  return { shown, optional, advanced };
+}
+
+/** Does any advanced field already carry a value? (drives auto-open of the UI section). */
+export function anyAdvancedSet(
+  advanced: readonly FieldSpec[],
+  value: Record<string, unknown> | undefined,
+): boolean {
+  return advanced.some((spec) => isSet(value?.[spec.key]));
 }
 
 /** "Has the user given this field a value?" — drives the shown/optional split. */

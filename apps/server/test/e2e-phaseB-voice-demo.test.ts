@@ -225,6 +225,11 @@ function makeWorld(opts: {
         };
       },
     }),
+    // Raise the expression budget for the slow/contended CI sandbox (the
+    // supported host tuning seam — ExecutorServices.evalOptions.budgetMs). The
+    // default 50ms can flake on a cold-start worker under heavy parallel test
+    // load; the demo asserts behaviour, not latency (matches the Phase-E demo).
+    evalOptions: { budgetMs: 5_000 },
   };
 
   const executor = new Executor(registry, store, services);

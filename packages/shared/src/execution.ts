@@ -73,6 +73,31 @@ export const WaitSpecSchema = z.discriminatedUnion('kind', [
     nodeId: NodeIdSchema,
     resumeAt: z.iso.datetime(),
   }),
+  /**
+   * Listen-for-one-live-update arming (J-T1, Report B / Decision Log #25).
+   * A `tg.trigger` run in TEST listen mode does NOT fire immediately — instead
+   * it PARKS the execution here, "the same way a WAIT parks", and waits for the
+   * NEXT matching live Telegram update. On arrival the router (test-listen path)
+   * resumes this execution on `main` with the REAL trigger item (sender id/name/
+   * text), so the captured input flows downstream exactly like n8n's "listen for
+   * test event". This makes a trial run and a production run use the SAME
+   * `tg.trigger` node — only the run mode differs — so the editor never has to
+   * tell the user to swap to a Manual trigger.
+   *
+   * `triggerParams` is a SNAPSHOT of the trigger node's params at arming time,
+   * so the router can match the next update with the existing pure
+   * `triggerMatches` matcher WITHOUT re-reading the (possibly edited) graph; it
+   * is the same shape `triggerMatches` already consumes. `timeoutAt` lets the
+   * arming auto-expire via the existing timeout scanner (a never-answered test
+   * listen disarms itself rather than parking forever).
+   */
+  z.object({
+    kind: z.literal('trigger'),
+    nodeId: NodeIdSchema,
+    /** Snapshot of the trigger node's params for the router's matcher. */
+    triggerParams: z.record(z.string(), z.unknown()).default({}),
+    timeoutAt: z.iso.datetime().nullable().default(null),
+  }),
 ]);
 export type WaitSpec = z.infer<typeof WaitSpecSchema>;
 
@@ -107,6 +132,19 @@ export const ExecutionStateSchema = z.object({
    * Decision Log #22.
    */
   stopAfterNode: NodeIdSchema.optional(),
+  /**
+   * This run is a "listen for one live update" test arming (J-T1, Report B).
+   * When set, the entry `tg.trigger` node PARKS the execution in a durable
+   * `WaitSpec{kind:'trigger'}` instead of firing immediately; the next matching
+   * live update resumes it with the REAL trigger item. Persisted on the state
+   * (mirroring `testRun`/`stopAfterNode`) so the arming SURVIVES a process
+   * restart (invariant I4) — a re-loaded armed execution is still recognized as
+   * a test listen, and is also a TEST run so any downstream pinned data is
+   * honoured on capture. OPTIONAL (no default) so every persisted state from
+   * before J-T1 parses byte-identically. A production run leaves it absent.
+   * Decision Log #25.
+   */
+  listening: z.boolean().optional(),
 });
 export type ExecutionState = z.infer<typeof ExecutionStateSchema>;
 

@@ -201,6 +201,14 @@ export class UpdateRouter {
       if (handled) return;
     }
 
+    // (1.5) an armed "listen for one live update" test run? (J-T1, Report B)
+    // Checked BEFORE production trigger matching so a test listen CAPTURES the
+    // next matching update exactly-once and the same update does NOT also start
+    // a production run. Any event kind a `tg.trigger` can match is eligible
+    // (a command can both cancel a wait above AND be captured by a listen).
+    const captured = await this.tryResumeListen(event);
+    if (captured) return;
+
     // (2) trigger match?
     const started = await this.tryTriggers(event);
     if (started) return;
@@ -304,6 +312,52 @@ export class UpdateRouter {
         await this.afterRun(flow, event.botId, event.chat.id, exec.id, result.status, result.error);
         return true;
       }
+    }
+    return false;
+  }
+
+  /**
+   * Try to resume an armed "listen for one live update" test run (J-T1).
+   * True = the event was consumed by a test listen. The arming is a `waiting`
+   * execution whose `WaitSpec.kind` is `'trigger'`; it is NOT keyed by chat (a
+   * test listen is armed before any chat exists, so it waits for the FIRST
+   * message). We match the event against the snapshot `triggerParams` with the
+   * SAME pure matcher production uses (`triggerMatches`), then resume the
+   * trigger node on `main` with the REAL trigger item — so the captured sender
+   * data flows downstream exactly like n8n's "listen for test event". Exactly
+   * one update is captured per arming: resuming clears the trigger-wait, so a
+   * later update no longer matches it. The same `tg.trigger` node powers both
+   * this trial run and a production run — only the run mode differs.
+   *
+   * Critically this runs BEFORE `tryTriggers`, so a captured update is NOT also
+   * delivered to a production run (exactly-once across test vs production).
+   */
+  private async tryResumeListen(event: TgEvent): Promise<boolean> {
+    const armed = await this.deps.store.findListening(event.botId);
+    if (armed.length === 0) return false;
+    for (const exec of armed) {
+      const wait = exec.wait;
+      if (!wait || wait.kind !== 'trigger') continue;
+      if (!triggerMatches(wait.triggerParams as TriggerParams, event)) continue;
+      const flow = await this.flowOf(exec);
+      if (!flow) continue;
+      // Resume the trigger node: emit the real trigger item on `main`, exactly
+      // as a production trigger would, so the next node sees the sender's data.
+      const result = await this.deps.executor.resume({
+        executionId: exec.id,
+        graph: flow.graph,
+        flow: { id: flow.id, name: flow.name },
+        port: 'main',
+        items: [triggerItem(event)],
+      });
+      this.log(
+        'info',
+        `test-listen captured ${event.kind} for ${flow.id} → execution ${exec.id} ${result.status}`,
+      );
+      // A test listen has no chat slot (chatId null) so the per-chat afterRun
+      // hooks (error-handler / queue drain) don't apply — mirror the chatless
+      // recordChanged/schedule paths and just log the outcome.
+      return true;
     }
     return false;
   }
@@ -604,6 +658,14 @@ export class UpdateRouter {
   private async resumeTimedOut(exec: Execution): Promise<void> {
     const fresh = await this.deps.store.load(exec.id);
     if (!fresh || fresh.status !== 'waiting' || !fresh.wait) return; // already resumed by a reply
+    // An armed "listen for one live update" (J-T1) that timed out captured
+    // nothing — there's no update to resume with, so DISARM it (cancel) rather
+    // than route a fake item downstream. Mirrors the test-listen Cancel button.
+    if (fresh.wait.kind === 'trigger') {
+      await this.deps.store.save({ id: fresh.id, status: 'canceled', state: fresh.state, wait: null });
+      this.log('info', `test-listen ${fresh.id} expired without a capture — disarmed`);
+      return;
+    }
     const flow = await this.flowOf(fresh);
     if (!flow) return;
     // delays resume on "main" (the wait simply elapsed); reply/callback fire "timeout"

@@ -19,6 +19,9 @@ Starts a flow from a Telegram update.
   - `button_key` (when event=button_click): matches `Menu` node buttons marked as *global*
 - **Emits:** `{ json: { text, user{id,first_name,last_name,username,lang}, chat{id,type}, message_id, payload?, raw } }`
 - Multiple Telegram Triggers per bot allowed; most-specific match wins (command > button > text-pattern > any_message). Conflicts shown in editor.
+- **Two run modes, ONE node `+P4` (J-T1):** the SAME `tg.trigger` powers a *production* run and a *trial* run — only the run **mode** differs, so authoring no longer falls back to a Manual trigger.
+  - *Production:* a live update routes through the host matcher (`triggerMatches`) and starts the flow (the node is a pure pass-through, like webhook/schedule).
+  - *Test (“listen for one live update”, n8n’s “listen for test event”):* arming via `POST /api/flows/:id/test-listen` parks a **durable** execution (`status:waiting`, `WaitSpec{kind:'trigger'}`, `state.listening=true`) that survives a process restart (I4); the **next matching** live update resumes THAT run **exactly-once**, the trigger emits the **real** Telegram item (sender id/name/text) on `main`, and downstream nodes run. A non-matching update does **not** consume the arming; an un-answered arming auto-expires (`timeoutAt`). Poll `GET …/test-listen/status` (`listening` → `captured` → `expired` → `gone`); cancel with `DELETE …/test-listen`. A test-listen run is implicitly a TEST run, so pinned data (I-T1) is honoured downstream. See Decision Log #25.
 
 ### Webhook Trigger `+P4` ✅ (`webhook.trigger`)
 - `POST /hooks/flow/:flowId/:secret`; request → `$json = { body, headers, query, method }`. Modes: async (202 + `executionId` immediately) | sync (wait for `Respond to Webhook` node, bounded by `sync_timeout` 1–120s → 504 on overrun; no respond node → 200 ack).

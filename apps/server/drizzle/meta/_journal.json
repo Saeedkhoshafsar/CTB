@@ -43,6 +43,13 @@
       "when": 1781970035084,
       "tag": "0005_long_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1782560739397,
+      "tag": "0006_worthless_randall",
+      "breakpoints": true
     }
   ]
 }

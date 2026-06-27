@@ -191,6 +191,28 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     false; existing `admin`/`operator` tokens still parse (back-compat). Round-trip
     + invariant tests.
   - Verify: `npm run test -w apps/server` + `npm run test -w packages/shared` + `npm run verify`.
+  - **✅ DONE** — `SessionRole` widened to `owner|admin|operator` in BOTH
+    `apps/server/src/lib/session.ts` and `packages/shared/src/api.ts`, each with a
+    pure `roleAtLeast(role,min)` gate (`owner ⊇ admin ⊇ operator`; unknown/legacy
+    role ⇒ least-privilege `operator`, never escalates) and a `verifySessionToken`
+    back-compat branch that normalises legacy/unknown roles to `admin`. NEW
+    `panel_admins` table (`tg_user_id` PK / `role` / `label` / `created_at`) +
+    append-only migration `0006_worthless_randall.sql`. NEW
+    `apps/server/src/engine/admin-store.ts` `SqlitePanelAdminStore`
+    (`list`/`get`/`owner`/`isEmpty`/`bootstrapOwner`/`add`/`remove`/`setRole`/`transferOwner`)
+    with the owner invariants enforced IN THE STORE: exactly one owner
+    (`bootstrapOwner` rejects a second), owner never removable, owner role
+    immutable via `setRole`, ownership moves only via `transferOwner` which
+    atomically (one tx) promotes the target and demotes the old owner; typed
+    `PanelAdminError` codes. Shared Zod: `ManageableRoleSchema`/`PanelRoleSchema`,
+    `PanelAdmin`, `TgUserIdSchema`, `AddPanelAdminBody`/`SetPanelAdminRoleBody`/`TransferOwnerBody`,
+    `PanelAdminList`. **Verify:** admin-store **11** + session **10** (21 new) GREEN;
+    shared **100** / core **64** / nodes **535** GREEN; editor `tsc` GREEN (widened
+    shared union is back-compat); api-bots-flows + collections-records (operator
+    role) still GREEN. Server full `tsc` still OOMs in the ~1 GB sandbox (documented
+    known limit) — vitest type-strips the changed files and shared/editor `tsc` pass.
+    The auth login flow itself is **K-T2** (not touched here). ROADMAP Decision Log
+    #26 (new stored contract + auth-model change).
 
 - **K-T2 — Telegram-ID login + bootstrap-first-owner. ⭐ (items 1, 3)**
   - Files: `apps/server/src/app.ts` (login flow gains a path that binds a session

@@ -9,6 +9,7 @@
  *   /executions             — executions inspector (lands in P2-T5)
  *   /docs                   — node library docs site (PD-T4)
  */
+import { roleAtLeast } from '@ctb/shared';
 import { useEffect } from 'react';
 import {
   HashRouter,
@@ -20,6 +21,7 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { useI18n } from './i18n';
+import { AdminsPage } from './pages/AdminsPage';
 import { BotsPage } from './pages/BotsPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { CredentialsPage } from './pages/CredentialsPage';
@@ -43,11 +45,28 @@ function RequireAuth() {
   return <Outlet />;
 }
 
+/**
+ * Route guard for ≥admin surfaces (K-T3). Reaching the Admins page requires the
+ * session role to be at least `admin`; an `operator` is bounced to /bots. The
+ * server is still the authority (the admins API re-checks role — K-T2); this is
+ * defence-in-depth so the page never renders for an operator who hand-edits the
+ * URL hash.
+ */
+function RequireAdmin() {
+  const user = useAuth((s) => s.user);
+  if (!roleAtLeast(user?.role ?? 'operator', 'admin')) {
+    return <Navigate to="/bots" replace />;
+  }
+  return <Outlet />;
+}
+
 function Shell() {
   const t = useI18n((s) => s.t);
   const locale = useI18n((s) => s.locale);
   const setLocale = useI18n((s) => s.setLocale);
   const logout = useAuth((s) => s.logout);
+  const user = useAuth((s) => s.user);
+  const isAdmin = roleAtLeast(user?.role ?? 'operator', 'admin');
 
   return (
     <div className="shell">
@@ -66,6 +85,11 @@ function Shell() {
           <NavLink to="/docs" className={({ isActive }) => (isActive ? 'active' : '')}>
             {t('nav.docs')}
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/admins" className={({ isActive }) => (isActive ? 'active' : '')}>
+              {t('nav.admins')}
+            </NavLink>
+          )}
         </nav>
         <span className="spacer" />
         <button className="ghost" onClick={() => setLocale(locale === 'fa' ? 'en' : 'fa')}>
@@ -110,6 +134,9 @@ export function App() {
             <Route path="/executions" element={<ExecutionsPage />} />
             <Route path="/credentials" element={<CredentialsPage />} />
             <Route path="/docs" element={<NodeDocsPage />} />
+            <Route element={<RequireAdmin />}>
+              <Route path="/admins" element={<AdminsPage />} />
+            </Route>
             <Route path="*" element={<Navigate to="/bots" replace />} />
           </Route>
         </Route>

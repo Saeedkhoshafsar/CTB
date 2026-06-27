@@ -52,6 +52,13 @@ export interface SessionUser {
   username: string;
   /** Optional for back-compat with pre-P3.5-T2 clients; defaults to 'admin'. */
   role?: SessionRole;
+  /**
+   * Telegram user id the session is bound to (K-T2), when the session is an
+   * owner/admin keyed by a `panel_admins` identity. Absent for a legacy env-only
+   * session. The editor uses it to decide whether the current user IS the owner
+   * row (so only the real owner sees "Transfer ownership" — K-T3).
+   */
+  tgUserId?: string;
 }
 
 // ---------------------------------------------------------------------------

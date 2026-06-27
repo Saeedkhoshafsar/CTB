@@ -9,6 +9,7 @@ export const en: Record<keyof typeof fa, string> = {
   'nav.executions': 'Executions',
   'nav.credentials': 'Credentials',
   'nav.docs': 'Node Library',
+  'nav.admins': 'Admins',
   'nav.logout': 'Log out',
 
   // Node library docs site (PD-T4)
@@ -126,6 +127,27 @@ export const en: Record<keyof typeof fa, string> = {
   'credentials.delete.confirm':
     'Delete credential “{name}”? Nodes that use it will be left without auth.',
   'credentials.none': '— No credential —',
+
+  // ── Admins panel (PLAN4 K-T3) ──
+  'admins.title': 'Panel admins',
+  'admins.subtitle': 'Who can sign in to this panel. The owner has full access, an admin can manage, an operator is view/run-only.',
+  'admins.empty': 'No admins yet.',
+  'admins.add': 'Add admin',
+  'admins.tgUserId': 'Telegram numeric ID',
+  'admins.label': 'Label (display name)',
+  'admins.role': 'Role',
+  'admins.role.owner': 'Owner',
+  'admins.role.admin': 'Admin',
+  'admins.role.operator': 'Operator',
+  'admins.create': 'Add',
+  'admins.creating': 'Adding…',
+  'admins.action.remove': 'Remove',
+  'admins.remove.confirm': 'Remove admin “{label}”? They will no longer be able to sign in.',
+  'admins.you': 'you',
+  'admins.transfer': 'Transfer ownership',
+  'admins.transfer.confirm': 'Transfer ownership to “{label}”? You will be demoted to “admin” and this cannot be undone.',
+  'admins.transfer.done': 'Ownership transferred.',
+  'admins.hint': 'Enter the Telegram numeric ID (not the @username). The owner cannot be removed.',
 
   'flows.title': 'Flows of {bot}',
   'flows.empty': 'This bot has no flows yet.',

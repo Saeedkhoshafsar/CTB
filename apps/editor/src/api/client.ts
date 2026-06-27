@@ -9,6 +9,8 @@
  * turns into a redirect to /login.
  */
 import {
+  type AddPanelAdminBody,
+  AddPanelAdminBodySchema,
   type AiUsageSummary,
   type ApiErrorBody,
   type BotAiBudget,
@@ -47,6 +49,11 @@ import {
   type LoginBody,
   LoginBodySchema,
   type NodeTypeInfo,
+  type PanelAdmin,
+  type SetPanelAdminRoleBody,
+  SetPanelAdminRoleBodySchema,
+  type TransferOwnerBody,
+  TransferOwnerBodySchema,
   type QueryRecordsBody,
   QueryRecordsBodySchema,
   type RecordPublic,
@@ -517,6 +524,47 @@ export class ApiClient {
     await this.request<unknown>(
       'DELETE',
       `/api/flows/${id}/test-listen?executionId=${encodeURIComponent(executionId)}`,
+    );
+  }
+
+  // -- panel admins (Admins page, K-T3) ---------------------------------------
+
+  /** List panel admins (owner/admin/operator), oldest-first. Requires ≥admin. */
+  async listAdmins(): Promise<PanelAdmin[]> {
+    return (await this.request<{ admins: PanelAdmin[] }>('GET', '/api/admins')).admins;
+  }
+
+  /** Add an admin/operator by Telegram id (never an owner). Requires ≥admin. */
+  async addAdmin(body: AddPanelAdminBody): Promise<PanelAdmin> {
+    const valid = this.validate(AddPanelAdminBodySchema, body);
+    return (await this.request<{ admin: PanelAdmin }>('POST', '/api/admins', valid)).admin;
+  }
+
+  /** Remove a NON-owner admin by Telegram id. Requires ≥admin. */
+  async removeAdmin(tgUserId: string): Promise<void> {
+    await this.request<{ ok: true }>('DELETE', `/api/admins/${encodeURIComponent(tgUserId)}`);
+  }
+
+  /** Change a NON-owner's role (admin↔operator). Requires ≥admin. */
+  async setAdminRole(tgUserId: string, body: SetPanelAdminRoleBody): Promise<PanelAdmin> {
+    const valid = this.validate(SetPanelAdminRoleBodySchema, body);
+    return (
+      await this.request<{ admin: PanelAdmin }>(
+        'PATCH',
+        `/api/admins/${encodeURIComponent(tgUserId)}/role`,
+        valid,
+      )
+    ).admin;
+  }
+
+  /** Transfer ownership to an existing admin/operator. Owner-only; demotes the
+   *  caller to admin. Returns the new owner + the demoted previous owner. */
+  async transferOwner(body: TransferOwnerBody): Promise<{ owner: PanelAdmin; previous: PanelAdmin }> {
+    const valid = this.validate(TransferOwnerBodySchema, body);
+    return this.request<{ owner: PanelAdmin; previous: PanelAdmin }>(
+      'POST',
+      '/api/admins/transfer-owner',
+      valid,
     );
   }
 

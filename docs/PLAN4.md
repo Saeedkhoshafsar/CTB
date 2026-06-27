@@ -268,6 +268,33 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     are unit-tested; the owner can never be removed from the UI (defence-in-depth,
     store already enforces).
   - Verify: `npm run test -w apps/editor` + editor typecheck + build.
+  - **✅ DONE** — NEW PURE `apps/editor/src/lib/admin-acl.ts` (DOM-free,
+    F-T3 pattern): `canManageAdmins`, `canRemove`, `canChangeRole`,
+    `canTransferTo`, `canSeeTransfer` — mirrors the server's owner invariants
+    (K-T1) and role precedence (K-T2) with NO server import, so a wrong UI call
+    can never widen what the server forbids. NEW `apps/editor/src/api/client.ts`
+    methods `listAdmins` / `addAdmin` / `removeAdmin` / `setAdminRole` /
+    `transferOwner` (validated bodies, unwrapped envelopes). NEW
+    `apps/editor/src/stores/admins.ts` (credentials-store pattern; re-syncs from
+    the authoritative server response; transfer re-loads the whole list since two
+    rows change). NEW `apps/editor/src/pages/AdminsPage.tsx` (list / add by
+    Telegram numeric id + label + role / remove / change-role select /
+    owner-only "Transfer ownership" with confirm) — every control gated by the
+    pure ACL. `App.tsx`: NEW `RequireAdmin` route guard (operator → /bots) wraps
+    `/admins`, and the **Admins NavLink only renders when `roleAtLeast('admin')`**
+    (hidden for operator). `packages/shared/src/api.ts`: added presentational
+    `SessionUser.tgUserId?` (lets the editor decide if the current user IS the
+    owner row — needed for can-transfer). i18n en/fa parity (`nav.admins`,
+    `admins.*`). Tests: `test/admin-acl.test.ts` (10 — pure decisions:
+    operator manages nobody, owner row never removable/role-changeable, only a
+    real owner-with-id transfers, never to self) + `test/admins-client.test.ts`
+    (6 — verb/path/encoding/body + client-side validation reject). **Green:
+    editor 287 tests (22 files), editor `tsc --noEmit` clean, editor build OK;
+    shared `tsc` clean + 100 tests.** No new ROADMAP Decision Log entry needed —
+    `SessionUser.tgUserId?` is an optional presentational client field (no schema
+    or storage change); the owner invariants are unchanged (K-T1 #26 still
+    governs). **Phase K COMPLETE — K-T1 ✅ + K-T2 ✅ + K-T3 ✅.** Next: L-T1
+    (setup-checklist pure model + `GET /api/setup/checklist`).
 
 ### Phase L — Go-live setup checklist (Report A items 2, 3)
 

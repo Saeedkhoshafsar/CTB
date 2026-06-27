@@ -7,6 +7,7 @@ export const fa = {
   'nav.executions': 'اجراها',
   'nav.credentials': 'اعتبارنامه‌ها',
   'nav.docs': 'کتابخانهٔ نودها',
+  'nav.admins': 'مدیران',
   'nav.logout': 'خروج',
 
   // Node library docs site (PD-T4)
@@ -123,6 +124,27 @@ export const fa = {
   'credentials.action.delete': 'حذف',
   'credentials.delete.confirm': 'اعتبارنامهٔ «{name}» حذف شود؟ نودهایی که از آن استفاده می‌کنند بدون احراز هویت می‌مانند.',
   'credentials.none': '— بدون اعتبارنامه —',
+
+  // ── پنل مدیران (PLAN4 K-T3) ──
+  'admins.title': 'مدیران پنل',
+  'admins.subtitle': 'کسانی که می‌توانند وارد این پنل شوند. مالک دسترسی کامل دارد، مدیر می‌تواند مدیریت کند و اپراتور فقط مشاهده/اجرا دارد.',
+  'admins.empty': 'هنوز مدیری اضافه نشده.',
+  'admins.add': 'افزودن مدیر',
+  'admins.tgUserId': 'شناسهٔ عددی تلگرام',
+  'admins.label': 'برچسب (نام نمایشی)',
+  'admins.role': 'نقش',
+  'admins.role.owner': 'مالک',
+  'admins.role.admin': 'مدیر',
+  'admins.role.operator': 'اپراتور',
+  'admins.create': 'افزودن',
+  'admins.creating': 'در حال افزودن…',
+  'admins.action.remove': 'حذف',
+  'admins.remove.confirm': 'مدیر «{label}» حذف شود؟ دیگر نمی‌تواند وارد پنل شود.',
+  'admins.you': 'شما',
+  'admins.transfer': 'انتقال مالکیت',
+  'admins.transfer.confirm': 'مالکیت به «{label}» منتقل شود؟ شما به نقش «مدیر» تنزل می‌یابید و این عمل بازگشت‌ناپذیر است.',
+  'admins.transfer.done': 'مالکیت منتقل شد.',
+  'admins.hint': 'شناسهٔ عددی تلگرام را وارد کنید (نه نام کاربری). مالک قابل حذف نیست.',
 
   'flows.title': 'فلوهای {bot}',
   'flows.empty': 'این بات هنوز فلویی ندارد.',

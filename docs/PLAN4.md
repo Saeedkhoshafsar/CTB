@@ -157,6 +157,16 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
   - Acceptance: NODES.md states the single-node-two-modes contract; the e2e proves
     a `tg.trigger` test run delivers sender data downstream end-to-end.
   - Verify: `npm run test -w apps/server` (new listen e2e green) + `npm run verify`.
+  - **✅ DONE** — `docs/NODES.md` §Triggers gained the explicit "Single-node-two-modes
+    CONTRACT (J-T3)" clause (the `tg.trigger` TYPE never changes between trial and
+    build); `docs/demos/test-run-listen.md` is the n8n "listen for test event" parity
+    walkthrough; `apps/server/test/e2e-phaseJ-test-listen-demo.test.ts` proves it
+    end-to-end (3/3 GREEN — TEST-mode capture → node 2 via the executions API,
+    PRODUCTION-mode the SAME node replies to the sender, non-matching update keeps
+    listening). Docs+test-only (schema/server/engine/editor untouched). The demo's
+    `createBot` calls `POST /api/bots/:id/start` (the endpoint that registers the
+    gateway sender) so the production-mode `tg.sendMessage` has a sender. **Phase J
+    COMPLETE — J-T1 ✅ + J-T2 ✅ + J-T3 ✅.**
 
 ### Phase K — Admin identity & RBAC (Report A items 1, 4, 5, 6)
 

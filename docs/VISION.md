@@ -85,6 +85,39 @@ AI agent های خارجی (مثل Claude) می‌توانند node library CTB 
 
 ---
 
+## n8n به عنوان مرجع معماری (Architecture Reference) ⭐
+
+> **رفرنس رسمی:** https://github.com/n8n-io/n8n
+
+**اصل طلایی:** وقتی روی یک **مشکل یا ابهام معماری** گیر کردی — مدل item، رفتار یک node،
+شکل یک port، الگوی pause/resume، طراحی expression engine، یا «این feature را چطور باید مدل کرد؟» —
+**به‌جای حدس زدن یا معطل ماندن، اول به معماری n8n نگاه کن** و الگوی اثبات‌شدهٔ آن را مرجع قرار بده.
+
+**چرا n8n؟** چون آن الگو هم **تست‌شده** است و هم **میلیون‌ها اجرا و هزاران کاربر** آن را در میدان
+واقعی صحت‌سنجی کرده‌اند. وقتی رفتار CTB با n8n یکی باشد، دیگر لازم نیست از صفر مطمئن شویم که درست است.
+PLAN4 خودش یک درس عینی است: مشکلاتش **بعد از تست** کشف شدند — در حالی که اگر همان seamها از ابتدا
+دقیقاً مثل n8n مدل شده بودند (مثلاً «listen for one live update» در J-T1 که عیناً الگوی n8n است)،
+از همان روز اول مطمئن بودیم.
+
+**روش استفاده (نه کپی کور):**
+1. مشکل را به یک سؤال معماری تبدیل کن: «n8n این را چطور حل کرده؟»
+2. الگوی n8n را پیدا کن (مدل ذهنی، نام، رفتار port، ترتیب اجرا).
+3. آن را با Red Lines و Invariants ما تطبیق بده — **n8n stateless است؛ CTB conversation-first و durable است**،
+   پس الگو را با pause/resume و state در DB سازگار کن.
+4. تصمیم را مستند کن (Decision Log در `docs/ROADMAP.md` اگر contract عوض می‌شود).
+
+**مرز دقیق — کجا n8n مرجع است و کجا نیست:**
+- ✅ **مرجع است:** مدل item، expression syntax، رفتار/نام/portهای nodeهای parity، الگوی Loop/Merge/IF/Switch،
+  ساختار AI Agent canvas، sub-node slots، طراحی credentials.
+- ❌ **مرجع نیست (اینجا CTB جلوتر است، نه n8n):** هر چیز conversation-aware (Wait for Reply، Menu، pause/resume
+  دائمی)، Live Voice، و قابلیت‌های بومی تلگرام. n8n اینها را اصلاً ندارد — اینجا خودمان طراح هستیم.
+- ⚠️ **هرگز fork نکن:** فقط الگو و مدل ذهنی را مرجع بگیر، نه کد را. CTB کدبیس مستقل TypeScript است (Red Line).
+
+> خلاصه: **اگر چیزی n8n parity است → از n8n الگو بگیر. اگر چیزی تمایز CTB است → خودت با Invariants طراحی کن.
+> در هر دو حالت، گیج نمان و از صفر اختراع نکن.**
+
+---
+
 ## تصویر تجربه کاربر نهایی
 
 **کاربر ۱: Bot Builder (بدون کد)**
@@ -298,6 +331,7 @@ AI
 - [ ] آیا engine changes یک pause/resume round-trip test دارند؟
 - [ ] آیا node جدید با I2 سازگار است؟ (generic primitive، نه domain-specific)
 - [ ] برای voice nodes: آیا `ctx.call` nullable check دارد؟ (fail-loud)
+- [ ] اگر این یک ابهام/مشکل معماری parity است → آیا اول الگوی n8n را چک کردم؟ (github.com/n8n-io/n8n — حدس نزن)
 
 ---
 

@@ -460,6 +460,19 @@ export class Executor {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const tag = err instanceof UnknownNodeTypeError ? 'unknown node type' : 'node failed';
+          // NDV fix: log the I/O snapshot BEFORE failRun so the editor's INPUT
+          // pane shows what data arrived at the failing node (n8n parity). The
+          // snapshot carries the input items but no output (the node never ran).
+          this.services.log?.({
+            executionId: exec.id,
+            nodeId: node.id,
+            level: 'debug',
+            message: `executed ${node.type}`,
+            data: { kind: 'error' },
+            input: capItems(inputItems),
+            durationMs: this.clock().getTime() - stepStart,
+            ts: this.clock().toISOString(),
+          });
           return this.failRun(exec.id, state, `${tag} at "${node.id}": ${message}`);
         }
       }

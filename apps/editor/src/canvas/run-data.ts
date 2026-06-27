@@ -50,6 +50,26 @@ export function mapRunErrors(logs: ExecLogEntry[]): Map<string, string> {
   return byNode;
 }
 
+/**
+ * Defensive coercion for run-data the data panes render (crash-hardening).
+ *
+ * The NDV/side-panel used to crash the WHOLE app to a black screen when a run
+ * payload wasn't shaped as `FlowItem[]` / `{ json: object }` (e.g. a node that
+ * emitted a primitive, or a half-written execution row). These two helpers make
+ * the render total: never throw, always hand the UI an array of `{json:object}`.
+ * Pure + DOM-free so they unit-test directly.
+ */
+export function safeItemJson(item: unknown): Record<string, unknown> {
+  const j = (item as { json?: unknown } | null | undefined)?.json;
+  return j !== null && typeof j === 'object' && !Array.isArray(j)
+    ? (j as Record<string, unknown>)
+    : {};
+}
+
+export function safeItems(items: unknown): FlowItem[] {
+  return Array.isArray(items) ? (items as FlowItem[]) : [];
+}
+
 /** Schema cap on pinned items (mirrors `FlowNodeSchema.pinnedData.max(50)`). */
 export const PIN_ITEMS_CAP = 50;
 

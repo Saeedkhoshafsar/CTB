@@ -839,6 +839,10 @@ export const fa = {
   'panel.enabled': 'فعال',
   'panel.title': 'نام',
   'panel.note': 'یادداشت',
+  'panel.data.title': 'داده‌ها (آخرین اجرا)',
+  'panel.data.openFull': 'نمای کامل ↗',
+  'panel.data.openFullHint': 'باز کردن نمای کامل نود: ورودی | پارامترها | خروجی',
+  'panel.data.hint': 'برای دیدن دادهٔ واقعی، یک‌بار «اجرای آزمایشی» را بزنید.',
 
   // ── param labels (fallback = humanized key) ──
   'param.event': 'رویداد',
@@ -1254,4 +1258,12 @@ export const fa = {
   'common.close': 'بستن',
   'common.save': 'ذخیره',
   'common.language': 'English',
+
+  // Error boundary (so a render error never blanks the whole app)
+  'errorBoundary.title': 'مشکلی پیش آمد',
+  'errorBoundary.lead':
+    'این بخش از برنامه با خطا مواجه شد. بقیهٔ برنامه سالم است — می‌توانید دوباره تلاش کنید یا به صفحهٔ بات‌ها برگردید. اطلاعات شما از دست نرفته است.',
+  'errorBoundary.retry': 'تلاش دوباره',
+  'errorBoundary.reload': 'بارگذاری مجدد صفحه',
+  'errorBoundary.details': 'جزئیات فنی',
 } as const;

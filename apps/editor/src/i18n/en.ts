@@ -850,6 +850,10 @@ export const en: Record<keyof typeof fa, string> = {
   'panel.enabled': 'Enabled',
   'panel.title': 'Name',
   'panel.note': 'Note',
+  'panel.data.title': 'Data (last run)',
+  'panel.data.openFull': 'Full view ↗',
+  'panel.data.openFullHint': 'Open the full node view: Input | Parameters | Output',
+  'panel.data.hint': 'Hit “Test run” once to see real data here.',
 
   // ── param labels ──
   'param.event': 'Event',
@@ -1265,4 +1269,12 @@ export const en: Record<keyof typeof fa, string> = {
   'common.close': 'Close',
   'common.save': 'Save',
   'common.language': 'فارسی',
+
+  // Error boundary (so a render error never blanks the whole app)
+  'errorBoundary.title': 'Something went wrong',
+  'errorBoundary.lead':
+    'This part of the app hit an error. The rest of the app is fine — you can try again or go back to Bots. Your data was not lost.',
+  'errorBoundary.retry': 'Try again',
+  'errorBoundary.reload': 'Reload the page',
+  'errorBoundary.details': 'Technical details',
 };

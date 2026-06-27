@@ -7,7 +7,14 @@ import type { ExecLogEntry, ExecutionDetail } from '@ctb/shared';
 import { describe, expect, it } from 'vitest';
 import { ApiClient } from '../src/api/client';
 import { childRows, pathToExpression } from '../src/canvas/json-tree';
-import { flattenOutputForPin, mapRunData, mapRunErrors, PIN_ITEMS_CAP } from '../src/canvas/run-data';
+import {
+  flattenOutputForPin,
+  mapRunData,
+  mapRunErrors,
+  PIN_ITEMS_CAP,
+  safeItemJson,
+  safeItems,
+} from '../src/canvas/run-data';
 import { FIELD_DRAG_MIME } from '../src/form/expression';
 import { createAuthStore } from '../src/stores/auth';
 import { createRunDataStore } from '../src/stores/run-data';
@@ -281,5 +288,39 @@ describe('flattenOutputForPin — I-T1 (gap G4)', () => {
   it('caps the result at PIN_ITEMS_CAP items', () => {
     const many = { main: Array.from({ length: PIN_ITEMS_CAP + 10 }, (_, i) => item({ i })) };
     expect(flattenOutputForPin(many)).toHaveLength(PIN_ITEMS_CAP);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeItems / safeItemJson — crash-hardening for the data panes (black-screen fix)
+// ---------------------------------------------------------------------------
+
+describe('safeItems / safeItemJson — never throw on malformed run data', () => {
+  it('safeItems returns the array unchanged when it is an array', () => {
+    const arr = [{ json: { a: 1 } }, { json: { b: 2 } }];
+    expect(safeItems(arr)).toBe(arr);
+  });
+
+  it('safeItems coerces non-arrays (null/undefined/object/primitive) to []', () => {
+    expect(safeItems(null)).toEqual([]);
+    expect(safeItems(undefined)).toEqual([]);
+    expect(safeItems({ json: { a: 1 } })).toEqual([]);
+    expect(safeItems('oops')).toEqual([]);
+    expect(safeItems(42)).toEqual([]);
+  });
+
+  it('safeItemJson returns the json object for a well-formed item', () => {
+    expect(safeItemJson({ json: { name: 'Sara', age: 9 } })).toEqual({ name: 'Sara', age: 9 });
+  });
+
+  it('safeItemJson returns {} for a missing / non-object / array json (no throw)', () => {
+    expect(safeItemJson(null)).toEqual({});
+    expect(safeItemJson(undefined)).toEqual({});
+    expect(safeItemJson({})).toEqual({});
+    expect(safeItemJson({ json: null })).toEqual({});
+    expect(safeItemJson({ json: 'text' })).toEqual({});
+    expect(safeItemJson({ json: 7 })).toEqual({});
+    expect(safeItemJson({ json: [1, 2, 3] })).toEqual({});
+    expect(safeItemJson('not-an-item')).toEqual({});
   });
 });

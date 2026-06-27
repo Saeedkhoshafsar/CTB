@@ -25,6 +25,7 @@ import { useRunData } from '../stores/run-data';
 import { DataPanel } from './DataPanel';
 import { nodeDisplayName } from './graph';
 import { flattenOutputForPin } from './run-data';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const COMMIT_MS = 600;
 
@@ -264,9 +265,17 @@ function DetailInner({ node }: { node: FlowNode }) {
 
 export function NodeDetail() {
   const nodeId = useNodeDetail((s) => s.nodeId);
+  const close = useNodeDetail((s) => s.close);
   const graph = useCanvas((s) => s.graph);
   if (!nodeId) return null;
   const node = graph.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
-  return <DetailInner key={node.id} node={node} />;
+  // A render error inside the NDV used to crash the WHOLE app to a black screen.
+  // Scope it here: on error the boundary shows a recovery card and `onReset`
+  // closes the modal, returning the user to an intact canvas.
+  return (
+    <ErrorBoundary key={node.id} onReset={close}>
+      <DetailInner node={node} />
+    </ErrorBoundary>
+  );
 }

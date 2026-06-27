@@ -12,6 +12,7 @@ import type { FlowItem } from '@ctb/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { useI18n, type MessageKey } from '../i18n';
 import { FIELD_DRAG_MIME, childRows, pathToExpression, type TreeRow } from './json-tree';
+import { safeItemJson, safeItems } from './run-data';
 
 export type DataView = 'schema' | 'table' | 'json';
 
@@ -97,7 +98,7 @@ function TreeNode({ row, value }: { row: TreeRow; value: unknown }) {
 function TableView({ items }: { items: FlowItem[] }) {
   const cols = useMemo(() => {
     const keys = new Set<string>();
-    for (const it of items) for (const k of Object.keys(it.json)) keys.add(k);
+    for (const it of items) for (const k of Object.keys(safeItemJson(it))) keys.add(k);
     return [...keys];
   }, [items]);
   const cell = (v: unknown): string => {
@@ -121,7 +122,7 @@ function TableView({ items }: { items: FlowItem[] }) {
             <tr key={i}>
               <td className="row-num">{i + 1}</td>
               {cols.map((c) => (
-                <td key={c} dir="auto">{cell(it.json[c])}</td>
+                <td key={c} dir="auto">{cell(safeItemJson(it)[c])}</td>
               ))}
             </tr>
           ))}
@@ -150,7 +151,10 @@ export function DataPanel({
   const [view, setView] = useState<DataView>('schema');
   const portNames = ports ? Object.keys(ports) : [];
   const [activePort, setActivePort] = useState(0);
-  const shown = ports ? (ports[portNames[Math.min(activePort, portNames.length - 1)] ?? ''] ?? []) : (items ?? []);
+  const rawShown = ports ? (ports[portNames[Math.min(activePort, portNames.length - 1)] ?? ''] ?? []) : (items ?? []);
+  // Never trust run data to be an array of items — a malformed payload here used
+  // to crash the whole render (the "black screen"). Coerce defensively.
+  const shown = safeItems(rawShown);
 
   return (
     <div className="data-panel">
@@ -200,7 +204,7 @@ export function DataPanel({
           {shown.map((it, i) => (
             <div key={i} className="tree-item">
               {shown.length > 1 ? <div className="tree-item-head">{t('data.itemN', { n: i + 1 })}</div> : null}
-              <TreeBranch value={it.json} basePath="" depth={0} />
+              <TreeBranch value={safeItemJson(it)} basePath="" depth={0} />
             </div>
           ))}
         </div>
@@ -210,7 +214,7 @@ export function DataPanel({
         </div>
       ) : (
         <div className="data-body">
-          <pre className="data-json" dir="ltr">{JSON.stringify(shown.map((it) => it.json), null, 2)}</pre>
+          <pre className="data-json" dir="ltr">{JSON.stringify(shown.map((it) => safeItemJson(it)), null, 2)}</pre>
         </div>
       )}
     </div>

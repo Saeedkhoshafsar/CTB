@@ -7,15 +7,19 @@
  * keystrokes don't flood undo history / autosave — a field-blur or panel
  * close flushes immediately.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlowNode } from '@ctb/shared';
 import { useI18n, type MessageKey } from '../i18n';
 import { pruneEmpty } from '../form/model';
 import { SchemaForm } from '../form/SchemaForm';
 import type { JsonSchema } from '../form/schema';
 import { useCanvas } from '../stores/canvas';
+import { useRunData } from '../stores/run-data';
 import { nodeDisplayName } from './graph';
 import { useSelection } from './FlowCanvas';
+import { useNodeDetail } from './NodeDetail';
+import { DataPanel } from './DataPanel';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const COMMIT_MS = 600;
 
@@ -87,6 +91,19 @@ function PanelInner({ node }: { node: FlowNode }) {
   const descMsg = t(descKey as MessageKey);
   const nodeDesc = descMsg === descKey ? null : descMsg;
 
+  // n8n-parity: surface the node's INPUT (what fed it) and OUTPUT (what it
+  // emitted) from the latest run right in the side panel, so the user always
+  // sees "the previous node's data" — the #1 complaint. Full three-pane view is
+  // one click away ("Full view"), which opens the NDV.
+  const run = useRunData((s) => s.byNode.get(node.id));
+  const execution = useRunData((s) => s.execution);
+  const hasInputs = (info?.ports.inputs.length ?? 1) > 0;
+  const openFull = useNodeDetail((s) => s.open);
+  const dataEmptyMsg = useMemo(
+    () => (execution ? t('data.emptyNode') : t('data.noRun')),
+    [execution, t],
+  );
+
   return (
     <aside className="param-panel" data-testid="param-panel">
       <div className="param-head">
@@ -105,6 +122,38 @@ function PanelInner({ node }: { node: FlowNode }) {
       ) : (
         <p className="alert">{t('editor.node.unknownType')}</p>
       )}
+
+      <div className="panel-data">
+        <div className="panel-data-toggle">
+          <strong>{t('panel.data.title')}</strong>
+          <button
+            type="button"
+            className="ndv-link"
+            title={t('panel.data.openFullHint')}
+            onClick={() => openFull(node.id)}
+          >
+            {t('panel.data.openFull')}
+          </button>
+        </div>
+        {/* A bad run-data payload must never crash the editor — scope it. */}
+        <ErrorBoundary compact>
+          {hasInputs ? (
+            <DataPanel title={t('data.input')} items={run?.input ?? []} emptyMessage={dataEmptyMsg} />
+          ) : (
+            <div className="data-panel">
+              <div className="data-head"><strong>{t('data.input')}</strong></div>
+              <p className="data-empty">{t('data.triggerNoInput')}</p>
+            </div>
+          )}
+          <DataPanel
+            title={t('data.output')}
+            items={null}
+            ports={run?.output ?? {}}
+            emptyMessage={dataEmptyMsg}
+          />
+        </ErrorBoundary>
+        {!execution ? <p className="hint">{t('panel.data.hint')}</p> : null}
+      </div>
 
       <hr className="param-sep" />
 
@@ -164,6 +213,11 @@ export function ParamPanel() {
   const id = [...selected][0]!;
   const node = graph.nodes.find((n) => n.id === id);
   if (!node) return null;
-  // key remounts the inner panel per node → clean draft state per selection
-  return <PanelInner key={node.id} node={node} />;
+  // key remounts the inner panel per node → clean draft state per selection.
+  // The boundary keeps a bad node/run-data from blanking the whole editor.
+  return (
+    <ErrorBoundary key={node.id} compact>
+      <PanelInner node={node} />
+    </ErrorBoundary>
+  );
 }

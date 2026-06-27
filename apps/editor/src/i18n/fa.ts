@@ -317,8 +317,13 @@ export const fa = {
   'editor.export.hint': 'این جریان را به‌صورت یک فایل JSON قابل‌انتقال (گراف + تنظیمات) دانلود کنید.',
   'editor.testRun.button': 'اجرای آزمایشی',
   'editor.testRun.running': 'در حال اجرا…',
-  'editor.testRun.noTrigger': 'برای اجرای آزمایشی، یک نود «شروع دستی» (flow.manualTrigger) به جریان اضافه کنید.',
+  'editor.testRun.noTrigger':
+    'برای اجرای آزمایشی، یک شروع‌کننده به جریان اضافه کنید — «شروع دستی» (flow.manualTrigger) برای دادهٔ نمونه، یا «شروع‌کنندهٔ تلگرام» (tg.trigger) برای شنیدن یک پیام زنده.',
   'editor.testRun.failed': 'اجرای آزمایشی با خطا مواجه شد: {error}',
+  // J-T2: اجرای آزمایشی با شنیدن یک به‌روزرسانی زنده (الگوی «گوش‌دادن به رویداد تست» n8n).
+  'editor.testRun.listen.waiting': 'در انتظار یک پیام به ربات شما… همین حالا یکی بفرستید تا اجرای آزمایشی ثبت شود.',
+  'editor.testRun.listen.cancel': 'لغو',
+  'editor.testRun.listen.expired': 'پیامی به‌موقع نرسید — شنود آزمایشی لغو شد. برای تلاش دوباره «اجرای آزمایشی» را بزنید.',
   'editor.node.disabled': 'غیرفعال',
   'editor.node.unknownType': 'نوع ناشناخته',
   'editor.node.problems': '{n} مشکل',

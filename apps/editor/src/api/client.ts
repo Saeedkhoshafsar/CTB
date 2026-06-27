@@ -38,6 +38,8 @@ import {
   type ImportTemplateBody,
   ImportTemplateBodySchema,
   type RunFlowResult,
+  type TestListenArmed,
+  type TestListenStatus,
   type FlowItem,
   type FlowPublic,
   type FlowVersionInfo,
@@ -490,6 +492,32 @@ export class ApiClient {
       nodeId,
       ...(input !== undefined ? { input } : {}),
     });
+  }
+
+  /**
+   * Live-trigger test run (J-T2, Report B): arm the flow's enabled `tg.trigger`
+   * to capture the NEXT matching live update — n8n's "listen for test event".
+   * Returns the armed execution id; the editor then polls {@link testListenStatus}.
+   * 422 `no_telegram_trigger` when the flow has no enabled `tg.trigger`.
+   */
+  async testListen(id: string): Promise<TestListenArmed> {
+    return this.request<TestListenArmed>('POST', `/api/flows/${id}/test-listen`);
+  }
+
+  /** Poll an armed test-listen's lifecycle (listening → captured/expired/gone). */
+  async testListenStatus(id: string, executionId: string): Promise<TestListenStatus> {
+    return this.request<TestListenStatus>(
+      'GET',
+      `/api/flows/${id}/test-listen/status?executionId=${encodeURIComponent(executionId)}`,
+    );
+  }
+
+  /** Disarm an armed test-listen (the waiting banner's Cancel button). */
+  async testListenCancel(id: string, executionId: string): Promise<void> {
+    await this.request<unknown>(
+      'DELETE',
+      `/api/flows/${id}/test-listen?executionId=${encodeURIComponent(executionId)}`,
+    );
   }
 
   /** Cancel a waiting/running execution (P2-T5). 409 ApiError when already finished. */

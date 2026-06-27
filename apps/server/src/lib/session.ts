@@ -5,9 +5,26 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-/** Panel roles (P3.5-T2). `admin` sees everything; `operator` (the manager)
- * sees ONLY the Data section — records/files of Collections. */
-export type SessionRole = 'admin' | 'operator';
+/** Panel roles. `operator` (P3.5-T2, the manager) sees ONLY the Data section —
+ * records/files of Collections; `admin` sees everything; `owner` (K-T1) is a
+ * strict superset of `admin` (the single account-owner, with store-enforced
+ * invariants). Precedence: `owner` ⊇ `admin` ⊇ `operator`. */
+export type SessionRole = 'owner' | 'admin' | 'operator';
+
+/** Role precedence, low→high (K-T1). Mirrors `@ctb/shared` ROLE_ORDER. */
+const ROLE_ORDER: readonly SessionRole[] = ['operator', 'admin', 'owner'];
+
+/**
+ * Pure role gate (K-T1): is `role` at least as privileged as `min`?
+ * `owner` satisfies any minimum; `operator` satisfies only `operator`. An
+ * unknown/legacy value is treated as `operator` (least privilege) so a
+ * malformed token can never escalate.
+ */
+export function roleAtLeast(role: SessionRole, min: SessionRole): boolean {
+  const r = ROLE_ORDER.indexOf(role);
+  const m = ROLE_ORDER.indexOf(min);
+  return (r < 0 ? 0 : r) >= (m < 0 ? 0 : m);
+}
 
 export interface SessionPayload {
   /** Username the session belongs to. */
@@ -56,8 +73,16 @@ export function verifySessionToken(
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
     if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') return null;
     if (payload.exp <= now) return null;
-    // Back-compat: tokens minted before roles existed are admins.
-    if (payload.role !== 'admin' && payload.role !== 'operator') payload.role = 'admin';
+    // Back-compat: tokens minted before roles existed are admins. A token
+    // carrying any unknown role string is normalised to `admin` too (K-T1
+    // widened the set to include `owner`, which stays valid here).
+    if (
+      payload.role !== 'owner' &&
+      payload.role !== 'admin' &&
+      payload.role !== 'operator'
+    ) {
+      payload.role = 'admin';
+    }
     return payload;
   } catch {
     return null;

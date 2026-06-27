@@ -313,3 +313,20 @@ export const aiUsage = sqliteTable(
     index('ai_usage_bot_cred_idx').on(t.botId, t.credentialId),
   ],
 );
+
+/**
+ * Panel admins (K-T1, PLAN4 Phase K) — the durable, Telegram-ID-keyed list of
+ * panel identities and their role (`owner`/`admin`/`operator`). These are PANEL
+ * operators, kept strictly separate from the per-bot end-user store (`users`,
+ * invariant I2): different table, different meaning. No password column — auth
+ * (K-T2) binds a session to an identity present here. The owner invariants
+ * (exactly one owner, never removable, owner-only transfer) are enforced in the
+ * store (`SqlitePanelAdminStore`), not by the schema.
+ */
+export const panelAdmins = sqliteTable('panel_admins', {
+  /** Telegram user id, stored textual (ids can exceed 2^53). Primary key. */
+  tgUserId: text('tg_user_id').primaryKey(),
+  role: text('role', { enum: ['owner', 'admin', 'operator'] }).notNull().default('admin'),
+  label: text('label').notNull(),
+  createdAt: text('created_at').notNull(),
+});

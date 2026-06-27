@@ -23,8 +23,30 @@ export const LoginBodySchema = z.object({
 });
 export type LoginBody = z.infer<typeof LoginBodySchema>;
 
-/** Panel role (P3.5-T2): admin sees everything; operator sees only the Data section. */
-export type SessionRole = 'admin' | 'operator';
+/**
+ * Panel role.
+ * - `operator` (P3.5-T2, "the manager"): sees ONLY the Data section.
+ * - `admin`: sees everything (manage bots/flows/admins).
+ * - `owner` (K-T1): the single account-owner — a strict superset of `admin`,
+ *   with extra store-enforced invariants (exactly one, never removable, only an
+ *   owner may transfer ownership). Precedence: `owner` ⊇ `admin` ⊇ `operator`.
+ */
+export type SessionRole = 'owner' | 'admin' | 'operator';
+
+/** Role precedence, low→high. Used by the pure `roleAtLeast` gate. */
+export const ROLE_ORDER: readonly SessionRole[] = ['operator', 'admin', 'owner'];
+
+/**
+ * Pure role gate: is `role` at least as privileged as `min`?
+ * `owner` satisfies any minimum; `operator` satisfies only `operator`.
+ * Unknown/legacy values are treated as `operator` (the least privilege) so a
+ * malformed token can never escalate.
+ */
+export function roleAtLeast(role: SessionRole, min: SessionRole): boolean {
+  const r = ROLE_ORDER.indexOf(role);
+  const m = ROLE_ORDER.indexOf(min);
+  return (r < 0 ? 0 : r) >= (m < 0 ? 0 : m);
+}
 
 export interface SessionUser {
   username: string;
@@ -458,6 +480,67 @@ export const UpdateUserBodySchema = z
     message: 'nothing to update — provide tags and/or profile',
   });
 export type UpdateUserBody = z.infer<typeof UpdateUserBodySchema>;
+
+// ---------------------------------------------------------------------------
+// panel admins — identity & RBAC (K-T1, PLAN4 Phase K)
+// ---------------------------------------------------------------------------
+
+/** Manageable panel roles (the owner is set/changed only via transfer, never
+ * assigned directly through add/setRole). */
+export const ManageableRoleSchema = z.enum(['admin', 'operator']);
+export type ManageableRole = z.infer<typeof ManageableRoleSchema>;
+
+/** Full panel role set, incl. the singleton `owner`. */
+export const PanelRoleSchema = z.enum(['owner', 'admin', 'operator']);
+
+/**
+ * A panel admin — a panel identity keyed by Telegram user id. These are panel
+ * operators (owner/admin/operator), kept STRICTLY separate from the per-bot
+ * end-user store (`SqliteUserStore`, invariant I2): different table, different
+ * meaning. The Telegram id is the identity; there is no password column (auth
+ * binds a session to a listed identity — K-T2).
+ */
+export interface PanelAdmin {
+  /** Telegram user id, as a string (ids exceed 2^53 risk; keep textual). */
+  tgUserId: string;
+  role: SessionRole;
+  /** Human label shown in the panel (e.g. a name / @handle). */
+  label: string;
+  /** ISO-8601 creation timestamp. */
+  createdAt: string;
+}
+
+/** A Telegram user id accepted from clients: digits only, kept as a string. */
+export const TgUserIdSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,20}$/, 'must be a numeric Telegram user id');
+
+/** `POST /api/admins` — add a new admin/operator (never an owner). */
+export const AddPanelAdminBodySchema = z.object({
+  tgUserId: TgUserIdSchema,
+  role: ManageableRoleSchema.default('admin'),
+  label: z.string().trim().min(1).max(120),
+});
+export type AddPanelAdminBody = z.infer<typeof AddPanelAdminBodySchema>;
+
+/** `PATCH /api/admins/:id/role` — change a non-owner's role (never to owner). */
+export const SetPanelAdminRoleBodySchema = z.object({
+  role: ManageableRoleSchema,
+});
+export type SetPanelAdminRoleBody = z.infer<typeof SetPanelAdminRoleBodySchema>;
+
+/** `POST /api/admins/transfer-owner` — owner-only; demotes the old owner. */
+export const TransferOwnerBodySchema = z.object({
+  /** The existing admin/operator who becomes the new owner. */
+  tgUserId: TgUserIdSchema,
+});
+export type TransferOwnerBody = z.infer<typeof TransferOwnerBodySchema>;
+
+/** `GET /api/admins` response. */
+export interface PanelAdminList {
+  admins: PanelAdmin[];
+}
 
 // ---------------------------------------------------------------------------
 // public REST API — bearer tokens + v1 surface (P4-T3, PROTOCOL.md §Inbound REST API)

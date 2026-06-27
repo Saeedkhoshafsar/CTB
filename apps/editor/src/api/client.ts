@@ -59,6 +59,7 @@ import {
   type RecordPublic,
   type RecordsPage,
   type SessionUser,
+  type SetupChecklist,
   type UpdateBotBody,
   UpdateBotBodySchema,
   type UpdateCollectionBody,
@@ -566,6 +567,14 @@ export class ApiClient {
       '/api/admins/transfer-owner',
       valid,
     );
+  }
+
+  // -- go-live setup checklist (L-T2) -----------------------------------------
+
+  /** The OPEN setup-prerequisite items + a `ready` flag, derived server-side from
+   *  real state (L-T1). Requires ≥admin. */
+  async setupChecklist(): Promise<SetupChecklist> {
+    return this.request<SetupChecklist>('GET', '/api/setup/checklist');
   }
 
   /** Cancel a waiting/running execution (P2-T5). 409 ApiError when already finished. */

@@ -149,6 +149,28 @@ export const en: Record<keyof typeof fa, string> = {
   'admins.transfer.done': 'Ownership transferred.',
   'admins.hint': 'Enter the Telegram numeric ID (not the @username). The owner cannot be removed.',
 
+  // ── Setup checklist (PLAN4 L-T2) ──
+  'setup.title': 'Finish these to take your bot public',
+  'setup.lead': 'Each item disappears automatically as you satisfy it.',
+  'setup.dismiss': 'Dismiss',
+  'setup.fix': 'Fix',
+  'setup.optional': 'optional',
+  'setup.ready.title': 'Bot is ready to go public',
+  'setup.ready.lead': 'All prerequisites are satisfied. Your bot is good to go.',
+  'setup.ready.note': 'Only a recommended item remains — it does not block going live.',
+  'setup.item.secret.title': 'Set a security secret (CTB_SECRET)',
+  'setup.item.secret.desc': 'Required to encrypt sessions and credentials.',
+  'setup.item.owner.title': 'Set a panel owner',
+  'setup.item.owner.desc': 'Bind an owner by Telegram ID so someone has full control.',
+  'setup.item.admins.title': 'Add another admin (recommended)',
+  'setup.item.admins.desc': 'At least one more admin or operator to help run things.',
+  'setup.item.bot.title': 'Add a bot token',
+  'setup.item.bot.desc': 'Register a Telegram bot with its token.',
+  'setup.item.activeFlow.title': 'Activate a flow',
+  'setup.item.activeFlow.desc': 'Activate at least one flow so the bot actually does something.',
+  'setup.item.delivery.title': 'Configure a delivery channel',
+  'setup.item.delivery.desc': 'Webhook (with a public URL) or polling — a registered bot has this by default.',
+
   'flows.title': 'Flows of {bot}',
   'flows.empty': 'This bot has no flows yet.',
   // ── guided empty state (PLAN3 F-T1) ──

@@ -146,6 +146,28 @@ export const fa = {
   'admins.transfer.done': 'مالکیت منتقل شد.',
   'admins.hint': 'شناسهٔ عددی تلگرام را وارد کنید (نه نام کاربری). مالک قابل حذف نیست.',
 
+  // ── چک‌لیست راه‌اندازی (PLAN4 L-T2) ──
+  'setup.title': 'برای انتشار بات این موارد را کامل کنید',
+  'setup.lead': 'هر مورد با انجام‌شدن به‌طور خودکار از فهرست حذف می‌شود.',
+  'setup.dismiss': 'بستن',
+  'setup.fix': 'انجام',
+  'setup.optional': 'اختیاری',
+  'setup.ready.title': 'بات آمادهٔ انتشار است',
+  'setup.ready.lead': 'همهٔ پیش‌نیازها کامل شده‌اند. بات شما آمادهٔ کار است.',
+  'setup.ready.note': 'فقط یک مورد پیشنهادی باقی مانده — انتشار را متوقف نمی‌کند.',
+  'setup.item.secret.title': 'تنظیم کلید امنیتی (CTB_SECRET)',
+  'setup.item.secret.desc': 'برای رمزگذاری نشست‌ها و اعتبارنامه‌ها لازم است.',
+  'setup.item.owner.title': 'تعیین مالک پنل',
+  'setup.item.owner.desc': 'یک مالک با شناسهٔ تلگرام تعیین کنید تا کنترل کامل داشته باشد.',
+  'setup.item.admins.title': 'افزودن یک مدیر دیگر (پیشنهادی)',
+  'setup.item.admins.desc': 'حداقل یک مدیر یا اپراتور دیگر برای کمک در اداره.',
+  'setup.item.bot.title': 'افزودن توکن بات',
+  'setup.item.bot.desc': 'یک بات تلگرام با توکن آن ثبت کنید.',
+  'setup.item.activeFlow.title': 'فعال‌کردن یک فلو',
+  'setup.item.activeFlow.desc': 'حداقل یک فلو را فعال کنید تا بات کاری انجام دهد.',
+  'setup.item.delivery.title': 'پیکربندی کانال دریافت پیام',
+  'setup.item.delivery.desc': 'وب‌هوک (با آدرس عمومی) یا پولینگ — با ثبت یک بات به‌طور پیش‌فرض فراهم می‌شود.',
+
   'flows.title': 'فلوهای {bot}',
   'flows.empty': 'این بات هنوز فلویی ندارد.',
   // ── حالت خالی راهنما (PLAN3 F-T1) ──

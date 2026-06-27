@@ -356,6 +356,28 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     replaced by the ready state; refreshing re-derives from server (no client-only
     "done" flags — the source of truth is real state, principle 1).
   - Verify: `npm run test -w apps/editor` + editor typecheck + build.
+  - ✅ **DONE** — Shipped exactly as designed (editor-only; no schema/server/engine
+    touch). NEW PURE `apps/editor/src/lib/setup-checklist.ts` (`checklistViews(items)`
+    over a `VIEW` map id→`{titleKey, descKey, route}` + `ORDER = SETUP_CHECKLIST_IDS`):
+    projects the server's OPEN items (L-T1, the truth) into ordered, presentable
+    views, omitting satisfied ids, passing through `optional`, deep-linking each to
+    its fixing page (`secret`→`/docs`, `owner`/`admins`→`/admins`, `bot`/`activeFlow`/
+    `delivery`→`/bots`) and defensively skipping unknown ids (forward-compat). NEW
+    `apps/editor/src/components/SetupChecklist.tsx` — a dismissible, role-gated
+    (`roleAtLeast(role,'admin')`; operator/403 ⇒ renders nothing) first-run panel
+    that loads `api.setupChecklist()` on mount and either shows the celebratory
+    "✅ Bot is ready to go public" state (when `ready && items.length===0`) or the
+    OPEN-items list, each a `<Link to={route}>` "Fix" deep-link (reuses the F-T1
+    CTA pattern); "Dismiss" is a transient per-session hide, never a persisted flag
+    — refreshing re-derives from real state (principle 1). `api.setupChecklist()`
+    GET `/api/setup/checklist` added to the client; surfaced on `BotsPage` after the
+    page head; `setup.*` i18n en/fa parity; `.setup-checklist*` CSS. **Verify:**
+    NEW `test/setup-checklist.test.ts` (7 — ordering, omits satisfied, optional flag,
+    deep-link routes, non-empty copy keys, skips unknown ids) + `test/setup-checklist-client.test.ts`
+    (2 — GET verb/path + ready state verbatim); editor **296 tests GREEN (24 files)**
+    (was 287, +9), editor `tsc --noEmit` clean, editor build OK; shared `tsc` clean.
+    **Phase L COMPLETE — L-T1 ✅ + L-T2 ✅.** No new ROADMAP Decision Log entry —
+    editor presentation over the existing L-T1 derivation.
 
 ---
 

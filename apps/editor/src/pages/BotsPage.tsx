@@ -2,6 +2,7 @@ import type { AiUsageSummary, BotMode } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, ClientValidationError } from '../api/client';
+import { SetupChecklist } from '../components/SetupChecklist';
 import { useI18n } from '../i18n';
 import { useBots } from '../stores/bots';
 
@@ -88,6 +89,9 @@ export function BotsPage() {
           {t('bots.add')}
         </button>
       </div>
+
+      {/* First-run go-live checklist (L-T2) — self-hides when ready/dismissed/operator. */}
+      <SetupChecklist />
 
       {error && <div className="alert">{error}</div>}
       {rowError && <div className="alert">{rowError}</div>}

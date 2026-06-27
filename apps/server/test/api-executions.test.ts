@@ -154,6 +154,60 @@ describe('executions API (P2-T3.5)', () => {
     expect(executions[0]!.chatId).toBe(99);
   });
 
+  it('error-snapshot row never exposes a non-port-map output (black-screen fix)', async () => {
+    // A manual test run of trigger → sendMessage with NO telegram context fails
+    // at sendMessage. The executor writes an error-snapshot row whose generic
+    // `data:{kind:'error'}` marker used to be served as `output`, which is NOT a
+    // FlowItem port map — the editor's data pane then iterated a non-array and
+    // crashed the whole NDV to a black screen. The API must serve output:null
+    // for that row, and output for a real "executed" row must stay a port map.
+    const now = new Date().toISOString();
+    const errGraph = FlowGraphSchema.parse({
+      nodes: [
+        { id: 'manualTrigger_1', type: 'flow.manualTrigger', position: { x: 0, y: 0 }, params: {} },
+        { id: 'sendMessage_1', type: 'tg.sendMessage', position: { x: 300, y: 0 }, params: { text: 'سلام {{ $json.test }}' } },
+      ],
+      edges: [
+        { id: 'e1', from: { node: 'manualTrigger_1', port: 'main' }, to: { node: 'sendMessage_1', port: 'main' } },
+      ],
+    });
+    w.db.insert(schema.flows).values({
+      id: 'fErr', botId: 'b1', name: 'err flow', status: 'draft',
+      graph: errGraph, version: 1, updatedAt: now,
+    }).run();
+
+    const run = await w.app.inject({
+      method: 'POST', url: '/api/flows/fErr/run', cookies: w.cookie,
+    });
+    expect(run.statusCode).toBe(200);
+    expect((run.json() as { status: string }).status).toBe('error');
+
+    const list = await w.app.inject({
+      method: 'GET', url: '/api/executions?flowId=fErr&limit=1', cookies: w.cookie,
+    });
+    const ex = (list.json() as { executions: ExecutionSummary[] }).executions[0]!;
+    const det = await w.app.inject({
+      method: 'GET', url: `/api/executions/${ex.id}`, cookies: w.cookie,
+    });
+    const { execution } = det.json() as { execution: ExecutionDetail };
+
+    // EVERY served output is either null or a valid port map (values are arrays).
+    for (const row of execution.logs) {
+      if (row.output === null) continue;
+      expect(Array.isArray(row.output)).toBe(false);
+      for (const v of Object.values(row.output)) expect(Array.isArray(v)).toBe(true);
+    }
+    // The failing sendMessage snapshot row specifically: output is hidden (null).
+    const sendSnap = execution.logs.find(
+      (l) => l.nodeId === 'sendMessage_1' && l.input !== null,
+    );
+    expect(sendSnap).toBeTruthy();
+    expect(sendSnap!.output).toBeNull();
+    // The trigger row still exposes its real port map output.
+    const trig = execution.logs.find((l) => l.nodeId === 'manualTrigger_1' && l.input !== null);
+    expect(trig!.output && Object.keys(trig!.output)).toContain('main');
+  });
+
   it('detail 404 on unknown id; list 400 on bad status', async () => {
     const nf = await w.app.inject({
       method: 'GET', url: '/api/executions/ghost', cookies: w.cookie,

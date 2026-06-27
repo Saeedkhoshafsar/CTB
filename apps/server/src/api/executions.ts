@@ -43,6 +43,19 @@ function toSummary(row: ExecRow): ExecutionSummary {
   };
 }
 
+/**
+ * Is this stored `output` value a real per-port FlowItem map
+ * (`Record<string, FlowItem[]>`) rather than an ad-hoc debug marker like
+ * `{ kind: 'error' }`? The error-snapshot row (executor) writes the generic
+ * `data` marker into the output column, which is NOT a port map — serving it as
+ * `output` made the editor's data pane iterate a non-array and crash the whole
+ * NDV to a black screen. We only expose `output` when every value is an array.
+ */
+function isPortMap(value: unknown): value is ExecLogEntry['output'] {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value as Record<string, unknown>).every((v) => Array.isArray(v));
+}
+
 function toLog(row: LogRow): ExecLogEntry {
   // Only "executed" steps carry item snapshots; generic rows reuse the output
   // column for ad-hoc debug data which is NOT the FlowItem map — hide it here
@@ -54,7 +67,8 @@ function toLog(row: LogRow): ExecLogEntry {
     level: row.level,
     message: row.message,
     input: hasIo ? (row.input as ExecLogEntry['input']) : null,
-    output: hasIo ? (row.output as ExecLogEntry['output']) : null,
+    // Guard the output shape (see isPortMap): a non-port-map marker → null.
+    output: hasIo && isPortMap(row.output) ? (row.output as ExecLogEntry['output']) : null,
     error: row.error,
     durationMs: row.durationMs,
     ts: row.ts,

@@ -172,6 +172,13 @@ export function makeHarness(overrides: Partial<ExecutorServices> = {}): Harness 
     tg: () => null,
     log: (e) => logs.push(e),
     clock: () => new Date(1750000000000 + tick++ * 10),
+    // Raise the per-expression sandbox budget well above the strict 50ms default
+    // (the supported host tuning seam — see ExecutorServices.evalOptions /
+    // WireOptions.expressionBudgetMs). On a contended/low-memory CI sandbox the
+    // sandbox-worker COLD START alone can exceed 50ms and flake an otherwise-
+    // correct `{{ }}` step; these are behaviour tests, not latency tests. An
+    // override may still replace it.
+    evalOptions: { budgetMs: 5_000 },
     ...overrides,
   };
   const executor = new Executor(makeRegistry(), store, services);

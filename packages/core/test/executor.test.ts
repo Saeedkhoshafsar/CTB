@@ -419,3 +419,97 @@ describe('executor — step-log I/O snapshots (P2-T3.5, editor NDV data)', () =>
     expect(row.output!.main!.length).toBe(20);
   });
 });
+
+describe('executor — listen for one live update (J-T1, Report B)', () => {
+  // The entry node `boom` would THROW if executed — so a passing arming proves
+  // the executor parked WITHOUT firing the entry node.
+  const listenGraph = (): ReturnType<typeof graph> =>
+    graph(
+      [
+        { id: 'trig', type: 'test.boom' },
+        { id: 'save', type: 'test.saveVar', params: { name: 'who', from: 'name' } },
+      ],
+      [['trig', 'save']],
+    );
+
+  it('arming PARKS a durable trigger-wait WITHOUT executing the entry node', async () => {
+    const { executor, store, logs } = makeHarness();
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: listenGraph(), botId: 'b',
+      entry: { nodeId: 'trig', items: { main: [] } },
+      listenMode: { triggerParams: { event: 'any_message' }, timeoutAt: null },
+    });
+    expect(res.status).toBe('waiting');
+    expect(res.steps).toBe(0); // nothing executed — the entry node was NOT fired
+    const exec = await store.load('e1');
+    expect(exec!.status).toBe('waiting');
+    expect(exec!.wait).toMatchObject({ kind: 'trigger', nodeId: 'trig', triggerParams: { event: 'any_message' } });
+    // marked as an armed listen + implicitly a test run (durable across restart)
+    expect(exec!.state.listening).toBe(true);
+    expect(exec!.state.testRun).toBe(true);
+    expect(logs.some((l) => /listening for one live update at "trig"/.test(l.message))).toBe(true);
+  });
+
+  it('the next matching update resumes the trigger node → real item flows downstream', async () => {
+    const { executor, store } = makeHarness();
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: listenGraph(), botId: 'b',
+      entry: { nodeId: 'trig', items: { main: [] } },
+      listenMode: { triggerParams: { event: 'any_message' } },
+    });
+    // The router's test-listen path resumes the trigger node on `main` with the
+    // captured trigger item (sender data).
+    const r2 = await executor.resume({
+      executionId: 'e1', graph: listenGraph(), flow: FLOW, port: 'main',
+      items: [item({ name: 'سارا', text: 'سلام' })],
+    });
+    expect(r2.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.vars.who).toBe('سارا'); // downstream node saw the captured sender data
+  });
+
+  it('the arming SURVIVES a process restart (I4): a fresh executor on the same store resumes it', async () => {
+    const { executor, store } = makeHarness();
+    await executor.start({
+      executionId: 'e1', flow: FLOW, graph: listenGraph(), botId: 'b',
+      entry: { nodeId: 'trig', items: { main: [] } },
+      listenMode: { triggerParams: { event: 'any_message' } },
+    });
+    // Simulate a restart: a brand-new Executor instance over the SAME store.
+    const { Executor } = await import('../src/engine/executor');
+    const { makeRegistry } = await import('./executor-fakes');
+    const revived = new Executor(makeRegistry(), store, {
+      kv: () => ({ get: async () => undefined, set: async () => undefined, delete: async () => undefined }),
+      http: { request: async () => ({ status: 200, headers: {}, body: null }) },
+      tg: () => null,
+    });
+    const reloaded = await store.load('e1');
+    expect(reloaded!.wait!.kind).toBe('trigger'); // still armed after the "restart"
+    const r2 = await revived.resume({
+      executionId: 'e1', graph: listenGraph(), flow: FLOW, port: 'main',
+      items: [item({ name: 'رضا' })],
+    });
+    expect(r2.status).toBe('done');
+    expect((await store.load('e1'))!.state.vars.who).toBe('رضا');
+  });
+
+  it('a PRODUCTION run (no listenMode) fires the entry node immediately — byte-identical to today', async () => {
+    const { executor, store } = makeHarness();
+    const g = graph(
+      [
+        { id: 'trig', type: 'test.emit', params: { tag: 'T' } },
+        { id: 'save', type: 'test.saveVar', params: { name: 'trail', from: 'trail' } },
+      ],
+      [['trig', 'save']],
+    );
+    const res = await executor.start({
+      executionId: 'e1', flow: FLOW, graph: g, botId: 'b',
+      entry: { nodeId: 'trig', items: { main: [item({})] } },
+      // no listenMode → the trigger executes immediately, the run completes
+    });
+    expect(res.status).toBe('done');
+    const exec = await store.load('e1');
+    expect(exec!.state.vars.trail).toEqual(['T']); // executed normally
+    expect(exec!.state.listening).toBeUndefined(); // no arming flag on a prod run
+  });
+});

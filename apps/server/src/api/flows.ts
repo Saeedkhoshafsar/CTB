@@ -37,12 +37,23 @@ import {
   type FlowSettings,
   type FlowVersionInfo,
   type NodeSlotMeta,
+  type TestListenArmed,
+  type TestListenStatus,
 } from '@ctb/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodType } from 'zod';
 import type { Db } from '../db/index';
-import { bots, flowVersions, flows } from '../db/schema';
+import { bots, executions, flowVersions, flows } from '../db/schema';
+
+/**
+ * How long an armed "listen for one live update" stays alive before the timeout
+ * scanner expires it (J-T1). Long enough for a human to send a test message,
+ * short enough that an abandoned listen self-cleans. The router's test-listen
+ * path still captures any matching update within the window; after it, the
+ * trigger-wait times out via `waitDeadline` like any other wait.
+ */
+const TEST_LISTEN_TTL_MS = 5 * 60_000;
 import {
   flowWebhookHmacKey,
   flowWebhookSecret,
@@ -465,6 +476,104 @@ export function registerFlowsApi(app: FastifyInstance, deps: FlowsApiDeps): void
       stopAfterNode: node.id,
     });
     return { executionId, status: result.status, error: result.error };
+  });
+
+  // ---- live-trigger test run: "listen for one update" (J-T1, Report B) -----
+  //
+  // n8n's "listen for test event": arm the flow's enabled `tg.trigger` to
+  // capture the NEXT matching live update, then resume the SAME node — so a
+  // trial run and a production run use the same trigger node (no "use the Manual
+  // trigger instead" alert). POST arms a durable listen (the executor parks it
+  // in a WaitSpec{kind:'trigger'} — survives a restart, invariant I4); the
+  // editor polls the status endpoint; the router's test-listen path captures the
+  // first matching update exactly-once and feeds the real trigger item
+  // downstream. DELETE disarms (the banner's Cancel button).
+
+  app.post('/api/flows/:id/test-listen', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!deps.executor) return reply.code(503).send({ error: 'engine_not_configured' });
+    const row = db.select().from(flows).where(eq(flows.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+
+    const graph = FlowGraphSchema.safeParse(row.graph);
+    if (!graph.success) {
+      return reply.code(422).send({ error: 'invalid_graph', issues: graph.error.issues });
+    }
+    const trigger = graph.data.nodes.find((n) => n.type === 'tg.trigger' && !n.disabled);
+    if (!trigger) {
+      return reply.code(422).send({
+        error: 'no_telegram_trigger',
+        problems: ['flow has no enabled tg.trigger node — add one to listen for a live update'],
+      });
+    }
+
+    const executionId = randomUUID();
+    // Arm: the executor parks at the trigger node (does NOT fire it). The
+    // snapshot of the trigger's params is what the router matches the next
+    // update against — the same shape the production matcher consumes. Default
+    // arming TTL keeps a never-answered listen from parking forever.
+    const triggerParams =
+      trigger.params !== null && typeof trigger.params === 'object' && !Array.isArray(trigger.params)
+        ? (trigger.params as Record<string, unknown>)
+        : {};
+    const timeoutAt = new Date((deps.clock ?? (() => new Date()))().getTime() + TEST_LISTEN_TTL_MS).toISOString();
+    await deps.executor.start({
+      executionId,
+      flow: { id: row.id, name: row.name },
+      graph: graph.data,
+      botId: row.botId,
+      chatId: null,
+      userId: null,
+      entry: { nodeId: trigger.id, items: { main: [] } },
+      listenMode: { triggerParams, timeoutAt },
+    });
+    const armed: TestListenArmed = { executionId, flowId: row.id, botId: row.botId, nodeId: trigger.id };
+    return reply.code(201).send(armed);
+  });
+
+  app.get('/api/flows/:id/test-listen/status', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!deps.executor) return reply.code(503).send({ error: 'engine_not_configured' });
+    const { executionId } = req.query as { executionId?: string };
+    if (!executionId) return reply.code(400).send({ error: 'missing_execution_id' });
+    const exec = db.select().from(executions).where(eq(executions.id, executionId)).get();
+    if (!exec || exec.flowId !== id) {
+      const gone: TestListenStatus = { executionId, state: 'gone' };
+      return gone;
+    }
+    // Map the durable execution status to the test-listen lifecycle. Still
+    // `waiting` with a trigger-wait ⇒ armed; resumed to a non-waiting status ⇒
+    // captured; canceled/timed-out without a capture ⇒ expired.
+    let state: TestListenStatus['state'];
+    if (exec.status === 'waiting') {
+      const wait = exec.wait as { kind?: string } | null;
+      state = wait?.kind === 'trigger' ? 'listening' : 'captured';
+    } else if (exec.status === 'canceled') {
+      state = 'expired';
+    } else {
+      // done / error / running after a resume → the update was captured.
+      state = 'captured';
+    }
+    const status: TestListenStatus = { executionId, state };
+    return status;
+  });
+
+  app.delete('/api/flows/:id/test-listen', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { executionId } = req.query as { executionId?: string };
+    if (!executionId) return reply.code(400).send({ error: 'missing_execution_id' });
+    const exec = db.select().from(executions).where(eq(executions.id, executionId)).get();
+    if (!exec || exec.flowId !== id) return reply.code(404).send({ error: 'not_found' });
+    // Only disarm an execution that is still an armed trigger-listen; never
+    // touch one that already captured (or any other run).
+    const wait = exec.wait as { kind?: string } | null;
+    if (exec.status === 'waiting' && wait?.kind === 'trigger') {
+      db.update(executions)
+        .set({ status: 'canceled', wait: null, waitTimeoutAt: null, updatedAt: now() })
+        .where(eq(executions.id, executionId))
+        .run();
+    }
+    return { ok: true };
   });
 
   // Webhook Trigger connection info (P4-T1). Returns the unguessable URL +

@@ -379,6 +379,34 @@ export const RunNodeBodySchema = z.object({
 });
 export type RunNodeBody = z.infer<typeof RunNodeBodySchema>;
 
+/**
+ * Result of `POST /api/flows/:id/test-listen` (J-T1, Report B) — arm the flow's
+ * enabled `tg.trigger` to capture ONE live update, "listen for test event"
+ * style. Returns the armed execution id; the editor then polls
+ * `GET /api/flows/:id/test-listen/status?executionId=…`. `botId` is echoed so
+ * the editor can show "Waiting for a message to @yourbot…".
+ */
+export interface TestListenArmed {
+  executionId: string;
+  flowId: string;
+  botId: string;
+  /** The trigger node the arming entered at (for the editor's NDV). */
+  nodeId: string;
+}
+
+/**
+ * Status of an armed test-listen (J-T1). `state` mirrors the execution:
+ *  - `listening` → still armed, waiting for the next matching live update
+ *  - `captured`  → a live update arrived; the run resumed (terminal). The editor
+ *                  loads the run data so the NDV shows the captured input.
+ *  - `expired`   → the arming timed out / was canceled without a capture.
+ *  - `gone`      → no such execution (already cleaned up).
+ */
+export interface TestListenStatus {
+  executionId: string;
+  state: 'listening' | 'captured' | 'expired' | 'gone';
+}
+
 // ---------------------------------------------------------------------------
 // users (Users page — P3-T5)
 // ---------------------------------------------------------------------------

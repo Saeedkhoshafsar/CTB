@@ -147,6 +147,19 @@ export class SqliteExecutionStore implements ExecutionStore {
       : result.filter((e) => e.wait?.kind === filter.kind);
   }
 
+  async findListening(botId: string): Promise<Execution[]> {
+    // Armed listen-for-one executions for a bot (J-T1). They are `waiting` with
+    // a `WaitSpec.kind:'trigger'` and chatId null (no chat yet); the kind lives
+    // inside the JSON wait blob, so filter status+bot in SQL then narrow by kind.
+    const rows = this.db
+      .select()
+      .from(executions)
+      .where(and(eq(executions.status, 'waiting'), eq(executions.botId, botId)))
+      .orderBy(asc(executions.updatedAt))
+      .all();
+    return rows.map(rowToExecution).filter((e) => e.wait?.kind === 'trigger');
+  }
+
   async listTimedOut(now: Date): Promise<Execution[]> {
     const rows = this.db
       .select()

@@ -80,6 +80,13 @@ export class MemoryExecutionStore implements ExecutionStore {
       .map((r) => structuredClone(r));
   }
 
+  async findListening(botId: string): Promise<Execution[]> {
+    return [...this.rows.values()]
+      .filter((r) => r.status === 'waiting' && r.botId === botId && r.wait?.kind === 'trigger')
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .map((r) => structuredClone(r));
+  }
+
   async listTimedOut(now: Date): Promise<Execution[]> {
     const cutoff = now.toISOString();
     return [...this.rows.values()]

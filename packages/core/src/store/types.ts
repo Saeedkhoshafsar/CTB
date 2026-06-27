@@ -48,6 +48,16 @@ export interface ExecutionStore {
    */
   findWaiting(filter: FindWaitingFilter): Promise<Execution[]>;
 
+  /**
+   * Armed "listen for one live update" executions for a bot, oldest-first
+   * (J-T1, Report B). These are `waiting` executions whose `WaitSpec.kind` is
+   * `'trigger'`; unlike `findWaiting` they are NOT keyed by chat (a test listen
+   * is armed BEFORE any chat exists — it waits for the FIRST message). The
+   * router's test-listen path uses this to find the arming the next matching
+   * update should resume. Oldest-first so the earliest-armed listen wins.
+   */
+  findListening(botId: string): Promise<Execution[]>;
+
   /** Waiting executions whose wait timeout/resume time has passed. */
   listTimedOut(now: Date): Promise<Execution[]>;
 }

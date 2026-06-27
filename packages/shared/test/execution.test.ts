@@ -22,6 +22,27 @@ describe('ExecutionState', () => {
     expect(state.vars).toEqual({});
     expect(state.steps).toBe(0);
   });
+
+  it('listening flag is optional and absent on a pre-J-T1 state (byte-identical)', () => {
+    const legacy = ExecutionStateSchema.parse({ cursor: 'a', items: {}, vars: {}, steps: 0 });
+    expect(legacy.listening).toBeUndefined();
+    expect('listening' in legacy).toBe(false);
+  });
+
+  it('parses a J-T1 armed listen state (listening + testRun)', () => {
+    const state = ExecutionStateSchema.parse({
+      cursor: 'trig',
+      items: { main: [] },
+      vars: {},
+      steps: 0,
+      listening: true,
+      testRun: true,
+    });
+    expect(state.listening).toBe(true);
+    expect(state.testRun).toBe(true);
+    const roundTripped = ExecutionStateSchema.parse(JSON.parse(JSON.stringify(state)));
+    expect(roundTripped).toEqual(state);
+  });
 });
 
 describe('WaitSpec', () => {
@@ -49,6 +70,25 @@ describe('WaitSpec', () => {
   it('rejects callback wait without keys / unknown kinds', () => {
     expect(WaitSpecSchema.safeParse({ kind: 'callback', nodeId: 'm', keys: [] }).success).toBe(false);
     expect(WaitSpecSchema.safeParse({ kind: 'sleep', nodeId: 'm' }).success).toBe(false);
+  });
+
+  it('parses a J-T1 trigger wait (listen for one live update) with a params snapshot', () => {
+    const w = WaitSpecSchema.parse({
+      kind: 'trigger',
+      nodeId: 'trig',
+      triggerParams: { event: 'command', command: 'start' },
+      timeoutAt: '2026-06-27T12:00:00.000Z',
+    });
+    if (w.kind !== 'trigger') throw new Error('wrong kind');
+    expect(w.triggerParams).toEqual({ event: 'command', command: 'start' });
+    expect(w.timeoutAt).toBe('2026-06-27T12:00:00.000Z');
+  });
+
+  it('trigger wait defaults: empty params snapshot + null timeout', () => {
+    const w = WaitSpecSchema.parse({ kind: 'trigger', nodeId: 'trig' });
+    if (w.kind !== 'trigger') throw new Error('wrong kind');
+    expect(w.triggerParams).toEqual({});
+    expect(w.timeoutAt).toBeNull();
   });
 });
 

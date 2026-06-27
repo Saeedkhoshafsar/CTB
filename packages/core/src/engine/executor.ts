@@ -241,6 +241,28 @@ export interface StartInput {
    * Decision Log #22.
    */
   stopAfterNode?: NodeId;
+  /**
+   * "Listen for one live update" TEST mode (J-T1, Report B — Decision Log #25).
+   * When set, the executor does NOT execute the entry node — instead it PARKS
+   * the run in a durable `WaitSpec{kind:'trigger'}` (status `waiting`), "the same
+   * way a WAIT parks", and waits for the next matching live update; the router's
+   * test-listen path then resumes it on `main` with the REAL trigger item, so
+   * the captured sender data flows downstream. This is how a trial run uses the
+   * SAME `tg.trigger` node as a production run (only the mode differs), removing
+   * the "use the Manual trigger instead" alert.
+   *
+   * `triggerParams` is the snapshot of the entry trigger node's params the
+   * router matches the next update against (the executor records it into the
+   * WaitSpec). `timeoutAt` (optional) auto-expires a never-answered arming via
+   * the existing timeout scanner. The executor stays GENERIC (invariant I3): it
+   * never reads the node TYPE — the server only arms listen mode for a
+   * `tg.trigger` entry. A listen run is implicitly a TEST run too (pinned data
+   * downstream is honoured on capture). Production runs omit it entirely.
+   */
+  listenMode?: {
+    triggerParams: Record<string, unknown>;
+    timeoutAt?: string | null;
+  };
 }
 
 export interface ResumeInput {
@@ -298,6 +320,9 @@ export class Executor {
   /** Trigger fired: create the execution row and run until wait/end/error. */
   async start(input: StartInput): Promise<RunResult> {
     this.currentDepth = input.depth ?? 0;
+    // A listen-for-one arming is implicitly a TEST run (J-T1): the captured
+    // input flows through a test run, so any downstream pinned data is honoured.
+    const isListen = input.listenMode !== undefined;
     const state: ExecutionState = {
       cursor: input.entry.nodeId,
       items: input.entry.items ?? { main: [{ json: {} }] },
@@ -305,10 +330,13 @@ export class Executor {
       steps: 0,
       // Only stamp the flag when it's a test run, so a production run's
       // persisted state stays byte-identical to pre-I-T1 (the field is omitted).
-      ...(input.testRun ? { testRun: true } : {}),
+      ...(input.testRun || isListen ? { testRun: true } : {}),
       // I-T2: single-node run boundary. Omitted on every normal run so the
       // persisted state stays byte-identical to pre-I-T2.
       ...(input.stopAfterNode !== undefined ? { stopAfterNode: input.stopAfterNode } : {}),
+      // J-T1: mark this run as an armed "listen for one live update" so the
+      // arming is recognizable after a process restart (invariant I4).
+      ...(isListen ? { listening: true } : {}),
     };
     const exec = await this.store.create({
       id: input.executionId,
@@ -318,6 +346,25 @@ export class Executor {
       userId: input.userId ?? null,
       state,
     });
+
+    // ── listen-for-one arming (J-T1) ──
+    // Do NOT execute the entry node. Park the run in a durable trigger-wait, the
+    // same way a WAIT parks, so it survives a process restart and the router's
+    // test-listen path can resume it from the entry node on the next matching
+    // live update. The executor stays generic (I3) — it never reads the node
+    // TYPE; the server only arms this for a `tg.trigger` entry.
+    if (input.listenMode) {
+      const waitSpec: WaitSpec = {
+        kind: 'trigger',
+        nodeId: input.entry.nodeId,
+        triggerParams: input.listenMode.triggerParams,
+        timeoutAt: input.listenMode.timeoutAt ?? null,
+      };
+      await this.store.save({ id: exec.id, status: 'waiting', state, wait: waitSpec });
+      this.log(exec.id, input.entry.nodeId, 'info', `listening for one live update at "${input.entry.nodeId}"`);
+      return { status: 'waiting', steps: 0, error: null, wait: waitSpec };
+    }
+
     return this.runLoop(exec, input.graph, input.flow, state);
   }
 

@@ -316,6 +316,32 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     are satisfied `ready:true` and the list is empty; the compute is a pure
     function unit-tested against crafted states (no side effects).
   - Verify: `npm run test -w apps/server` + `npm run verify`.
+  - **✅ DONE** — NEW PURE `apps/server/src/engine/setup-checklist.ts`
+    `computeChecklist(state)` (F-T3 pattern, side effect-free): a `RULES` table
+    of per-id predicates over a `SetupState` snapshot returns ONLY the OPEN items
+    (predicate false) in display order + `ready`. Items: `secret` (CTB_SECRET),
+    `owner` (a panel owner set — K-T1/K-T2), `admins` (≥1 non-owner admin —
+    **recommended/optional**, doesn't block `ready`), `bot` (≥1 bot), `activeFlow`
+    (≥1 active flow), `delivery` (webhook public URL OR any bot → polling
+    fallback). `ready` = no REQUIRED item still open (optional items excluded).
+    NEW `GET /api/setup/checklist` in `apps/server/src/api/setup.ts` (admin+
+    guarded via the injected `requireRole`) — a THIN gatherer: bot/active-flow
+    counts via drizzle `count()`, owner/non-owner counts from the
+    `SqlitePanelAdminStore`, env facts (`hasSecret`/`hasPublicUrl`) injected as a
+    thunk; hands the snapshot to the pure model and `SetupChecklistSchema.parse`s
+    its own response. Mounted in `app.ts` whenever a DB + admin store are wired
+    (engine-independent, like the Admins API). Shared (`packages/shared/src/api.ts`):
+    `SETUP_CHECKLIST_IDS`, `SetupChecklistId(Schema)`, `SetupChecklistItem(Schema)`
+    (`{id, optional}`), `SetupChecklist(Schema)` (`{items, ready}`), and the
+    `SetupState` input interface. **Green:** NEW `test/setup-checklist.test.ts`
+    (7 — pure: empty→all open & not ready, full→empty & ready, display order,
+    each predicate removes exactly its item, admins optional doesn't block, a
+    missing required keeps ready:false) + `test/api-setup.test.ts` (6 — operator
+    403, anon 401, fresh gaps, bot clears bot+delivery, draft≠active, ready when
+    owner+bot+active flow with admins-only open then fully clear). Full server
+    suite **506 GREEN (57 files)**; shared `tsc` clean + 100 tests. No new schema
+    table — purely derived from already-stored facts. Next: L-T2 (first-run
+    checklist UI + "bot ready" gate).
 
 - **L-T2 — First-run checklist UI + "bot ready" gate. ⭐ (item 2)**
   - Files: NEW `apps/editor/src/components/SetupChecklist.tsx` (a dismissible

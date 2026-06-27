@@ -550,6 +550,63 @@ export interface PanelAdminList {
 }
 
 // ---------------------------------------------------------------------------
+// go-live setup checklist (PLAN4 Phase L — L-T1)
+// ---------------------------------------------------------------------------
+
+/**
+ * The prerequisite setup tasks a fresh CTB instance must satisfy before its bot
+ * can sensibly go public. Each id is a PURE predicate over already-stored state
+ * (an owner exists? a bot token? an active flow? a session secret? a delivery
+ * channel?) — a task "disappears" simply by its predicate becoming true, so the
+ * checklist is always derived, never a stored set of done-flags (principle 1).
+ */
+export const SETUP_CHECKLIST_IDS = [
+  'secret', // CTB_SECRET configured (sessions/credentials encryption — durability)
+  'owner', // a panel owner is set (K-T1/K-T2)
+  'admins', // at least one admin/operator beyond the owner (optional-but-recommended)
+  'bot', // at least one bot token is registered
+  'activeFlow', // at least one flow is active (the bot actually does something)
+  'delivery', // a delivery channel is configured (webhook public URL or polling)
+] as const;
+export const SetupChecklistIdSchema = z.enum(SETUP_CHECKLIST_IDS);
+export type SetupChecklistId = z.infer<typeof SetupChecklistIdSchema>;
+
+/** A single OPEN checklist item (satisfied items are omitted from the list). */
+export const SetupChecklistItemSchema = z.object({
+  id: SetupChecklistIdSchema,
+  /** True when this item is merely recommended, not strictly required for `ready`. */
+  optional: z.boolean(),
+});
+export type SetupChecklistItem = z.infer<typeof SetupChecklistItemSchema>;
+
+/**
+ * `GET /api/setup/checklist` response. `items` lists only the OPEN tasks;
+ * `ready` is true when no REQUIRED task remains open (recommended-only items
+ * don't block readiness).
+ */
+export const SetupChecklistSchema = z.object({
+  items: z.array(SetupChecklistItemSchema),
+  ready: z.boolean(),
+});
+export type SetupChecklist = z.infer<typeof SetupChecklistSchema>;
+
+/**
+ * The raw facts `computeChecklist` derives the open items from. Every field is a
+ * boolean/count the server already knows; the function itself is pure and side
+ * effect-free so it can be unit-tested against crafted states.
+ */
+export interface SetupState {
+  hasSecret: boolean;
+  hasOwner: boolean;
+  /** Count of panel admins/operators that are NOT the owner. */
+  nonOwnerAdminCount: number;
+  botCount: number;
+  activeFlowCount: number;
+  /** True when a webhook public URL OR polling delivery is configured. */
+  hasDelivery: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // public REST API — bearer tokens + v1 surface (P4-T3, PROTOCOL.md §Inbound REST API)
 // ---------------------------------------------------------------------------
 

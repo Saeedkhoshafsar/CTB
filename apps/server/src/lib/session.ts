@@ -31,6 +31,14 @@ export interface SessionPayload {
   sub: string;
   /** Panel role. Older tokens (pre-P3.5-T2) lack it → treated as `admin`. */
   role: SessionRole;
+  /**
+   * Telegram user id the session is bound to (K-T2), as a numeric string —
+   * present when the session was created against a `panel_admins` identity (or
+   * the bootstrapped owner). OPTIONAL for back-compat: legacy env-only sessions
+   * have no Telegram identity and omit it. `transfer-owner` needs it to match
+   * the caller against the store's owner row.
+   */
+  tg?: string;
   /** Unix ms expiry. */
   exp: number;
 }
@@ -46,8 +54,11 @@ export function createSessionToken(
   secret: string,
   role: SessionRole = 'admin',
   now = Date.now(),
+  /** Telegram user id to bind the session to (K-T2). Omitted ⇒ no `tg` claim. */
+  tg?: string,
 ): string {
   const payload: SessionPayload = { sub: username, role, exp: now + SESSION_TTL_MS };
+  if (tg) payload.tg = tg;
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = hmac(body, secret).toString('base64url');
   return `${body}.${sig}`;
@@ -73,6 +84,10 @@ export function verifySessionToken(
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
     if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') return null;
     if (payload.exp <= now) return null;
+    // Drop a malformed `tg` claim rather than trusting it (K-T2).
+    if (payload.tg !== undefined && typeof payload.tg !== 'string') {
+      delete payload.tg;
+    }
     // Back-compat: tokens minted before roles existed are admins. A token
     // carrying any unknown role string is normalised to `admin` too (K-T1
     // widened the set to include `owner`, which stays valid here).

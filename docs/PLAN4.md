@@ -229,6 +229,29 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     add/remove another admin but not the owner; transfer-owner requires owner and
     demotes the caller to admin. Permission-matrix tests.
   - Verify: `npm run test -w apps/server` + `npm run verify`.
+  - **✅ DONE** — `/api/auth/login` now bootstraps the FIRST owner: on an empty
+    `panel_admins` table with a NEW optional `CTB_OWNER_TG_ID` set, the first
+    admin login calls `store.bootstrapOwner(CTB_OWNER_TG_ID, username)` and mints
+    an `owner` session carrying a NEW optional `SessionPayload.tg` claim (the
+    owner's Telegram id); once an owner exists the configured account re-binds to
+    `owner` across restarts. `createSessionToken` gained an optional `tg` arg and
+    `verifySessionToken` drops a malformed `tg` (both `.optional()` ⇒ legacy
+    tokens verify byte-identically). NEW `apps/server/src/api/admins.ts` — `GET`
+    (list) / `POST` (add) / `DELETE /:id` (remove) / `PATCH /:id/role` (setRole) /
+    `POST /transfer-owner` — each behind a NEW `requireRole(min)` preHandler built
+    in `app.ts` from the session guard + the pure `roleAtLeast`: add/remove/setRole
+    need `≥admin` (operator ⇒ 403), transfer needs `owner` AND a `tg`-bound
+    session (else 403 `not_owner`); store `PanelAdminError` codes map to HTTP
+    (404/409/403). Mounted whenever a DB is wired. **Verify:** NEW
+    `api-admins.test.ts` (10 — bootstrap on empty table, no second owner, env-only
+    back-compat, operator 403, admin add/list/setRole/remove, owner immutable
+    remove+demote, owner-only transfer + demote-caller, owner-without-tg refused,
+    duplicate 409, malformed id 400) GREEN; `app` 8 / `session` 10 / `admin-store`
+    11 / `env` 4 / `api-collections-records` 15 / `api-bots-flows` 26 still GREEN;
+    shared 100 / core 64 GREEN; editor `tsc` GREEN. Full server `tsc` still
+    times-out/OOMs in the ~1 GB sandbox (documented known limit — vitest
+    type-strips the changed files; shared+editor `tsc` pass). ROADMAP Decision
+    Log #27. Next: K-T3 (editor Admins page + role-gated UI).
 
 - **K-T3 — Editor Admins page + role-gated UI. ⭐ (items 1, 4, 5)**
   - Files: NEW `apps/editor/src/pages/AdminsPage.tsx` (list admins; add by Telegram

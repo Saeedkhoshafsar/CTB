@@ -16,6 +16,20 @@ const EnvSchema = z.object({
   CTB_OPERATOR_USER: z.string().default('operator'),
   CTB_OPERATOR_PASS: z.string().optional(),
   /**
+   * Bootstrap-owner Telegram user id (K-T2, PLAN4 Phase K). On FIRST bring-up —
+   * when the `panel_admins` table is empty — a successful env-credential login
+   * (CTB_ADMIN_USER/PASS) creates the singleton OWNER row keyed by this Telegram
+   * id, binding the panel to a real Telegram identity. Optional: unset ⇒ the
+   * legacy env-only login still works (no owner row is minted) so existing
+   * deployments are byte-compatible. A numeric string (ids exceed 2^53 → keep
+   * textual). Once an owner exists this is ignored.
+   */
+  CTB_OWNER_TG_ID: z
+    .string()
+    .trim()
+    .regex(/^\d{1,20}$/, 'CTB_OWNER_TG_ID must be a numeric Telegram user id')
+    .optional(),
+  /**
    * Local data dir for uploaded files (the `files` table stores a path under
    * `${CTB_DATA_DIR}/files`). Defaults beside the DB-style `data/`.
    */

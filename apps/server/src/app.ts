@@ -13,6 +13,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type BetterSqlite3 from 'better-sqlite3';
+import { registerAdminsApi } from './api/admins';
 import { registerApiTokensApi } from './api/api-tokens';
 import { registerInstanceWebhooksApi } from './api/instance-webhooks';
 import { registerBotsApi, type BotsApiDeps } from './api/bots';
@@ -30,7 +31,14 @@ import type { Db } from './db/index';
 import type { Engine } from './engine/wire';
 import type { Env } from './lib/env';
 import { deriveKey } from './lib/crypto';
-import { createSessionToken, safeEqual, verifySessionToken, type SessionRole } from './lib/session';
+import {
+  createSessionToken,
+  roleAtLeast,
+  safeEqual,
+  verifySessionToken,
+  type SessionRole,
+} from './lib/session';
+import { SqlitePanelAdminStore } from './engine/admin-store';
 import { registerWebhookRoute } from './telegram/gateway';
 import { registerWebhookTriggerRoute } from './triggers/webhook';
 
@@ -85,6 +93,11 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
   // ---- auth ---------------------------------------------------------------
   const secureCookie = env.NODE_ENV === 'production';
 
+  // K-T2: the durable panel-admin store (present only when a DB is wired). The
+  // env-credential login becomes the BOOTSTRAP OWNER on first bring-up (empty
+  // table + CTB_OWNER_TG_ID set); thereafter the panel identities live here.
+  const adminStore = opts.db ? new SqlitePanelAdminStore(opts.db) : null;
+
   app.post('/api/auth/login', async (req, reply) => {
     const parsed = LoginBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -110,7 +123,34 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     if (!role) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
-    const token = createSessionToken(username, env.CTB_SECRET, role);
+
+    // K-T2 bootstrap-first-owner: the VERY FIRST successful admin login on an
+    // empty panel_admins table, with CTB_OWNER_TG_ID configured, mints the
+    // singleton OWNER row keyed by that Telegram id and binds this session to
+    // it. The store enforces "exactly one owner" (a concurrent second login
+    // races into `owner_exists` and falls back to a plain admin session).
+    let tg: string | undefined;
+    if (role === 'admin' && adminStore && env.CTB_OWNER_TG_ID && adminStore.isEmpty()) {
+      try {
+        adminStore.bootstrapOwner(env.CTB_OWNER_TG_ID, username);
+        role = 'owner';
+        tg = env.CTB_OWNER_TG_ID;
+      } catch {
+        // Owner already created between the isEmpty() check and now — keep the
+        // plain admin session (no owner escalation).
+      }
+    } else if (adminStore && env.CTB_OWNER_TG_ID) {
+      // Once an owner exists, an env-credential admin login binds to the owner
+      // identity when the configured id IS the owner — so the configured
+      // account keeps its owner role across restarts.
+      const owner = adminStore.owner();
+      if (owner && owner.tgUserId === env.CTB_OWNER_TG_ID && role === 'admin') {
+        role = 'owner';
+        tg = owner.tgUserId;
+      }
+    }
+
+    const token = createSessionToken(username, env.CTB_SECRET, role, Date.now(), tg);
     return reply
       .setCookie(SESSION_COOKIE, token, {
         path: '/',
@@ -119,14 +159,16 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         secure: secureCookie,
         maxAge: 7 * 24 * 60 * 60,
       })
-      .send({ ok: true, user: { username, role } });
+      .send({ ok: true, user: { username, role, ...(tg ? { tgUserId: tg } : {}) } });
   });
 
   app.post('/api/auth/logout', async (_req, reply) => {
     return reply.clearCookie(SESSION_COOKIE, { path: '/' }).send({ ok: true });
   });
 
-  type AuthedRequest = FastifyRequest & { session: { sub: string; role: SessionRole } };
+  type AuthedRequest = FastifyRequest & {
+    session: { sub: string; role: SessionRole; tg: string | null };
+  };
 
   /** Returns true when authenticated; otherwise sends 401 and returns false. */
   const requireAuth = async (req: FastifyRequest, reply: FastifyReply): Promise<boolean> => {
@@ -136,13 +178,43 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       await reply.code(401).send({ error: 'unauthorized' });
       return false;
     }
-    (req as AuthedRequest).session = { sub: session.sub, role: session.role };
+    (req as AuthedRequest).session = {
+      sub: session.sub,
+      role: session.role,
+      tg: session.tg ?? null,
+    };
     return true;
   };
 
+  /**
+   * preHandler factory (K-T2): authenticate, then require at least `min` role.
+   * Reuses the pure `roleAtLeast` gate (owner ⊇ admin ⊇ operator). Sends 401 if
+   * unauthenticated, 403 if under-privileged.
+   */
+  const requireRole =
+    (min: SessionRole) =>
+    async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      const ok = await requireAuth(req, reply);
+      if (!ok) return; // 401 already sent
+      const { session } = req as AuthedRequest;
+      if (!roleAtLeast(session.role, min)) {
+        await reply.code(403).send({ error: 'forbidden' });
+      }
+    };
+
+  /** Reads the caller's Telegram id from the verified session, or null. */
+  const callerTgUserId = (req: FastifyRequest): string | null =>
+    (req as AuthedRequest).session?.tg ?? null;
+
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {
     const { session } = req as AuthedRequest;
-    return { user: { username: session.sub, role: session.role } };
+    return {
+      user: {
+        username: session.sub,
+        role: session.role,
+        ...(session.tg ? { tgUserId: session.tg } : {}),
+      },
+    };
   });
 
   /**
@@ -172,6 +244,13 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
       await reply.code(403).send({ error: 'forbidden' });
     }
   });
+
+  // ---- panel-admin management (K-T2) --------------------------------------
+  // Mounted whenever a DB is wired (independent of the engine), so the Admins
+  // page works even on a minimal app. Routes carry their own role guards.
+  if (adminStore) {
+    registerAdminsApi(app, { store: adminStore, requireRole, callerTgUserId });
+  }
 
   // ---- engine APIs (P1-T8) -------------------------------------------------
   if (opts.db && opts.engine) {

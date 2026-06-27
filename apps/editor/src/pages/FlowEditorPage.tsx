@@ -18,6 +18,7 @@ import { CanvasEmptyHint } from '../components/EmptyState';
 import { useI18n, type MessageKey } from '../i18n';
 import { isCanvasEmpty } from '../lib/empty-state';
 import { downloadFlowExport } from '../lib/flow-export';
+import { decideTestRunMode } from '../lib/test-run';
 import { useCanvas } from '../stores/canvas';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
@@ -102,18 +103,83 @@ function ProblemsStrip() {
 }
 
 /**
- * Test-run button (P2-T7): save → POST /flows/:id/run (starts at the
- * flow.manualTrigger) → reload run data so the NDV INPUT/OUTPUT panes and
- * [code] console rows show this run. 422 no_manual_trigger → pointed alert.
+ * Test-run button (P2-T7; live-trigger listen J-T2).
+ *
+ * Two paths, chosen by the PURE `decideTestRunMode` over the live canvas graph
+ * (no "use the Manual trigger instead" dead-end any more — that was the Report B
+ * blocker):
+ *
+ *  - `manual` (flow.manualTrigger present) → save → POST /flows/:id/run, then
+ *    reload run data so the NDV INPUT/OUTPUT panes show this run. Byte-for-byte
+ *    the historical behaviour.
+ *  - `listen` (no manual trigger, but an enabled tg.trigger) → n8n's "listen for
+ *    test event": save → POST /flows/:id/test-listen arms the real trigger, a
+ *    waiting banner shows with a Cancel button, we poll status, and on `captured`
+ *    we load the run data so the NDV shows the REAL sender data. The same
+ *    tg.trigger then powers production unchanged.
+ *  - `none` → the only remaining hint ("add a trigger to test-run").
  */
 function TestRunButton({ flow }: { flow: FlowPublic }) {
   const t = useI18n((s) => s.t);
   const saveNow = useCanvas((s) => s.saveNow);
+  const graph = useCanvas((s) => s.graph);
   const [running, setRunning] = useState(false);
+  // Armed live-listen state (listen mode only). When set, the waiting banner is
+  // shown; clearing it (or capture/expiry) tears the banner down.
+  const [listening, setListening] = useState<{ executionId: string } | null>(null);
+
+  // Poll an armed test-listen until it leaves the `listening` state. On capture
+  // load the run data (NDV shows the real update); on expiry/gone surface a
+  // gentle notice. Cancelled arming (banner Cancel / unmount) aborts the poll.
+  useEffect(() => {
+    if (!listening) return;
+    let alive = true;
+    const tick = async () => {
+      while (alive) {
+        await new Promise((r) => setTimeout(r, 1200));
+        if (!alive) return;
+        let status;
+        try {
+          status = await api.testListenStatus(flow.id, listening.executionId);
+        } catch {
+          continue; // transient — keep polling until cancel/expiry
+        }
+        if (!alive) return;
+        if (status.state === 'captured') {
+          await useRunData.getState().load(flow.id);
+          if (alive) setListening(null);
+          return;
+        }
+        if (status.state === 'expired' || status.state === 'gone') {
+          if (alive) {
+            setListening(null);
+            window.alert(t('editor.testRun.listen.expired'));
+          }
+          return;
+        }
+        // still `listening` → loop again
+      }
+    };
+    void tick();
+    return () => {
+      alive = false;
+    };
+  }, [listening, flow.id, t]);
+
   const onRun = async () => {
     setRunning(true);
     try {
       await saveNow();
+      const mode = decideTestRunMode(graph);
+      if (mode === 'none') {
+        window.alert(t('editor.testRun.noTrigger'));
+        return;
+      }
+      if (mode === 'listen') {
+        const armed = await api.testListen(flow.id);
+        setListening({ executionId: armed.executionId });
+        return;
+      }
       const res = await api.runFlow(flow.id);
       await useRunData.getState().load(flow.id);
       if (res.status === 'error') {
@@ -122,7 +188,7 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { error?: string }) : null;
       window.alert(
-        body?.error === 'no_manual_trigger'
+        body?.error === 'no_manual_trigger' || body?.error === 'no_telegram_trigger'
           ? t('editor.testRun.noTrigger')
           : t('editor.testRun.failed', { error: err instanceof Error ? err.message : String(err) }),
       );
@@ -130,10 +196,33 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
       setRunning(false);
     }
   };
+
+  const onCancelListen = async () => {
+    const armed = listening;
+    if (!armed) return;
+    setListening(null); // stop polling immediately
+    try {
+      await api.testListenCancel(flow.id, armed.executionId);
+    } catch {
+      // best-effort disarm; the server TTL self-cleans regardless
+    }
+  };
+
   return (
-    <button className="btn" disabled={running} onClick={() => void onRun()} data-testid="test-run">
-      {running ? t('editor.testRun.running') : t('editor.testRun.button')}
-    </button>
+    <>
+      <button className="btn" disabled={running || !!listening} onClick={() => void onRun()} data-testid="test-run">
+        {running ? t('editor.testRun.running') : t('editor.testRun.button')}
+      </button>
+      {listening ? (
+        <div className="alert listen-banner" data-testid="test-listen-banner">
+          <span className="spinner" aria-hidden="true" />
+          <span>{t('editor.testRun.listen.waiting')}</span>
+          <button className="ghost" onClick={() => void onCancelListen()} data-testid="test-listen-cancel">
+            {t('editor.testRun.listen.cancel')}
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
 

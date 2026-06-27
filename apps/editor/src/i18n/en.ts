@@ -320,8 +320,13 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.export.hint': 'Download this flow as a portable JSON file (graph + settings).',
   'editor.testRun.button': 'Test run',
   'editor.testRun.running': 'Running…',
-  'editor.testRun.noTrigger': 'Add a Manual Trigger node (flow.manualTrigger) to test-run this flow.',
+  'editor.testRun.noTrigger':
+    'Add a trigger to test-run this flow — a Manual Trigger (flow.manualTrigger) for a sample payload, or a Telegram Trigger (tg.trigger) to listen for a live message.',
   'editor.testRun.failed': 'Test run failed: {error}',
+  // J-T2: live-trigger "listen for one update" test run (n8n's listen-for-test-event).
+  'editor.testRun.listen.waiting': 'Waiting for a message to your bot… send it one now to capture a test run.',
+  'editor.testRun.listen.cancel': 'Cancel',
+  'editor.testRun.listen.expired': 'No message arrived in time — the test listen was cancelled. Hit Test run to try again.',
   'editor.node.disabled': 'Disabled',
   'editor.node.unknownType': 'Unknown type',
   'editor.node.problems': '{n} problem(s)',

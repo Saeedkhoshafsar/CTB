@@ -23,6 +23,7 @@ import { registerExecutionsApi } from './api/executions';
 import { registerFlowsApi } from './api/flows';
 import { registerNodeTypesApi } from './api/node-types';
 import { registerRecordsApi } from './api/records';
+import { registerSetupApi } from './api/setup';
 import { registerUsersApi } from './api/users';
 import { registerV1Api } from './api/v1';
 import { SqliteCollectionStore } from './collections/store';
@@ -250,6 +251,22 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
   // page works even on a minimal app. Routes carry their own role guards.
   if (adminStore) {
     registerAdminsApi(app, { store: adminStore, requireRole, callerTgUserId });
+  }
+
+  // ---- go-live setup checklist (L-T1) -------------------------------------
+  // Derives the OPEN prerequisite tasks from real state (bot/active-flow counts
+  // + owner/admin counts + env). Needs both a DB and the admin store.
+  if (adminStore && opts.db) {
+    const setupDb = opts.db;
+    registerSetupApi(app, {
+      db: setupDb,
+      adminStore,
+      requireRole,
+      facts: () => ({
+        hasSecret: !!env.CTB_SECRET && env.CTB_SECRET.length >= 16,
+        hasPublicUrl: !!env.CTB_PUBLIC_URL,
+      }),
+    });
   }
 
   // ---- engine APIs (P1-T8) -------------------------------------------------

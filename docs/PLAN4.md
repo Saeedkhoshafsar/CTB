@@ -268,6 +268,33 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     are unit-tested; the owner can never be removed from the UI (defence-in-depth,
     store already enforces).
   - Verify: `npm run test -w apps/editor` + editor typecheck + build.
+  - **✅ DONE** — NEW PURE `apps/editor/src/lib/admin-acl.ts` (DOM-free,
+    F-T3 pattern): `canManageAdmins`, `canRemove`, `canChangeRole`,
+    `canTransferTo`, `canSeeTransfer` — mirrors the server's owner invariants
+    (K-T1) and role precedence (K-T2) with NO server import, so a wrong UI call
+    can never widen what the server forbids. NEW `apps/editor/src/api/client.ts`
+    methods `listAdmins` / `addAdmin` / `removeAdmin` / `setAdminRole` /
+    `transferOwner` (validated bodies, unwrapped envelopes). NEW
+    `apps/editor/src/stores/admins.ts` (credentials-store pattern; re-syncs from
+    the authoritative server response; transfer re-loads the whole list since two
+    rows change). NEW `apps/editor/src/pages/AdminsPage.tsx` (list / add by
+    Telegram numeric id + label + role / remove / change-role select /
+    owner-only "Transfer ownership" with confirm) — every control gated by the
+    pure ACL. `App.tsx`: NEW `RequireAdmin` route guard (operator → /bots) wraps
+    `/admins`, and the **Admins NavLink only renders when `roleAtLeast('admin')`**
+    (hidden for operator). `packages/shared/src/api.ts`: added presentational
+    `SessionUser.tgUserId?` (lets the editor decide if the current user IS the
+    owner row — needed for can-transfer). i18n en/fa parity (`nav.admins`,
+    `admins.*`). Tests: `test/admin-acl.test.ts` (10 — pure decisions:
+    operator manages nobody, owner row never removable/role-changeable, only a
+    real owner-with-id transfers, never to self) + `test/admins-client.test.ts`
+    (6 — verb/path/encoding/body + client-side validation reject). **Green:
+    editor 287 tests (22 files), editor `tsc --noEmit` clean, editor build OK;
+    shared `tsc` clean + 100 tests.** No new ROADMAP Decision Log entry needed —
+    `SessionUser.tgUserId?` is an optional presentational client field (no schema
+    or storage change); the owner invariants are unchanged (K-T1 #26 still
+    governs). **Phase K COMPLETE — K-T1 ✅ + K-T2 ✅ + K-T3 ✅.** Next: L-T1
+    (setup-checklist pure model + `GET /api/setup/checklist`).
 
 ### Phase L — Go-live setup checklist (Report A items 2, 3)
 
@@ -289,6 +316,32 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     are satisfied `ready:true` and the list is empty; the compute is a pure
     function unit-tested against crafted states (no side effects).
   - Verify: `npm run test -w apps/server` + `npm run verify`.
+  - **✅ DONE** — NEW PURE `apps/server/src/engine/setup-checklist.ts`
+    `computeChecklist(state)` (F-T3 pattern, side effect-free): a `RULES` table
+    of per-id predicates over a `SetupState` snapshot returns ONLY the OPEN items
+    (predicate false) in display order + `ready`. Items: `secret` (CTB_SECRET),
+    `owner` (a panel owner set — K-T1/K-T2), `admins` (≥1 non-owner admin —
+    **recommended/optional**, doesn't block `ready`), `bot` (≥1 bot), `activeFlow`
+    (≥1 active flow), `delivery` (webhook public URL OR any bot → polling
+    fallback). `ready` = no REQUIRED item still open (optional items excluded).
+    NEW `GET /api/setup/checklist` in `apps/server/src/api/setup.ts` (admin+
+    guarded via the injected `requireRole`) — a THIN gatherer: bot/active-flow
+    counts via drizzle `count()`, owner/non-owner counts from the
+    `SqlitePanelAdminStore`, env facts (`hasSecret`/`hasPublicUrl`) injected as a
+    thunk; hands the snapshot to the pure model and `SetupChecklistSchema.parse`s
+    its own response. Mounted in `app.ts` whenever a DB + admin store are wired
+    (engine-independent, like the Admins API). Shared (`packages/shared/src/api.ts`):
+    `SETUP_CHECKLIST_IDS`, `SetupChecklistId(Schema)`, `SetupChecklistItem(Schema)`
+    (`{id, optional}`), `SetupChecklist(Schema)` (`{items, ready}`), and the
+    `SetupState` input interface. **Green:** NEW `test/setup-checklist.test.ts`
+    (7 — pure: empty→all open & not ready, full→empty & ready, display order,
+    each predicate removes exactly its item, admins optional doesn't block, a
+    missing required keeps ready:false) + `test/api-setup.test.ts` (6 — operator
+    403, anon 401, fresh gaps, bot clears bot+delivery, draft≠active, ready when
+    owner+bot+active flow with admins-only open then fully clear). Full server
+    suite **506 GREEN (57 files)**; shared `tsc` clean + 100 tests. No new schema
+    table — purely derived from already-stored facts. Next: L-T2 (first-run
+    checklist UI + "bot ready" gate).
 
 - **L-T2 — First-run checklist UI + "bot ready" gate. ⭐ (item 2)**
   - Files: NEW `apps/editor/src/components/SetupChecklist.tsx` (a dismissible
@@ -303,6 +356,28 @@ Order = highest go-live-blocker first. Each task is one session, ends green.
     replaced by the ready state; refreshing re-derives from server (no client-only
     "done" flags — the source of truth is real state, principle 1).
   - Verify: `npm run test -w apps/editor` + editor typecheck + build.
+  - ✅ **DONE** — Shipped exactly as designed (editor-only; no schema/server/engine
+    touch). NEW PURE `apps/editor/src/lib/setup-checklist.ts` (`checklistViews(items)`
+    over a `VIEW` map id→`{titleKey, descKey, route}` + `ORDER = SETUP_CHECKLIST_IDS`):
+    projects the server's OPEN items (L-T1, the truth) into ordered, presentable
+    views, omitting satisfied ids, passing through `optional`, deep-linking each to
+    its fixing page (`secret`→`/docs`, `owner`/`admins`→`/admins`, `bot`/`activeFlow`/
+    `delivery`→`/bots`) and defensively skipping unknown ids (forward-compat). NEW
+    `apps/editor/src/components/SetupChecklist.tsx` — a dismissible, role-gated
+    (`roleAtLeast(role,'admin')`; operator/403 ⇒ renders nothing) first-run panel
+    that loads `api.setupChecklist()` on mount and either shows the celebratory
+    "✅ Bot is ready to go public" state (when `ready && items.length===0`) or the
+    OPEN-items list, each a `<Link to={route}>` "Fix" deep-link (reuses the F-T1
+    CTA pattern); "Dismiss" is a transient per-session hide, never a persisted flag
+    — refreshing re-derives from real state (principle 1). `api.setupChecklist()`
+    GET `/api/setup/checklist` added to the client; surfaced on `BotsPage` after the
+    page head; `setup.*` i18n en/fa parity; `.setup-checklist*` CSS. **Verify:**
+    NEW `test/setup-checklist.test.ts` (7 — ordering, omits satisfied, optional flag,
+    deep-link routes, non-empty copy keys, skips unknown ids) + `test/setup-checklist-client.test.ts`
+    (2 — GET verb/path + ready state verbatim); editor **296 tests GREEN (24 files)**
+    (was 287, +9), editor `tsc --noEmit` clean, editor build OK; shared `tsc` clean.
+    **Phase L COMPLETE — L-T1 ✅ + L-T2 ✅.** No new ROADMAP Decision Log entry —
+    editor presentation over the existing L-T1 derivation.
 
 ---
 

@@ -54,6 +54,11 @@ When documents disagree, higher wins:
 6. Code comments / README
 ```
 
+**`docs/VISION.md` (the compass) sits OUTSIDE this precedence ladder.** It states the *why* and
+the final picture (n8n-parity + Telegram-native + live voice), never the *what* or *how*. If VISION.md
+ever contradicts 1–5, the source-of-truth files win and VISION.md is corrected. Read it when a
+decision's *purpose* is unclear; never let it override an active task spec.
+
 Changing anything in 2–5 requires a **Decision Log entry** (docs/ROADMAP.md §Decision log)
 in the same commit, with rationale. Never silently deviate.
 

@@ -76,6 +76,7 @@ This repo is built to be **resumable by any agent with zero memory**:
 | File | Purpose |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | **The constitution** — mandatory protocol, invariants, git workflow. Read first. |
+| [`docs/VISION.md`](docs/VISION.md) | **The compass** — the *why* and the final picture of CTB (n8n-parity + Telegram-native + live voice). Read when a decision's purpose is unclear. |
 | [`docs/STATE.md`](docs/STATE.md) | Current truth: which task is `→ current`, repo health checks, session log. |
 | [`docs/PLAN.md`](docs/PLAN.md) | The executable plan: atomic tasks P0-T1 → P6, each with files, acceptance criteria, verify commands. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How to build: structure, contracts, engine design, data model. |

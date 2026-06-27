@@ -54,6 +54,11 @@ When documents disagree, higher wins:
 6. Code comments / README
 ```
 
+**`docs/VISION.md` (the compass) sits OUTSIDE this precedence ladder.** It states the *why* and
+the final picture (n8n-parity + Telegram-native + live voice), never the *what* or *how*. If VISION.md
+ever contradicts 1–5, the source-of-truth files win and VISION.md is corrected. Read it when a
+decision's *purpose* is unclear; never let it override an active task spec.
+
 Changing anything in 2–5 requires a **Decision Log entry** (docs/ROADMAP.md §Decision log)
 in the same commit, with rationale. Never silently deviate.
 
@@ -133,4 +138,11 @@ A commit that changes code but not STATE2.md (the active truth file) is a protoc
 If at any point you are unsure *why* something is built a certain way:
 1. `git log --oneline -- <file>` and read the task IDs in commit messages,
 2. open that task in docs/PLAN.md and the Decision Log in docs/ROADMAP.md,
-3. if still ambiguous — ask the user; do **not** guess on contract-level questions.
+3. **for an n8n-parity architecture problem** (item model, node behavior, port shape, Loop/Merge/IF/Switch,
+   expression engine, AI-agent canvas/sub-node slots) — consult the **n8n reference architecture**
+   (https://github.com/n8n-io/n8n) and adopt its proven pattern instead of guessing or stalling. It is
+   battle-tested by thousands of users. Adapt the pattern to CTB's invariants (n8n is stateless; CTB is
+   conversation-first + durable — fit the pattern onto pause/resume + DB state). Reference the *pattern*,
+   never fork the *code* (I1). This does **not** apply to CTB's differentiators (Wait for Reply, Menu,
+   pause/resume, Live Voice, Telegram-native nodes) — n8n has none of those; design those ourselves. See `docs/VISION.md` §"n8n به عنوان مرجع معماری".
+4. if still ambiguous — ask the user; do **not** guess on contract-level questions.

@@ -12,6 +12,7 @@ import type { CollectionPublic } from '@ctb/shared';
 import { labelText } from '@ctb/shared';
 import { useEffect, useMemo, useState } from 'react';
 import type { Translate } from '../../i18n';
+import { confirmDialog } from '../../stores/confirm';
 import { useRecords } from '../../stores/records';
 import { RecordForm } from './RecordForm';
 import {
@@ -227,9 +228,11 @@ export function RecordsPanel({ collection, collections, onBack, t }: Props) {
                   <button
                     className="danger"
                     onClick={() => {
-                      if (window.confirm(t('records.delete.confirm'))) {
-                        void deleteRecord(collection.id, rec.id);
-                      }
+                      void (async () => {
+                        if (await confirmDialog({ message: t('records.delete.confirm'), danger: true })) {
+                          await deleteRecord(collection.id, rec.id);
+                        }
+                      })();
                     }}
                   >
                     {t('records.action.delete')}

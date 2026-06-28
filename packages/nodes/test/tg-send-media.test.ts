@@ -156,7 +156,7 @@ describe('tg.sendMedia — failure paths', () => {
     const p = params(tgSendMedia, { media: [{ kind: 'photo', source: 'url', value: 'https://x.ir/a.jpg' }] });
     const res = await tgSendMedia.execute(ctx, p, [item({})]);
     if (res.kind !== 'error') throw new Error('expected error');
-    expect(res.message).toMatch(/no chat/);
+    expect(res.message).toMatch(/No destination chat/);
   });
 
   it('fails when source=file but no file store is wired (error)', async () => {

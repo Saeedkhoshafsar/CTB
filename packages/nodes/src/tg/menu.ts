@@ -28,6 +28,7 @@ import {
   type WaitSpec,
 } from '@ctb/shared';
 import { deadlineFrom } from '../lib/duration';
+import { tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgMenu: NodeDef<TgMenuParams> = {
   type: 'tg.menu',
@@ -38,9 +39,9 @@ export const tgMenu: NodeDef<TgMenuParams> = {
   paramsSchema: TgMenuParamsSchema,
   async execute(ctx, params, items) {
     if (ctx.chatId === null) {
-      return fail('tg.menu requires a chat context (flow not started from Telegram?)');
+      return fail(tgNoChatError('نمایش منو / show a menu'));
     }
-    if (!ctx.tg) return fail('tg.menu: no Telegram sender injected');
+    if (!ctx.tg) return fail(tgNoBotError('نمایش منو / show a menu'));
 
     const payload: Record<string, unknown> = {
       chat_id: ctx.chatId,

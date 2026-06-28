@@ -17,7 +17,7 @@ import {
   type TgEditMessageParams,
 } from '@ctb/shared';
 import { keyboardToMarkup } from '../lib/telegram';
-import { coerceChatId, coerceMessageId, messageIdFromItem } from './helpers';
+import { coerceChatId, coerceMessageId, messageIdFromItem, tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgEditMessage: NodeDef<TgEditMessageParams> = {
   type: 'tg.editMessage',
@@ -26,7 +26,7 @@ export const tgEditMessage: NodeDef<TgEditMessageParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgEditMessageParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.editMessage requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('ویرایش پیام / edit a message'));
 
     const explicitChat = params.chat === undefined ? undefined : coerceChatId(params.chat);
     if (params.chat !== undefined && explicitChat === undefined) {
@@ -34,7 +34,7 @@ export const tgEditMessage: NodeDef<TgEditMessageParams> = {
     }
     const chatId = explicitChat ?? ctx.chatId ?? undefined;
     if (chatId === undefined) {
-      return fail('tg.editMessage: no chat — execution has no chat context and `chat` param is empty');
+      return fail(tgNoChatError('ویرایش پیام / edit a message'));
     }
 
     // Pick the capability matching the target up front so a missing host

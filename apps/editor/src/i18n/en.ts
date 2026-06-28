@@ -46,6 +46,12 @@ export const en: Record<keyof typeof fa, string> = {
   'bots.name': 'Bot name',
   'bots.token': 'Telegram token',
   'bots.token.hint': 'Token from BotFather — sent once, stored encrypted',
+  'common.show': 'Show',
+  'common.hide': 'Hide',
+  'common.moreActions': 'More actions',
+  'common.search': 'Search…',
+  'common.clear': 'Clear',
+  'common.noResults': 'No results found.',
   'bots.mode': 'Update mode',
   'bots.mode.polling': 'Polling',
   'bots.mode.webhook': 'Webhook',
@@ -207,6 +213,7 @@ export const en: Record<keyof typeof fa, string> = {
   'flows.import.importing': 'Importing…',
   'flows.import.invalid': 'That JSON is not a valid flow export.',
   'flows.export.failed': 'Export failed: {detail}',
+  'flows.export.ok': 'Flow “{name}” exported successfully.',
   'flows.templates': 'Templates',
   'flows.templates.title': 'Start from a template',
   'flows.templates.hint': 'Pick a generic, ready-made template to create as a new flow, then edit it freely.',
@@ -367,6 +374,7 @@ export const en: Record<keyof typeof fa, string> = {
   'editor.testRun.noTrigger':
     'Add a trigger to test-run this flow — a Manual Trigger (flow.manualTrigger) for a sample payload, or a Telegram Trigger (tg.trigger) to listen for a live message.',
   'editor.testRun.failed': 'Test run failed: {error}',
+  'editor.testRun.ok': 'Test run completed successfully.',
   // J-T2: live-trigger "listen for one update" test run (n8n's listen-for-test-event).
   'editor.testRun.listen.waiting': 'Waiting for a message to your bot… send it one now to capture a test run.',
   'editor.testRun.listen.cancel': 'Cancel',
@@ -1265,6 +1273,8 @@ export const en: Record<keyof typeof fa, string> = {
   'error.unknown': 'Unknown error: {detail}',
 
   'common.cancel': 'Cancel',
+  'common.confirm.title': 'Confirm action',
+  'common.confirm.ok': 'Confirm',
   'common.back': 'Back',
   'common.close': 'Close',
   'common.save': 'Save',

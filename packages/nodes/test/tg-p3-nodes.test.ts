@@ -80,7 +80,7 @@ describe('tg.editMessage', () => {
     const ctx = makeCtx({ chatId: null });
     const res = await tgEditMessage.execute(ctx, params(tgEditMessage, { message_id: 1, target: 'text', text: 'x' }), [item({})]);
     if (res.kind !== 'error') throw new Error('expected error');
-    expect(res.message).toMatch(/no chat/);
+    expect(res.message).toMatch(/No destination chat/);
   });
 
   it('schema: target=text requires non-empty text (error)', () => {
@@ -173,7 +173,7 @@ describe('tg.chatAction', () => {
     const ctx = makeCtx({ chatId: null });
     const res = await tgChatAction.execute(ctx, params(tgChatAction, {}), []);
     if (res.kind !== 'error') throw new Error('expected error');
-    expect(res.message).toMatch(/no chat/);
+    expect(res.message).toMatch(/No destination chat/);
   });
 });
 

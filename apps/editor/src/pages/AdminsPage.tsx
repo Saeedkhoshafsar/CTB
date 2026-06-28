@@ -21,6 +21,8 @@ import {
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, ClientValidationError } from '../api/client';
 import { canChangeRole, canRemove, canTransferTo } from '../lib/admin-acl';
+import { SkeletonList } from '../components/Skeleton';
+import { confirmDialog } from '../stores/confirm';
 import { useI18n } from '../i18n';
 import { useAdmins } from '../stores/admins';
 import { useAuth } from '../stores/auth';
@@ -137,7 +139,7 @@ export function AdminsPage() {
       )}
 
       {loading ? (
-        <div className="splash">{t('app.loading')}</div>
+        <SkeletonList rows={3} label={t('app.loading')} />
       ) : admins.length === 0 ? (
         <div className="empty">{t('admins.empty')}</div>
       ) : (
@@ -181,9 +183,11 @@ export function AdminsPage() {
                   <button
                     className="ghost"
                     onClick={() => {
-                      if (confirm(t('admins.transfer.confirm', { label: admin.label }))) {
-                        void guard(() => transferOwner({ tgUserId: admin.tgUserId }));
-                      }
+                      void (async () => {
+                        if (await confirmDialog({ message: t('admins.transfer.confirm', { label: admin.label }) })) {
+                          await guard(() => transferOwner({ tgUserId: admin.tgUserId }));
+                        }
+                      })();
                     }}
                   >
                     {t('admins.transfer')}
@@ -194,9 +198,11 @@ export function AdminsPage() {
                   <button
                     className="danger ghost"
                     onClick={() => {
-                      if (confirm(t('admins.remove.confirm', { label: admin.label }))) {
-                        void guard(() => removeAdmin(admin.tgUserId));
-                      }
+                      void (async () => {
+                        if (await confirmDialog({ message: t('admins.remove.confirm', { label: admin.label }), danger: true })) {
+                          await guard(() => removeAdmin(admin.tgUserId));
+                        }
+                      })();
                     }}
                   >
                     {t('admins.action.remove')}

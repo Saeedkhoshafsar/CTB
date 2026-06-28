@@ -20,6 +20,7 @@ import {
 } from '@ctb/shared';
 import { deadlineFrom } from '../lib/duration';
 import { buildSendPayload } from '../lib/telegram';
+import { tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgWaitForReply: NodeDef<TgWaitForReplyParams> = {
   type: 'tg.waitForReply',
@@ -29,11 +30,11 @@ export const tgWaitForReply: NodeDef<TgWaitForReplyParams> = {
   paramsSchema: TgWaitForReplyParamsSchema,
   async execute(ctx, params) {
     if (ctx.chatId === null) {
-      return fail('tg.waitForReply requires a chat context (flow not started from Telegram?)');
+      return fail(tgNoChatError('انتظار پاسخ / wait for a reply'));
     }
 
     if (params.prompt !== undefined) {
-      if (!ctx.tg) return fail('tg.waitForReply: prompt set but no Telegram sender injected');
+      if (!ctx.tg) return fail(tgNoBotError('ارسال پیام پرسش / send the prompt'));
       const p = typeof params.prompt === 'string' ? { text: params.prompt } : params.prompt;
       await ctx.tg.sendMessage(
         buildSendPayload({

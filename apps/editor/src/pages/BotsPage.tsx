@@ -2,7 +2,12 @@ import type { AiUsageSummary, BotMode } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, ClientValidationError } from '../api/client';
+import { ActionMenu } from '../components/ActionMenu';
+import { PasswordInput } from '../components/PasswordInput';
+import { SearchBox } from '../components/SearchBox';
 import { SetupChecklist } from '../components/SetupChecklist';
+import { SkeletonList } from '../components/Skeleton';
+import { confirmDialog } from '../stores/confirm';
 import { useI18n } from '../i18n';
 import { useBots } from '../stores/bots';
 
@@ -49,6 +54,11 @@ export function BotsPage() {
       setRowError(t('error.unknown', { detail: err instanceof Error ? err.message : '?' }));
     }
   };
+
+  const [query, setQuery] = useState('');
+  const visibleBots = bots.filter((b) =>
+    b.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   const [budgetFor, setBudgetFor] = useState<string | null>(null);
   const [usage, setUsage] = useState<AiUsageSummary | null>(null);
@@ -97,7 +107,7 @@ export function BotsPage() {
       {rowError && <div className="alert">{rowError}</div>}
 
       {showForm && (
-        <form className="card" style={{ marginBottom: '1rem' }} onSubmit={onCreate}>
+        <form className="card u-mb-1" onSubmit={onCreate}>
           {formError && <div className="alert">{formError}</div>}
           <label>
             <span className="label-text">{t('bots.name')}</span>
@@ -105,7 +115,7 @@ export function BotsPage() {
           </label>
           <label>
             <span className="label-text">{t('bots.token')}</span>
-            <input dir="ltr" value={token} onChange={(e) => setToken(e.target.value)} required />
+            <PasswordInput dir="ltr" value={token} onValueChange={setToken} required />
             <span className="hint">{t('bots.token.hint')}</span>
           </label>
           <label>
@@ -127,12 +137,17 @@ export function BotsPage() {
       )}
 
       {loading ? (
-        <div className="splash">{t('app.loading')}</div>
+        <SkeletonList rows={4} label={t('app.loading')} />
       ) : bots.length === 0 ? (
         <div className="empty">{t('bots.empty')}</div>
       ) : (
-        <div className="row-list">
-          {bots.map((bot) => (
+        <>
+          {bots.length > 5 && <SearchBox value={query} onValueChange={setQuery} />}
+          {visibleBots.length === 0 ? (
+            <div className="empty">{t('common.noResults')}</div>
+          ) : (
+            <div className="row-list">
+              {visibleBots.map((bot) => (
             <div className="row" key={bot.id}>
               <div className="grow">
                 <div className="title">{bot.name}</div>
@@ -153,27 +168,43 @@ export function BotsPage() {
               <Link className="btn" to={`/bots/${bot.id}/flows`}>
                 {t('bots.action.flows')}
               </Link>
-              <Link className="btn ghost" to={`/bots/${bot.id}/users`}>
-                {t('bots.action.users')}
-              </Link>
-              <Link className="btn ghost" to={`/bots/${bot.id}/collections`}>
-                {t('bots.action.collections')}
-              </Link>
-              <button className="btn ghost" onClick={() => void openBudget(bot.id)}>
-                {t('bots.action.aiBudget')}
-              </button>
-              <button
-                className="danger ghost"
-                onClick={() => {
-                  if (confirm(t('bots.delete.confirm', { name: bot.name }))) {
-                    void guard(() => deleteBot(bot.id));
-                  }
-                }}
-              >
-                {t('bots.action.delete')}
-              </button>
+              <ActionMenu
+                items={[
+                  { key: 'users', to: `/bots/${bot.id}/users`, icon: '👥', label: t('bots.action.users') },
+                  {
+                    key: 'collections',
+                    to: `/bots/${bot.id}/collections`,
+                    icon: '🗂',
+                    label: t('bots.action.collections'),
+                  },
+                  {
+                    key: 'aiBudget',
+                    onClick: () => void openBudget(bot.id),
+                    icon: '💰',
+                    label: t('bots.action.aiBudget'),
+                  },
+                  {
+                    key: 'delete',
+                    danger: true,
+                    icon: '🗑',
+                    label: t('bots.action.delete'),
+                    onClick: () => {
+                      void (async () => {
+                        if (
+                          await confirmDialog({
+                            message: t('bots.delete.confirm', { name: bot.name }),
+                            danger: true,
+                          })
+                        ) {
+                          await guard(() => deleteBot(bot.id));
+                        }
+                      })();
+                    },
+                  },
+                ]}
+              />
               {budgetFor === bot.id && usage && (
-                <div className="card" style={{ flexBasis: '100%', marginTop: '0.5rem' }}>
+                <div className="card u-full u-mt-half">
                   <div className="title">{t('bots.aiBudget.title')}</div>
                   <div className="sub">
                     {t('bots.aiBudget.today', { calls: usage.today.calls, tokens: usage.today.totalTokens })}
@@ -197,7 +228,7 @@ export function BotsPage() {
                   </label>
                   <span className="hint">{t('bots.aiBudget.hint')}</span>
                   {usage.byCredential.length > 0 && (
-                    <div className="sub" style={{ marginTop: '0.5rem' }}>
+                    <div className="sub u-mt-half">
                       {usage.byCredential.map((c) => (
                         <div key={c.credentialId} dir="ltr">
                           {c.credentialId.slice(0, 8)}… — {c.calls} / {c.totalTokens}
@@ -216,8 +247,10 @@ export function BotsPage() {
                 </div>
               )}
             </div>
-          ))}
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

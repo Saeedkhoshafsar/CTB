@@ -27,7 +27,7 @@ import {
   type TgSendMediaParams,
 } from '@ctb/shared';
 import { keyboardToMarkup } from '../lib/telegram';
-import { coerceChatId } from './helpers';
+import { coerceChatId, tgNoBotError, tgNoChatError } from './helpers';
 
 /** Decode a base64 string to bytes (pure; no Node Buffer dependency in nodes). */
 function decodeBase64(value: string): Uint8Array {
@@ -47,7 +47,7 @@ export const tgSendMedia: NodeDef<TgSendMediaParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgSendMediaParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.sendMedia requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('ارسال رسانه / send media'));
     if (!ctx.tg.sendMedia) {
       return fail('tg.sendMedia is not available on this instance (host did not inject sendMedia)');
     }
@@ -59,7 +59,7 @@ export const tgSendMedia: NodeDef<TgSendMediaParams> = {
     }
     const chatId = explicitChat ?? ctx.chatId ?? undefined;
     if (chatId === undefined) {
-      return fail('tg.sendMedia: no chat — execution has no chat context and `chat` param is empty');
+      return fail(tgNoChatError('ارسال رسانه / send media'));
     }
 
     // Resolve each author item into a TgInputMedia (ref vs bytes).

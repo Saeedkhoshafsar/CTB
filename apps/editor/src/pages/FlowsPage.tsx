@@ -2,7 +2,11 @@ import type { BotPublic, FlowTemplateInfo } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../api/client';
+import { ActionMenu } from '../components/ActionMenu';
 import { FlowsEmptyState } from '../components/EmptyState';
+import { SearchBox } from '../components/SearchBox';
+import { SkeletonList } from '../components/Skeleton';
+import { confirmDialog } from '../stores/confirm';
 import { type MessageKey, useI18n } from '../i18n';
 import type { EmptyStateActionId } from '../lib/empty-state';
 import { downloadFlowExport } from '../lib/flow-export';
@@ -18,6 +22,10 @@ export function FlowsPage() {
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const visibleFlows = flows.filter((f) =>
+    f.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   // P3-T7 — import + template gallery
   const [showImport, setShowImport] = useState(false);
@@ -237,12 +245,17 @@ export function FlowsPage() {
       )}
 
       {loading ? (
-        <div className="splash">{t('app.loading')}</div>
+        <SkeletonList rows={4} label={t('app.loading')} />
       ) : flows.length === 0 ? (
         <FlowsEmptyState onAction={onEmptyAction} />
       ) : (
-        <div className="row-list">
-          {flows.map((flow) => (
+        <>
+          {flows.length > 5 && <SearchBox value={query} onValueChange={setQuery} />}
+          {visibleFlows.length === 0 ? (
+            <div className="empty">{t('common.noResults')}</div>
+          ) : (
+            <div className="row-list">
+              {visibleFlows.map((flow) => (
             <div className="row" key={flow.id}>
               <div className="grow">
                 <div className="title">{flow.name}</div>
@@ -263,22 +276,39 @@ export function FlowsPage() {
               <Link className="btn" to={`/flows/${flow.id}`}>
                 {t('flows.action.edit')}
               </Link>
-              <button className="ghost" onClick={() => void onExport(flow.id, flow.name)}>
-                {t('flows.action.export')}
-              </button>
-              <button
-                className="danger ghost"
-                onClick={() => {
-                  if (confirm(t('flows.delete.confirm', { name: flow.name }))) {
-                    void guard(() => deleteFlow(flow.id));
-                  }
-                }}
-              >
-                {t('flows.action.delete')}
-              </button>
+              <ActionMenu
+                items={[
+                  {
+                    key: 'export',
+                    icon: '⬇',
+                    label: t('flows.action.export'),
+                    onClick: () => void onExport(flow.id, flow.name),
+                  },
+                  {
+                    key: 'delete',
+                    danger: true,
+                    icon: '🗑',
+                    label: t('flows.action.delete'),
+                    onClick: () => {
+                      void (async () => {
+                        if (
+                          await confirmDialog({
+                            message: t('flows.delete.confirm', { name: flow.name }),
+                            danger: true,
+                          })
+                        ) {
+                          await guard(() => deleteFlow(flow.id));
+                        }
+                      })();
+                    },
+                  },
+                ]}
+              />
             </div>
-          ))}
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

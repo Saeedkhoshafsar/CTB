@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { DataPanel } from '../canvas/DataPanel';
+import { confirmDialog } from '../stores/confirm';
 import { useI18n, type MessageKey } from '../i18n';
 import { useExecutions, type StatusFilter } from '../stores/executions';
 
@@ -214,7 +215,11 @@ export function ExecutionsPage() {
                   <button
                     className="danger"
                     onClick={() => {
-                      if (confirm(t('execs.cancel.confirm'))) void cancel(detail.id);
+                      void (async () => {
+                        if (await confirmDialog({ message: t('execs.cancel.confirm'), danger: true })) {
+                          await cancel(detail.id);
+                        }
+                      })();
                     }}
                   >
                     {t('execs.cancel')}

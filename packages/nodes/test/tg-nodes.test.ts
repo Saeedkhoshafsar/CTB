@@ -72,14 +72,16 @@ describe('tg.sendMessage', () => {
   });
 
   it('fails without chat context and without sender (error)', async () => {
+    // Messages are now operator-friendly & bilingual (fa + en); assert on the
+    // stable English fragment of each so the wording can evolve safely.
     const noChat = makeCtx({ chatId: null });
     const p = params(tgSendMessage, { type: 'text', text: 'hi' });
     const r1 = await tgSendMessage.execute(noChat, p, [item({})]);
-    expect(r1).toMatchObject({ kind: 'error', message: expect.stringContaining('no chat') });
+    expect(r1).toMatchObject({ kind: 'error', message: expect.stringContaining('No destination chat') });
 
     const noTg = makeCtx({ tg: null });
     const r2 = await tgSendMessage.execute(noTg, p, [item({})]);
-    expect(r2).toMatchObject({ kind: 'error', message: expect.stringContaining('sender') });
+    expect(r2).toMatchObject({ kind: 'error', message: expect.stringContaining('bot must be active') });
 
     const badChat = makeCtx();
     const r3 = await tgSendMessage.execute(badChat, params(tgSendMessage, { chat: 'abc', type: 'text', text: 'x' }), [item({})]);
@@ -139,11 +141,11 @@ describe('tg.waitForReply', () => {
   it('errors: no chat context / prompt without sender / bad timeout & save_to rejected (error)', async () => {
     const noChat = makeCtx({ chatId: null });
     const r1 = await tgWaitForReply.execute(noChat, params(tgWaitForReply, { expect: 'text' }), []);
-    expect(r1).toMatchObject({ kind: 'error', message: expect.stringContaining('chat context') });
+    expect(r1).toMatchObject({ kind: 'error', message: expect.stringContaining('No destination chat') });
 
     const noTg = makeCtx({ tg: null });
     const r2 = await tgWaitForReply.execute(noTg, params(tgWaitForReply, { prompt: 'hi', expect: 'text' }), []);
-    expect(r2).toMatchObject({ kind: 'error', message: expect.stringContaining('sender') });
+    expect(r2).toMatchObject({ kind: 'error', message: expect.stringContaining('bot must be active') });
 
     expect(() => params(tgWaitForReply, { expect: 'text', timeout: 'tomorrow' })).toThrow(/duration/);
     expect(() => params(tgWaitForReply, { expect: 'text', save_to: '۲bad-name' })).toThrow(/invalid params/);

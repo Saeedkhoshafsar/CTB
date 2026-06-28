@@ -13,7 +13,7 @@ import {
   type NodeDef,
   type TgDeleteMessageParams,
 } from '@ctb/shared';
-import { coerceChatId, coerceMessageId, messageIdFromItem } from './helpers';
+import { coerceChatId, coerceMessageId, messageIdFromItem, tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgDeleteMessage: NodeDef<TgDeleteMessageParams> = {
   type: 'tg.deleteMessage',
@@ -22,7 +22,7 @@ export const tgDeleteMessage: NodeDef<TgDeleteMessageParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgDeleteMessageParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.deleteMessage requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('حذف پیام / delete a message'));
     if (!ctx.tg.deleteMessage) return fail('tg.deleteMessage is not supported by this host');
 
     const explicitChat = params.chat === undefined ? undefined : coerceChatId(params.chat);
@@ -31,7 +31,7 @@ export const tgDeleteMessage: NodeDef<TgDeleteMessageParams> = {
     }
     const chatId = explicitChat ?? ctx.chatId ?? undefined;
     if (chatId === undefined) {
-      return fail('tg.deleteMessage: no chat — execution has no chat context and `chat` param is empty');
+      return fail(tgNoChatError('حذف پیام / delete a message'));
     }
 
     const inputs: FlowItem[] = items.length > 0 ? items : [{ json: {} }];

@@ -22,6 +22,8 @@ import { decideTestRunMode } from '../lib/test-run';
 import { useCanvas } from '../stores/canvas';
 import { useLifecycle } from '../stores/lifecycle';
 import { useRunData } from '../stores/run-data';
+import { confirmDialog } from '../stores/confirm';
+import { toast } from '../stores/toast';
 
 function SaveBadge() {
   const t = useI18n((s) => s.t);
@@ -41,7 +43,7 @@ function VersionsPanel() {
   const flowId = useLifecycle((s) => s.flowId);
 
   const onRestore = async (version: number) => {
-    if (!confirm(t('editor.versions.confirm', { n: version }))) return;
+    if (!(await confirmDialog({ message: t('editor.versions.confirm', { n: version }) }))) return;
     // flush pending edits FIRST so the current graph becomes a snapshot too
     await useCanvas.getState().saveNow();
     const flow = await rollback(version);
@@ -153,7 +155,7 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
         if (status.state === 'expired' || status.state === 'gone') {
           if (alive) {
             setListening(null);
-            window.alert(t('editor.testRun.listen.expired'));
+            toast.warn(t('editor.testRun.listen.expired'));
           }
           return;
         }
@@ -172,7 +174,7 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
       await saveNow();
       const mode = decideTestRunMode(graph);
       if (mode === 'none') {
-        window.alert(t('editor.testRun.noTrigger'));
+        toast.warn(t('editor.testRun.noTrigger'));
         return;
       }
       if (mode === 'listen') {
@@ -183,15 +185,19 @@ function TestRunButton({ flow }: { flow: FlowPublic }) {
       const res = await api.runFlow(flow.id);
       await useRunData.getState().load(flow.id);
       if (res.status === 'error') {
-        window.alert(t('editor.testRun.failed', { error: res.error ?? '?' }));
+        toast.error(t('editor.testRun.failed', { error: res.error ?? '?' }));
+      } else {
+        toast.success(t('editor.testRun.ok'));
       }
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { error?: string }) : null;
-      window.alert(
-        body?.error === 'no_manual_trigger' || body?.error === 'no_telegram_trigger'
-          ? t('editor.testRun.noTrigger')
-          : t('editor.testRun.failed', { error: err instanceof Error ? err.message : String(err) }),
-      );
+      if (body?.error === 'no_manual_trigger' || body?.error === 'no_telegram_trigger') {
+        toast.warn(t('editor.testRun.noTrigger'));
+      } else {
+        toast.error(
+          t('editor.testRun.failed', { error: err instanceof Error ? err.message : String(err) }),
+        );
+      }
     } finally {
       setRunning(false);
     }
@@ -242,8 +248,9 @@ function ExportButton({ flow }: { flow: FlowPublic }) {
       await saveNow();
       const envelope = await api.exportFlow(flow.id);
       downloadFlowExport(envelope, flow.name);
+      toast.success(t('flows.export.ok', { name: flow.name }));
     } catch (err) {
-      window.alert(t('flows.export.failed', { detail: err instanceof Error ? err.message : '?' }));
+      toast.error(t('flows.export.failed', { detail: err instanceof Error ? err.message : '?' }));
     } finally {
       setBusy(false);
     }

@@ -136,6 +136,30 @@ textarea { resize: vertical; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
 input[dir='ltr'] { direction: ltr; }
 
+/* Masked secret field with a logical-positioned show/hide toggle (RTL-safe). */
+.password-field { position: relative; display: block; }
+.password-field input { padding-inline-end: 2.5rem; }
+.password-toggle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 2.4rem;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-dim);
+  border-radius: var(--radius);
+}
+.password-toggle:hover { color: var(--text); }
+.password-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 
 .alert {
@@ -1780,3 +1804,355 @@ button.ndv-link {
   font-size: 12.5px;
 }
 button.ndv-link:hover:not(:disabled) { color: var(--accent-hover); border-color: transparent; }
+
+/* ── toast notifications (UX) ──────────────────────────────────────────────
+   Non-blocking, theme-aware replacement for window.alert(). Pinned to the
+   viewport bottom-inline-start (bottom-right in fa/RTL, bottom-left in en/LTR)
+   via logical insets so it follows document direction for free. */
+.toast-host {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(380px, calc(100vw - 2rem));
+  pointer-events: none; /* let clicks pass through the gaps; toasts re-enable */
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  pointer-events: auto;
+  padding: 0.7rem 0.85rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-inline-start-width: 3px;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 38%);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  animation: ctb-toast-in 0.22s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+@keyframes ctb-toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+.toast-success { border-inline-start-color: var(--ok); }
+.toast-error { border-inline-start-color: var(--danger); }
+.toast-info { border-inline-start-color: var(--accent); }
+.toast-warn { border-inline-start-color: var(--warn); }
+.toast-icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 1px;
+}
+.toast-success .toast-icon { background: var(--ok); }
+.toast-error .toast-icon { background: var(--danger); }
+.toast-info .toast-icon { background: var(--accent); }
+.toast-warn .toast-icon { background: var(--warn); color: #1a1a1a; }
+.toast-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+.toast-close:hover { color: var(--text); background: var(--bg-hover); border-color: transparent; }
+
+/* ── custom scrollbars (UX) — slim, theme-tinted, replaces the default chunky
+   light scrollbars that clashed with the dark theme. Firefox uses the standard
+   `scrollbar-*`; WebKit/Blink use the pseudo-elements. ──────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-hover);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── micro-interactions (UX) — subtle motion that makes the app feel alive
+   without being noisy. All gated behind prefers-reduced-motion below. ───── */
+
+/* smooth color/border transitions on the common interactive chrome */
+button, .btn, .badge, input, select, textarea, .row, .card,
+.exec-row, .palette-item, .node-picker-item, .topbar nav a {
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+
+/* list rows lift slightly on hover so they read as clickable surfaces */
+.row:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+
+/* primary buttons get a touch of depth + a press feedback */
+button.primary { box-shadow: 0 1px 0 rgb(0 0 0 / 20%); }
+button.primary:active:not(:disabled),
+button:active:not(:disabled) { transform: translateY(1px); }
+
+/* gentle entrance for page content + cards so navigation feels less abrupt */
+.content > .page { animation: ctb-fade-up 0.25s ease both; }
+.card { animation: ctb-fade-up 0.22s ease both; }
+@keyframes ctb-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* topbar active link: an underline accent that reads clearly in both dirs */
+.topbar nav a { position: relative; }
+.topbar nav a.active::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0.5rem;
+  inset-block-end: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button, .btn, .badge, input, select, textarea, .row, .card,
+  .exec-row, .palette-item, .node-picker-item, .topbar nav a {
+    transition: none;
+  }
+  .content > .page, .card { animation: none; }
+  button.primary:active:not(:disabled),
+  button:active:not(:disabled) { transform: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   RESPONSIVE LAYOUT (PLAN5 P1-T2)
+   Mobile-first additions layered on top of the desktop defaults above.
+   Two breakpoints: tablet (<=1024px) and phone (<=640px). RTL-safe — uses
+   only logical properties so it works identically in fa (rtl) and en (ltr).
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Tablet & below: tighten chrome, let the topbar nav wrap, shrink content pad */
+@media (max-width: 1024px) {
+  .content { padding: 1rem; }
+  .topbar { gap: 0.5rem; padding: 0 0.75rem; }
+  .topbar nav { flex-wrap: wrap; gap: 0.15rem; row-gap: 0.15rem; }
+  .topbar nav a { padding: 0.3rem 0.55rem; }
+}
+
+/* Phone: stack toolbars, full-width controls, horizontally scrollable tables */
+@media (max-width: 640px) {
+  .content { padding: 0.75rem; }
+
+  /* page header: title over its action button instead of side-by-side */
+  .page-head { flex-wrap: wrap; align-items: stretch; gap: 0.5rem; }
+  .page-head h1 { flex-basis: 100%; }
+
+  /* topbar: allow the whole bar to grow taller when nav wraps */
+  .topbar { height: auto; min-height: 52px; padding-block: 0.4rem; flex-wrap: wrap; }
+  .topbar .brand { flex-basis: 100%; }
+
+  /* list rows: stack content and let controls flow full width */
+  .row { flex-direction: column; align-items: stretch; }
+  .row > select,
+  .row > input,
+  .row > button,
+  .row > a.btn {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
+  }
+  .row .grow { width: 100%; }
+
+  /* badges stay inline-sized, not stretched */
+  .row > .badge { align-self: flex-start; width: auto; }
+
+  /* forms: action buttons stack so they never overflow */
+  .form-actions { flex-direction: column; }
+  .form-actions button { width: 100%; }
+
+  /* tables: never push the page wider than the viewport — scroll inside */
+  .data-table-wrap,
+  .records-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .records-table, .data-table { min-width: 520px; }
+
+  /* cap heading size on tiny screens */
+  h1 { font-size: 18px; }
+}
+
+/* Long single-line values (ids, tokens, urls) truncate instead of wrapping ugly */
+.row .title { overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Overflow ("kebab") action menu (PLAN5 P1-T3 / issue A3) ─────────────── */
+.action-menu { position: relative; display: inline-flex; }
+.action-menu-trigger {
+  min-width: 2.2rem;
+  padding-inline: 0.5rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.action-menu-list {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  z-index: 40;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3rem;
+  gap: 0.1rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+.action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+}
+.action-menu-item:hover:not(:disabled) { background: var(--bg-hover); }
+.action-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.action-menu-item.danger { color: var(--danger); }
+.action-menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.action-menu-icon { width: 1.2rem; text-align: center; flex-shrink: 0; }
+
+/* On phones the menu spans the row width for easy tapping */
+@media (max-width: 640px) {
+  .action-menu { width: 100%; }
+  .action-menu-trigger { width: 100%; }
+  .action-menu-list { inset-inline: 0; min-width: 0; }
+}
+
+/* ── Confirm dialog (PLAN5 P2-T4 / issue B4) — replaces window.confirm ───── */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 55%);
+  animation: ctb-fade-in 0.12s ease both;
+}
+.confirm-dialog {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
+  padding: 1.25rem;
+  animation: ctb-fade-up 0.16s ease both;
+}
+.confirm-title { margin: 0 0 0.5rem; font-size: 16px; }
+.confirm-message { margin: 0 0 1.25rem; color: var(--text-dim); line-height: 1.6; overflow-wrap: anywhere; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+@keyframes ctb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 640px) {
+  .confirm-actions { flex-direction: column-reverse; }
+  .confirm-actions button { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confirm-backdrop, .confirm-dialog { animation: none; }
+}
+
+/* ── Skeleton loaders (PLAN5 P2-T5 / issue B5) ──────────────────────────── */
+.skeleton {
+  display: block;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 25%,
+    color-mix(in srgb, var(--bg-hover) 60%, var(--border)) 37%,
+    var(--bg-hover) 63%
+  );
+  background-size: 400% 100%;
+  animation: ctb-shimmer 1.4s ease infinite;
+}
+.skeleton-row { pointer-events: none; }
+.skeleton-title { width: 40%; height: 0.95rem; margin-block-end: 0.5rem; }
+.skeleton-sub { width: 60%; height: 0.7rem; }
+.skeleton-badge { width: 4rem; height: 1.4rem; flex-shrink: 0; }
+.skeleton-btn { width: 4.5rem; height: 2rem; flex-shrink: 0; }
+@keyframes ctb-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* ── Search/filter box (PLAN5 P3-T6 / issue C7) ─────────────────────────── */
+.search-box { position: relative; display: block; margin-block-end: 0.75rem; }
+.search-box input {
+  padding-inline-start: 2.2rem;
+  padding-inline-end: 2.2rem;
+}
+.search-icon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0.6rem;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.search-clear {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0.3rem;
+  width: 1.8rem;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.search-clear:hover { color: var(--text); }
+.search-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Utility classes (PLAN5 P4-T8 / issue D11) — replace ad-hoc inline styles
+   so spacing/layout stays consistent and themeable. All RTL-safe (logical). ── */
+.u-mb-1 { margin-block-end: 1rem; }
+.u-mt-1 { margin-block-start: 1rem; }
+.u-mt-half { margin-block-start: 0.5rem; }
+.u-row { display: flex; align-items: center; gap: 0.4rem; }
+.u-full { flex-basis: 100%; }

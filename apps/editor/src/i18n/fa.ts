@@ -44,6 +44,12 @@ export const fa = {
   'bots.name': 'نام بات',
   'bots.token': 'توکن تلگرام',
   'bots.token.hint': 'توکن از BotFather — فقط یک‌بار ارسال می‌شود و رمزنگاری‌شده ذخیره می‌گردد',
+  'common.show': 'نمایش',
+  'common.hide': 'پنهان‌کردن',
+  'common.moreActions': 'عملیات بیشتر',
+  'common.search': 'جستجو…',
+  'common.clear': 'پاک‌کردن',
+  'common.noResults': 'موردی یافت نشد.',
   'bots.mode': 'حالت دریافت',
   'bots.mode.polling': 'Polling',
   'bots.mode.webhook': 'Webhook',
@@ -204,6 +210,7 @@ export const fa = {
   'flows.import.importing': 'در حال درون‌ریزی…',
   'flows.import.invalid': 'این JSON یک خروجی معتبر فلو نیست.',
   'flows.export.failed': 'برون‌بری انجام نشد: {detail}',
+  'flows.export.ok': 'فلو «{name}» با موفقیت برون‌بری شد.',
   'flows.templates': 'الگوها',
   'flows.templates.title': 'شروع از یک الگو',
   'flows.templates.hint': 'یک الگوی آماده و عمومی را انتخاب کنید تا به‌عنوان فلوی جدید ساخته شود؛ سپس آزادانه ویرایشش کنید.',
@@ -364,6 +371,7 @@ export const fa = {
   'editor.testRun.noTrigger':
     'برای اجرای آزمایشی، یک شروع‌کننده به جریان اضافه کنید — «شروع دستی» (flow.manualTrigger) برای دادهٔ نمونه، یا «شروع‌کنندهٔ تلگرام» (tg.trigger) برای شنیدن یک پیام زنده.',
   'editor.testRun.failed': 'اجرای آزمایشی با خطا مواجه شد: {error}',
+  'editor.testRun.ok': 'اجرای آزمایشی با موفقیت انجام شد.',
   // J-T2: اجرای آزمایشی با شنیدن یک به‌روزرسانی زنده (الگوی «گوش‌دادن به رویداد تست» n8n).
   'editor.testRun.listen.waiting': 'در انتظار یک پیام به ربات شما… همین حالا یکی بفرستید تا اجرای آزمایشی ثبت شود.',
   'editor.testRun.listen.cancel': 'لغو',
@@ -1254,6 +1262,8 @@ export const fa = {
   'error.unknown': 'خطای ناشناخته: {detail}',
 
   'common.cancel': 'انصراف',
+  'common.confirm.title': 'تأیید عملیات',
+  'common.confirm.ok': 'تأیید',
   'common.back': 'بازگشت',
   'common.close': 'بستن',
   'common.save': 'ذخیره',

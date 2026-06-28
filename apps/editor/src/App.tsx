@@ -10,7 +10,7 @@
  *   /docs                   — node library docs site (PD-T4)
  */
 import { roleAtLeast } from '@ctb/shared';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import {
   HashRouter,
   Navigate,
@@ -20,18 +20,34 @@ import {
   Routes,
   useLocation,
 } from 'react-router-dom';
+import { ConfirmHost } from './components/ConfirmHost';
+import { ToastHost } from './components/ToastHost';
 import { useI18n } from './i18n';
-import { AdminsPage } from './pages/AdminsPage';
-import { BotsPage } from './pages/BotsPage';
-import { CollectionsPage } from './pages/CollectionsPage';
-import { CredentialsPage } from './pages/CredentialsPage';
-import { ExecutionsPage } from './pages/ExecutionsPage';
-import { FlowEditorPage } from './pages/FlowEditorPage';
-import { FlowsPage } from './pages/FlowsPage';
+// LoginPage is the initial/anonymous landing — keep it eager so first paint is
+// instant. Every authed page is route-split (PLAN5 P3-T7 / issue C8) so the
+// heavy flow editor (CodeMirror + @xyflow) loads only when its route is hit.
 import { LoginPage } from './pages/LoginPage';
-import { NodeDocsPage } from './pages/NodeDocsPage';
-import { UsersPage } from './pages/UsersPage';
 import { useAuth } from './stores/auth';
+
+const BotsPage = lazy(() => import('./pages/BotsPage').then((m) => ({ default: m.BotsPage })));
+const FlowsPage = lazy(() => import('./pages/FlowsPage').then((m) => ({ default: m.FlowsPage })));
+const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const CollectionsPage = lazy(() =>
+  import('./pages/CollectionsPage').then((m) => ({ default: m.CollectionsPage })),
+);
+const FlowEditorPage = lazy(() =>
+  import('./pages/FlowEditorPage').then((m) => ({ default: m.FlowEditorPage })),
+);
+const ExecutionsPage = lazy(() =>
+  import('./pages/ExecutionsPage').then((m) => ({ default: m.ExecutionsPage })),
+);
+const CredentialsPage = lazy(() =>
+  import('./pages/CredentialsPage').then((m) => ({ default: m.CredentialsPage })),
+);
+const NodeDocsPage = lazy(() =>
+  import('./pages/NodeDocsPage').then((m) => ({ default: m.NodeDocsPage })),
+);
+const AdminsPage = lazy(() => import('./pages/AdminsPage').then((m) => ({ default: m.AdminsPage })));
 
 function RequireAuth() {
   const status = useAuth((s) => s.status);
@@ -100,8 +116,12 @@ function Shell() {
         </button>
       </header>
       <main className="content">
-        <Outlet />
+        <Suspense fallback={<div className="splash">{t('app.loading')}</div>}>
+          <Outlet />
+        </Suspense>
       </main>
+      <ToastHost />
+      <ConfirmHost />
     </div>
   );
 }

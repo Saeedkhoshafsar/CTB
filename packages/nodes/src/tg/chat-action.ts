@@ -13,7 +13,7 @@ import {
   type NodeDef,
   type TgChatActionParams,
 } from '@ctb/shared';
-import { coerceChatId } from './helpers';
+import { coerceChatId, tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgChatAction: NodeDef<TgChatActionParams> = {
   type: 'tg.chatAction',
@@ -22,7 +22,7 @@ export const tgChatAction: NodeDef<TgChatActionParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgChatActionParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.chatAction requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('ارسال اکشن چت / send a chat action'));
     if (!ctx.tg.sendChatAction) return fail('tg.chatAction is not supported by this host');
 
     const explicitChat = params.chat === undefined ? undefined : coerceChatId(params.chat);
@@ -31,7 +31,7 @@ export const tgChatAction: NodeDef<TgChatActionParams> = {
     }
     const chatId = explicitChat ?? ctx.chatId ?? undefined;
     if (chatId === undefined) {
-      return fail('tg.chatAction: no chat — execution has no chat context and `chat` param is empty');
+      return fail(tgNoChatError('ارسال اکشن چت / send a chat action'));
     }
 
     await ctx.tg.sendChatAction({ chat_id: chatId, action: params.action });

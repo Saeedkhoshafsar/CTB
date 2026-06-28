@@ -15,7 +15,7 @@ import {
   type NodeDef,
   type TgAnswerCallbackParams,
 } from '@ctb/shared';
-import { callbackQueryIdFromItem } from './helpers';
+import { callbackQueryIdFromItem, tgNoBotError } from './helpers';
 
 export const tgAnswerCallback: NodeDef<TgAnswerCallbackParams> = {
   type: 'tg.answerCallback',
@@ -24,7 +24,7 @@ export const tgAnswerCallback: NodeDef<TgAnswerCallbackParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgAnswerCallbackParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.answerCallback requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('پاسخ به دکمه / answer a callback'));
     if (!ctx.tg.answerCallbackQuery) return fail('tg.answerCallback is not supported by this host');
 
     const inputs: FlowItem[] = items.length > 0 ? items : [{ json: {} }];

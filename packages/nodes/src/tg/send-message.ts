@@ -15,7 +15,7 @@ import {
   type TgSendMessageParams,
 } from '@ctb/shared';
 import { buildSendPayload } from '../lib/telegram';
-import { coerceChatId } from './helpers';
+import { coerceChatId, tgNoBotError, tgNoChatError } from './helpers';
 
 export const tgSendMessage: NodeDef<TgSendMessageParams> = {
   type: 'tg.sendMessage',
@@ -24,7 +24,7 @@ export const tgSendMessage: NodeDef<TgSendMessageParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgSendMessageParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.sendMessage requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('ارسال پیام / send a message'));
 
     const explicitChat =
       params.chat === undefined ? undefined : coerceChatId(params.chat);
@@ -33,7 +33,7 @@ export const tgSendMessage: NodeDef<TgSendMessageParams> = {
     }
     const chatId = explicitChat ?? ctx.chatId ?? undefined;
     if (chatId === undefined) {
-      return fail('tg.sendMessage: no chat — execution has no chat context and `chat` param is empty');
+      return fail(tgNoChatError('ارسال پیام / send a message'));
     }
 
     const inputs: FlowItem[] = items.length > 0 ? items : [{ json: {} }];

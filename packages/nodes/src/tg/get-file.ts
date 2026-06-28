@@ -26,6 +26,7 @@ import {
   type NodeDef,
   type TgGetFileParams,
 } from '@ctb/shared';
+import { tgNoBotError } from './helpers';
 
 /** Pull a non-empty string at `key` from a json-ish object, else undefined. */
 function strAt(obj: unknown, key: string): string | undefined {
@@ -57,7 +58,7 @@ export const tgGetFile: NodeDef<TgGetFileParams> = {
   ports: { inputs: ['main'], outputs: ['main'] },
   paramsSchema: TgGetFileParamsSchema,
   async execute(ctx, params, items) {
-    if (!ctx.tg) return fail('tg.getFile requires a Telegram context (no sender injected)');
+    if (!ctx.tg) return fail(tgNoBotError('دریافت فایل / get a file'));
     if (!ctx.tg.getFile) {
       return fail('tg.getFile is not available on this instance (host did not inject getFile)');
     }

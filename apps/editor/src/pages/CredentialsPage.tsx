@@ -11,6 +11,8 @@ import {
 } from '@ctb/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, ClientValidationError } from '../api/client';
+import { SkeletonList } from '../components/Skeleton';
+import { confirmDialog } from '../stores/confirm';
 import { useI18n } from '../i18n';
 import { useCredentials } from '../stores/credentials';
 
@@ -221,7 +223,7 @@ export function CredentialsPage() {
       {rowError && <div className="alert">{rowError}</div>}
 
       {showForm && (
-        <form className="card" style={{ marginBottom: '1rem' }} onSubmit={onCreate}>
+        <form className="card u-mb-1" onSubmit={onCreate}>
           {formError && <div className="alert">{formError}</div>}
           <label>
             <span className="label-text">{t('credentials.name')}</span>
@@ -398,7 +400,7 @@ export function CredentialsPage() {
                   onChange={(e) => setPgPassword(e.target.value)}
                 />
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <label className="u-row">
                 <input
                   type="checkbox"
                   checked={pgSsl}
@@ -422,7 +424,7 @@ export function CredentialsPage() {
                   placeholder="30000"
                 />
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <label className="u-row">
                 <input
                   type="checkbox"
                   checked={pgReadOnly}
@@ -483,7 +485,7 @@ export function CredentialsPage() {
                   onChange={(e) => setMyPassword(e.target.value)}
                 />
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <label className="u-row">
                 <input
                   type="checkbox"
                   checked={mySsl}
@@ -507,7 +509,7 @@ export function CredentialsPage() {
                   placeholder="30000"
                 />
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <label className="u-row">
                 <input
                   type="checkbox"
                   checked={myReadOnly}
@@ -612,7 +614,7 @@ export function CredentialsPage() {
       )}
 
       {loading ? (
-        <div className="splash">{t('app.loading')}</div>
+        <SkeletonList rows={4} label={t('app.loading')} />
       ) : credentials.length === 0 ? (
         <div className="empty">{t('credentials.empty')}</div>
       ) : (
@@ -629,9 +631,11 @@ export function CredentialsPage() {
               <button
                 className="danger ghost"
                 onClick={() => {
-                  if (confirm(t('credentials.delete.confirm', { name: cred.name }))) {
-                    void guard(() => deleteCredential(cred.id));
-                  }
+                  void (async () => {
+                    if (await confirmDialog({ message: t('credentials.delete.confirm', { name: cred.name }), danger: true })) {
+                      await guard(() => deleteCredential(cred.id));
+                    }
+                  })();
                 }}
               >
                 {t('credentials.action.delete')}

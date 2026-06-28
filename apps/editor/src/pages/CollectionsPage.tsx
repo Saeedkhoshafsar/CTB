@@ -18,6 +18,7 @@ import { labelText } from '@ctb/shared';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { confirmDialog } from '../stores/confirm';
 import { useI18n, type MessageKey } from '../i18n';
 import { useCollections } from '../stores/collections';
 import { RecordsPanel } from './collections/RecordsPanel';
@@ -237,9 +238,11 @@ export function CollectionsPage() {
                 <button
                   className="danger"
                   onClick={() => {
-                    if (window.confirm(t('collections.delete.confirm', { name: c.name }))) {
-                      void deleteCollection(c.id);
-                    }
+                    void (async () => {
+                      if (await confirmDialog({ message: t('collections.delete.confirm', { name: c.name }), danger: true })) {
+                        await deleteCollection(c.id);
+                      }
+                    })();
                   }}
                 >
                   {t('collections.action.delete')}
